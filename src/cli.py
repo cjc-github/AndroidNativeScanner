@@ -48,6 +48,13 @@ def generate_report(so_file: Path, results: dict, summary: dict, out_dir: Path, 
     # 生成报告文件名
     report_file = out_dir / f"report_{so_file.name}.txt"
     
+    
+    # 清理字符串分析结果
+    results["strings"] = {
+        "all": [],
+        "filtered": []
+    }
+    
     # 生成报告内容
     report_content = f"""Android Native Scanner Report
 {'='*50}
