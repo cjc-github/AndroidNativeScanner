@@ -1,59 +1,55 @@
 """
 敏感模式分析模块
-负责检测字符串中的敏感数据模式
+检测 .so 文件字符串中的 API Key、Token、JWT 等敏感信息
 """
 
-from typing import List, Tuple
+import re
+from typing import Any, Dict, List, Tuple
 
-from ..scanners import scan_sensitive_patterns
+from .base import BaseAnalyzer
+from ..utils import extract_strings_from_so
+
+SENSITIVE_PATTERNS = {
+    "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
+    "OpenAI Key": r"sk-[0-9a-zA-Z]{48}",
+    "GitHub Token": r"ghp_[0-9a-zA-Z]{36}",
+    "JWT": r"eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+",
+    "Password/Token": r"(?:pass(?:word)?|pwd|token|auth)[\"'=:\\s]+[^\"\\s]+",
+}
+
+_COMPILED = {k: re.compile(v) for k, v in SENSITIVE_PATTERNS.items()}
 
 
-def analyze_sensitive_patterns(strings: List[str]) -> List[Tuple[str, str]]:
-    """
-    分析敏感数据模式
-    
-    Args:
-        strings: 字符串列表
-        
-    Returns:
-        敏感模式检测结果列表 (标签, 匹配内容)
-    """
-    return scan_sensitive_patterns(strings)
+class SensitiveAnalyzer(BaseAnalyzer):
+    name = "敏感模式检测"
+    key = "sensitive_patterns"
+    summary_key = "sensitive_summary"
 
+    def analyze(self, so_file: str, **context) -> List[Tuple[str, str]]:
+        strings = context.get("strings") or extract_strings_from_so(so_file)
+        findings: List[Tuple[str, str]] = []
+        for line in strings:
+            for label, cre in _COMPILED.items():
+                if cre.search(line):
+                    findings.append((label, line.strip()))
+        return findings
 
-def get_sensitive_summary(sensitive_patterns: List[Tuple[str, str]]) -> dict:
-    """
-    获取敏感模式分析摘要
-    
-    Args:
-        sensitive_patterns: 敏感模式检测结果
-        
-    Returns:
-        包含敏感模式分析摘要的字典
-    """
-    summary = {}
-    
-    summary["total_sensitive"] = len(sensitive_patterns)
-    
-    # 按类型统计
-    type_counts = {}
-    for label, _ in sensitive_patterns:
-        if label not in type_counts:
-            type_counts[label] = 0
-        type_counts[label] += 1
-    
-    summary["type_counts"] = type_counts
-    
-    # 计算风险分数
-    risk_score = 0
-    for label, _ in sensitive_patterns:
-        if "Key" in label or "Token" in label:
-            risk_score += 4
-        elif "JWT" in label:
-            risk_score += 3
-        else:
-            risk_score += 2
-    
-    summary["risk_score"] = risk_score
-    
-    return summary
+    def summarize(self, results: Any) -> Dict[str, Any]:
+        findings: List[Tuple[str, str]] = results if isinstance(results, list) else []
+
+        type_counts: Dict[str, int] = {}
+        risk_score = 0
+        for label, _ in findings:
+            type_counts[label] = type_counts.get(label, 0) + 1
+            if "Key" in label or "Token" in label:
+                risk_score += 4
+            elif "JWT" in label:
+                risk_score += 3
+            else:
+                risk_score += 2
+
+        return {
+            "total_sensitive": len(findings),
+            "type_counts": type_counts,
+            "risk_score": risk_score,
+        }

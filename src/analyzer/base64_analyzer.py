@@ -1,52 +1,42 @@
 """
-Base64分析模块
-负责检测字符串中的Base64编码数据
+Base64 分析模块
+检测 .so 文件字符串中的 Base64 编码数据
 """
 
-from typing import List
+import base64
+import re
+from typing import Any, Dict, List
 
-from ..scanners import detect_base64_strings
+from .base import BaseAnalyzer
+from ..utils import extract_strings_from_so
 
-
-def analyze_base64(strings: List[str]) -> List[str]:
-    """
-    分析Base64编码数据
-    
-    Args:
-        strings: 字符串列表
-        
-    Returns:
-        Base64字符串列表
-    """
-    base64_results = detect_base64_strings(strings)
-    return [result[0] for result in base64_results]  # 只返回原始Base64字符串
+_BASE64_CANDIDATE = re.compile(r"^[A-Za-z0-9+/=]{20,}$")
+_BASE64_MAX_BYTES = 4096
 
 
-def get_base64_summary(base64_strings: List[str]) -> dict:
-    """
-    获取Base64分析摘要
-    
-    Args:
-        base64_strings: Base64字符串列表
-        
-    Returns:
-        包含Base64分析摘要的字典
-    """
-    summary = {}
-    
-    summary["total_base64"] = len(base64_strings)
-    
-    # 按长度分类统计
-    length_counts = {}
-    for base64_str in base64_strings:
-        length = len(base64_str)
-        if length not in length_counts:
-            length_counts[length] = 0
-        length_counts[length] += 1
-    
-    summary["length_counts"] = length_counts
-    
-    # 计算风险分数
-    summary["risk_score"] = len(base64_strings) * 3
-    
-    return summary
+class Base64Analyzer(BaseAnalyzer):
+    name = "Base64检测"
+    key = "base64"
+    summary_key = "base64_summary"
+
+    def analyze(self, so_file: str, **context) -> List[str]:
+        strings = context.get("strings") or extract_strings_from_so(so_file)
+        found: List[str] = []
+        for s in strings:
+            if not _BASE64_CANDIDATE.match(s) or len(s) > _BASE64_MAX_BYTES:
+                continue
+            try:
+                decoded_bytes = base64.b64decode(s, validate=True)
+                decoded = decoded_bytes.decode("utf-8", errors="strict")
+                if sum(1 for c in decoded if c.isprintable()) / max(1, len(decoded)) > 0.6:
+                    found.append(s)
+            except Exception:
+                continue
+        return found
+
+    def summarize(self, results: Any) -> Dict[str, Any]:
+        items: List[str] = results if isinstance(results, list) else []
+        return {
+            "total_base64": len(items),
+            "risk_score": len(items) * 3,
+        }

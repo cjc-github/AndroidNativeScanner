@@ -1,56 +1,41 @@
 """
-URL分析模块
-负责检测字符串中的硬编码URL
+URL 分析模块
+检测 .so 文件字符串中的硬编码 URL
 """
 
-from typing import List
+import re
+from typing import Any, Dict, List
 
-from ..scanners import scan_urls
+from .base import BaseAnalyzer
+from ..utils import extract_strings_from_so
 
-
-def analyze_urls(strings: List[str]) -> List[str]:
-    """
-    分析硬编码URL
-    
-    Args:
-        strings: 字符串列表
-        
-    Returns:
-        URL列表
-    """
-    return scan_urls(strings)
+_URL_RE = re.compile(r"https?://[^\s\"']+")
 
 
-def get_url_summary(urls: List[str]) -> dict:
-    """
-    获取URL分析摘要
-    
-    Args:
-        urls: URL列表
-        
-    Returns:
-        包含URL分析摘要的字典
-    """
-    summary = {}
-    
-    summary["total_urls"] = len(urls)
-    
-    # 按域名分类统计
-    domain_counts = {}
-    for url in urls:
-        # 简单的域名提取
-        if "://" in url:
-            domain = url.split("://")[1].split("/")[0]
-        else:
-            domain = url.split("/")[0]
-        
-        if domain not in domain_counts:
-            domain_counts[domain] = 0
-        domain_counts[domain] += 1
-    
-    summary["domain_counts"] = domain_counts
-    
-    # 计算风险分数
-    summary["risk_score"] = len(urls) * 2
-    
-    return summary
+class UrlAnalyzer(BaseAnalyzer):
+    name = "URL检测"
+    key = "urls"
+    summary_key = "url_summary"
+
+    def analyze(self, so_file: str, **context) -> List[str]:
+        strings = context.get("strings") or extract_strings_from_so(so_file)
+        urls: List[str] = []
+        for s in strings:
+            m = _URL_RE.search(s)
+            if m:
+                urls.append(m.group(0))
+        return urls
+
+    def summarize(self, results: Any) -> Dict[str, Any]:
+        urls: List[str] = results if isinstance(results, list) else []
+
+        domain_counts: Dict[str, int] = {}
+        for url in urls:
+            domain = url.split("://")[1].split("/")[0] if "://" in url else url.split("/")[0]
+            domain_counts[domain] = domain_counts.get(domain, 0) + 1
+
+        return {
+            "total_urls": len(urls),
+            "domain_counts": domain_counts,
+            "risk_score": len(urls) * 2,
+        }

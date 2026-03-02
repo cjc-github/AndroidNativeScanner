@@ -1,116 +1,166 @@
-# Android Native 库扫描工具 (.so 文件版) - 重构版本
+# Android Native 库扫描工具 (.so 文件分析器)
 
 ## 一、功能概述
 
-本工具用于分析 Android 平台的原生动态链接库(.so 文件)，检测以下安全风险：
+本工具用于分析 Android 平台的原生动态链接库（.so 文件），检测以下安全风险：
 
-- 硬编码敏感信息 (令牌、API 密钥、JWT 等)
+- 硬编码敏感信息（API Key、Token、JWT 等）
 - 内嵌 URL 地址
-- 危险函数调用 (`system`, `exec`等)
+- 危险函数调用（`system`、`exec`、`popen` 等）
 - JNI 方法名称暴露
 - Base64 编码的负载数据
+- ELF 头结构信息
 
 ## 二、项目结构
 
-重构后的模块化结构采用配置分散设计，每个分析器包含自己的配置：
+采用 **BaseAnalyzer 抽象基类 + 协调器** 的架构，每个分析器完全自包含，既可独立使用，也可由协调器统一调度：
 
 ```
 AndroidNativeScanner/
-├── main.py                 # 主程序入口
-├── reports/                # 扫描报告目录
-│   ├── report_*.txt       # 生成的扫描报告
-├── src/                    # 模块化代码目录
-│   ├── __init__.py         # 包初始化文件
-│   ├── cli.py              # 命令行解析和入口逻辑
-│   ├── scanners.py         # 检测和扫描辅助函数
-│   ├── utils.py            # 通用工具函数
-│   └── analyzer/           # 分析器模块目录
-│       ├── __init__.py     # 分析器包初始化
-│       ├── analysis_coordinator.py  # 分析协调器
-│       ├── elf_analyzer.py          # ELF 头信息分析
-│       ├── symbol_analyzer.py       # 符号分析（包含 RCE 关键词）
-│       ├── string_analyzer.py       # 字符串提取分析
-│       ├── sensitive_analyzer.py    # 敏感模式检测（包含敏感模式配置）
-│       ├── url_analyzer.py          # URL 检测（包含 URL 正则配置）
-│       ├── base64_analyzer.py       # Base64 编码检测（包含 Base64 配置）
-│       └── jni_analyzer.py          # JNI 方法分析（包含 JNI 关键词）
-└── README.md               # 项目说明
+├── main.py                          # 主程序入口
+├── README.md                        # 项目说明
+├── reports/                         # 扫描报告输出目录
+│   └── report_*.txt
+└── src/                             # 源码目录
+    ├── __init__.py                  # 包初始化
+    ├── cli.py                       # 命令行解析与主流程
+    ├── utils.py                     # 通用工具函数
+    └── analyzer/                    # 分析器模块
+        ├── __init__.py              # 统一导出
+        ├── base.py                  # BaseAnalyzer 抽象基类
+        ├── analysis_coordinator.py  # 分析协调器
+        ├── elf_analyzer.py          # ELF 头信息分析
+        ├── symbol_analyzer.py       # 导出符号 & RCE 危险函数检测
+        ├── string_analyzer.py       # 字符串提取与统计
+        ├── sensitive_analyzer.py    # 敏感信息模式检测
+        ├── url_analyzer.py          # 硬编码 URL 检测
+        ├── base64_analyzer.py       # Base64 编码数据检测
+        └── jni_analyzer.py          # JNI 符号分析
 ```
 
-## 三、使用方式
+## 三、架构设计
 
-安装依赖：
+### 3.1 BaseAnalyzer 抽象基类
+
+所有分析器继承自 `BaseAnalyzer`，实现统一接口：
+
+```python
+class BaseAnalyzer(ABC):
+    name: str       # 分析器显示名称
+    key: str        # 结果字典中的键名
+    summary_key: str  # 摘要字典中的键名
+
+    def analyze(self, so_file: str, **context) -> Any:
+        """对 .so 文件执行分析"""
+
+    def summarize(self, results: Any) -> Dict[str, Any]:
+        """生成包含 risk_score 的摘要"""
+```
+
+### 3.2 独立使用单个分析器
+
+每个分析器可以脱离协调器独立运行：
+
+```python
+from src.analyzer import UrlAnalyzer
+
+analyzer = UrlAnalyzer()
+urls = analyzer.analyze("libexample.so")
+summary = analyzer.summarize(urls)
+print(f"发现 {summary['total_urls']} 个 URL，风险分: {summary['risk_score']}")
+```
+
+### 3.3 协调器统一调度
+
+`AnalysisCoordinator` 按顺序执行所有分析器，自动共享字符串提取结果以避免重复调用：
+
+```python
+from src.analyzer import AnalysisCoordinator
+
+coordinator = AnalysisCoordinator()
+results = coordinator.analyze("libexample.so")
+summary = coordinator.summarize(results)
+```
+
+## 四、使用方式
+
+### 4.1 安装依赖
 
 ```bash
 pip install termcolor
 ```
 
-### 3.1 扫描单个文件
+系统需要安装 `readelf`、`nm`、`strings` 工具（通常包含在 `binutils` 包中）。
+
+### 4.2 扫描单个文件
+
 ```bash
 python3 main.py libexample.so
 ```
 
-### 3.2 批量扫描目录
+### 4.3 批量扫描目录
+
 ```bash
 python3 main.py ./lib/
 ```
 
-### 3.3 静默模式（仅输出结果）
-```bash
-python3 main.py libexample.so -q
+### 4.4 命令行参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `path` | .so 文件或目录路径 | (必填) |
+| `-o`, `--out` | 报告输出目录 | `reports` |
+| `-j`, `--jobs` | 并行 worker 数 | `4` |
+| `-t`, `--timeout` | 外部工具超时（秒） | `20` |
+| `-q`, `--quiet` | 静默模式 | 否 |
+
+## 五、分析器说明
+
+| 分析器 | 类名 | 功能 | 风险计分 |
+|--------|------|------|----------|
+| ELF 头分析 | `ElfAnalyzer` | 解析 ELF 头信息（类型、架构、入口点等） | 固定 0 分 |
+| 符号分析 | `SymbolAnalyzer` | 检测导出符号中的 RCE 相关危险函数 | 每个危险符号 5 分（上限 30） |
+| 字符串分析 | `StringAnalyzer` | 提取可打印字符串并统计 | 每 100 个字符串 1 分 |
+| 敏感模式 | `SensitiveAnalyzer` | 检测 API Key、Token、JWT 等 | Key/Token 4 分，JWT 3 分，其他 2 分 |
+| URL 检测 | `UrlAnalyzer` | 检测硬编码 URL | 每个 URL 2 分 |
+| Base64 检测 | `Base64Analyzer` | 检测 Base64 编码数据 | 每个 3 分 |
+| JNI 分析 | `JniAnalyzer` | 检测 JNI 相关符号和方法 | 每个 JNI 符号 2 分 |
+
+## 六、风险等级划分
+
+| 等级 | 分数范围 | 说明 |
+|------|----------|------|
+| LOW | 0–19 | 风险较低 |
+| MEDIUM | 20–39 | 存在一定风险 |
+| HIGH | 40–59 | 存在较高风险 |
+| CRITICAL | 60+ | 存在严重风险 |
+
+## 七、输出结果
+
+- 终端实时显示各分析器的扫描进度
+- 自动生成 `reports/report_*.txt` 报告文件（包含完整 JSON 结果）
+- 报告包含：风险等级、总风险分、各模块风险分明细、详细检测结果
+
+## 八、扩展开发
+
+新增分析器只需三步：
+
+1. 在 `src/analyzer/` 下创建新文件，继承 `BaseAnalyzer`
+2. 实现 `analyze()` 和 `summarize()` 方法
+3. 在 `AnalysisCoordinator.__init__()` 中注册新分析器实例
+
+```python
+from .base import BaseAnalyzer
+
+class MyAnalyzer(BaseAnalyzer):
+    name = "自定义分析"
+    key = "my_analysis"
+    summary_key = "my_summary"
+
+    def analyze(self, so_file, **context):
+        # 实现分析逻辑
+        ...
+
+    def summarize(self, results):
+        return {"risk_score": 0, ...}
 ```
-
-## 四、模块说明
-
-### 4.1 分析器模块 (analyzer/)
-采用配置分散设计，每个分析器包含自己的配置：
-
-- **elf_analyzer.py**: ELF 头信息分析
-- **symbol_analyzer.py**: 符号分析，包含 RCE 关键词配置
-- **string_analyzer.py**: 字符串提取和基础分析
-- **sensitive_analyzer.py**: 敏感模式检测，包含敏感模式正则配置
-- **url_analyzer.py**: URL 检测，包含 URL 正则配置
-- **base64_analyzer.py**: Base64 编码检测，包含 Base64 配置
-- **jni_analyzer.py**: JNI 方法分析，包含 JNI 关键词配置
-- **analysis_coordinator.py**: 分析协调器，管理各分析器执行顺序
-
-### 4.2 核心模块
-- **scanners.py**: 各种字符串检测和扫描功能
-- **config.py**: 重构后仅保留工具依赖配置
-- **utils.py**: 外部命令执行和文件操作工具函数
-- **cli.py**: 命令行参数解析和主程序入口逻辑
-
-## 五、重构特点
-
-### 5.1 配置分散架构
-- 每个分析器模块包含自己的配置，职责清晰
-- 消除了循环依赖问题
-- 便于独立测试和维护
-
-### 5.2 风险评分系统
-- **ELF 头分析**: 基础风险分数
-- **符号分析**: 每个危险符号 5 分
-- **敏感模式检测**: Key/Token 类型 4 分，JWT 类型 3 分，其他 2 分
-- **URL 检测**: 每个 URL 2 分
-- **Base64 检测**: 每个 Base64 字符串 3 分
-- **JNI 分析**: 每个 JNI 方法 2 分
-
-### 5.3 风险等级划分
-- **LOW**: 0-20 分
-- **MEDIUM**: 21-40 分
-- **HIGH**: 41-60 分
-- **CRITICAL**: 61+ 分
-
-## 六、输出结果
-
-- 终端实时显示扫描进度和风险报告
-- 自动生成 `report_*.txt` 日志文件（包含完整扫描结果）
-- 详细的风险分数分布和检测详情
-
-## 七、技术实现
-
-- **模块化设计**: 配置分散，功能分离，便于维护和扩展
-- **二进制分析**: 通过反汇编引擎解析 ELF 文件结构
-- **模式匹配**: 使用正则表达式识别敏感数据模式
-- **交叉引用**: 追踪危险函数的调用链
-- **字符串提取**: 分析可打印字符的上下文关系

@@ -9,15 +9,15 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 
 
+REQUIRED_TOOLS = ["readelf", "nm", "strings"]
+
+
 def check_tools_exist() -> List[str]:
     """
     检查 REQUIRED_TOOLS 中列出的外部命令是否存在于 PATH。
     返回缺失的工具列表（空列表表示全部存在）。
     """
-    REQUIRED_TOOLS = ["readelf", "nm", "strings"]
-    
-    missing = [t for t in REQUIRED_TOOLS if shutil.which(t) is None]
-    return missing
+    return [t for t in REQUIRED_TOOLS if shutil.which(t) is None]
 
 
 def run_cmd(command: List[str], timeout: Optional[int] = 20) -> Tuple[int, str, str]:
@@ -29,16 +29,23 @@ def run_cmd(command: List[str], timeout: Optional[int] = 20) -> Tuple[int, str, 
         proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except subprocess.TimeoutExpired:
-        # 超时返回特殊错误码 -1，并在 stderr 中说明
         return -1, "", f"[!] timeout after {timeout}s"
     except Exception as e:
-        # 捕获其他异常并把信息放入 stderr
         return -1, "", f"[!] Error running command {command}: {e}"
 
 
+def extract_strings_from_so(so_path: str, min_length: int = 4) -> List[str]:
+    """
+    从 .so 文件中提取并过滤字符串。
+    多个分析器共用此函数以避免重复调用 strings 命令。
+    """
+    rc, out, _ = run_cmd(["strings", so_path])
+    if rc != 0:
+        return []
+    return [s for s in out.splitlines() if len(s) >= min_length]
+
+
 def safe_write_report(path: Path, text: str):
-    """
-    将报告写入磁盘，确保父目录存在。
-    """
+    """将报告写入磁盘，确保父目录存在。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
