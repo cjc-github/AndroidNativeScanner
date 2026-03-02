@@ -180,3 +180,7 @@ reports/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+
+test/
+target/
