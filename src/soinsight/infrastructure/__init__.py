@@ -1,0 +1,1 @@
+"""SOInsight package module."""

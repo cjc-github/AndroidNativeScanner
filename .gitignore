@@ -184,3 +184,5 @@ Thumbs.db
 
 test/
 target/
+# SOInsight local state
+.soinsight/

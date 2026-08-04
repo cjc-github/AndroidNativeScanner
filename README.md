@@ -1,166 +1,156 @@
-# Android Native 库扫描工具 (.so 文件分析器)
+# SOInsight / Android Native Scanner
 
-## 一、功能概述
+SOInsight 是一个面向 Linux/Android ELF 动态库（主要为 `.so` 文件）的本地分析工具项目。
 
-本工具用于分析 Android 平台的原生动态链接库（.so 文件），检测以下安全风险：
+仓库当前同时保留两个版本：
 
-- 硬编码敏感信息（API Key、Token、JWT 等）
-- 内嵌 URL 地址
-- 危险函数调用（`system`、`exec`、`popen` 等）
-- JNI 方法名称暴露
-- Base64 编码的负载数据
-- ELF 头结构信息
+- **V1（可用功能）**：现有 Android Native Scanner，使用 `python3 main.py` 运行；
+- **V2（框架阶段）**：模块化 CLI 工具箱，使用 `soinsight` 或 `python3 -m soinsight` 运行。
 
-## 二、项目结构
+> 截至 2026-08-04，V2 已完成外部框架骨架，但尚未迁移具体 ELF 分析器。执行 V2 `scan` 时如果没有注册 Analyzer，会返回 `NO_ANALYZERS_SELECTED`，这是当前阶段的预期行为。
 
-采用 **BaseAnalyzer 抽象基类 + 协调器** 的架构，每个分析器完全自包含，既可独立使用，也可由协调器统一调度：
+## 文档导航
 
-```
-AndroidNativeScanner/
-├── main.py                          # 主程序入口
-├── README.md                        # 项目说明
-├── reports/                         # 扫描报告输出目录
-│   └── report_*.txt
-└── src/                             # 源码目录
-    ├── __init__.py                  # 包初始化
-    ├── cli.py                       # 命令行解析与主流程
-    ├── utils.py                     # 通用工具函数
-    └── analyzer/                    # 分析器模块
-        ├── __init__.py              # 统一导出
-        ├── base.py                  # BaseAnalyzer 抽象基类
-        ├── analysis_coordinator.py  # 分析协调器
-        ├── elf_analyzer.py          # ELF 头信息分析
-        ├── symbol_analyzer.py       # 导出符号 & RCE 危险函数检测
-        ├── string_analyzer.py       # 字符串提取与统计
-        ├── sensitive_analyzer.py    # 敏感信息模式检测
-        ├── url_analyzer.py          # 硬编码 URL 检测
-        ├── base64_analyzer.py       # Base64 编码数据检测
-        └── jni_analyzer.py          # JNI 符号分析
-```
+| 文档 | 内容 |
+|---|---|
+| [快速开始](docs/getting-started.md) | 环境要求、安装、V1/V2 首次运行 |
+| [V2 使用手册](docs/user-guide.md) | 扫描、输出、诊断、常见问题 |
+| [V2 CLI 命令参考](docs/cli-reference.md) | 当前命令、参数、退出码和实现状态 |
+| [V2 架构说明](docs/architecture.md) | 分层结构、运行链路、扩展边界 |
+| [Analyzer 与 Rule 开发指南](docs/extension-development.md) | 新增分析器、规则、Profile 和 Renderer |
+| [V1 到 V2 迁移指南](docs/migration-v1-to-v2.md) | 迁移原则、映射和推荐顺序 |
+| [项目状态与路线图](docs/project-status.md) | 已完成、未实现、下一阶段验收标准 |
+| [V2 总体设计](design/SOInsight_V2.0_Software_Design_Specification.md) | V2 主设计和长期规划 |
+| [V1 深度分析规划](design/SOInsight_Deep_SO_Analysis_Plan_V1.0.md) | 历史规划，仅供参考 |
 
-## 三、架构设计
+## 快速运行
 
-### 3.1 BaseAnalyzer 抽象基类
-
-所有分析器继承自 `BaseAnalyzer`，实现统一接口：
-
-```python
-class BaseAnalyzer(ABC):
-    name: str       # 分析器显示名称
-    key: str        # 结果字典中的键名
-    summary_key: str  # 摘要字典中的键名
-
-    def analyze(self, so_file: str, **context) -> Any:
-        """对 .so 文件执行分析"""
-
-    def summarize(self, results: Any) -> Dict[str, Any]:
-        """生成包含 risk_score 的摘要"""
-```
-
-### 3.2 独立使用单个分析器
-
-每个分析器可以脱离协调器独立运行：
-
-```python
-from src.analyzer import UrlAnalyzer
-
-analyzer = UrlAnalyzer()
-urls = analyzer.analyze("libexample.so")
-summary = analyzer.summarize(urls)
-print(f"发现 {summary['total_urls']} 个 URL，风险分: {summary['risk_score']}")
-```
-
-### 3.3 协调器统一调度
-
-`AnalysisCoordinator` 按顺序执行所有分析器，自动共享字符串提取结果以避免重复调用：
-
-```python
-from src.analyzer import AnalysisCoordinator
-
-coordinator = AnalysisCoordinator()
-results = coordinator.analyze("libexample.so")
-summary = coordinator.summarize(results)
-```
-
-## 四、使用方式
-
-### 4.1 安装依赖
+### V2：开发模式
 
 ```bash
-pip install termcolor
+PYTHONPATH=src python3 -m soinsight --help
+PYTHONPATH=src python3 -m soinsight doctor
+PYTHONPATH=src python3 -m soinsight plugins list
+PYTHONPATH=src python3 -m soinsight scan README.md --format json
 ```
 
-系统需要安装 `readelf`、`nm`、`strings` 工具（通常包含在 `binutils` 包中）。
+### V2：可编辑安装
 
-### 4.2 扫描单个文件
+要求 Python 3.10 或更高版本：
+
+```bash
+python3 -m pip install -e .
+soinsight --version
+soinsight doctor
+```
+
+安装开发依赖并运行测试：
+
+```bash
+python3 -m pip install -e '.[dev]'
+python3 -m pytest -q
+```
+
+构建可安装的 CLI Wheel：
+
+```bash
+./scripts/build_cli.sh
+python3 -m pip install --force-reinstall dist/soinsight-*.whl
+soinsight --help
+```
+
+也可以构建后直接安装到当前 Python 环境：
+
+```bash
+./scripts/build_cli.sh --install
+```
+
+### V1：运行现有扫描功能
+
+V1 依赖系统中的 `readelf`、`nm` 和 `strings`，通常由 `binutils` 提供：
 
 ```bash
 python3 main.py libexample.so
-```
-
-### 4.3 批量扫描目录
-
-```bash
 python3 main.py ./lib/
 ```
 
-### 4.4 命令行参数
+`termcolor` 是 V1 的可选依赖：
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `path` | .so 文件或目录路径 | (必填) |
-| `-o`, `--out` | 报告输出目录 | `reports` |
-| `-j`, `--jobs` | 并行 worker 数 | `4` |
-| `-t`, `--timeout` | 外部工具超时（秒） | `20` |
-| `-q`, `--quiet` | 静默模式 | 否 |
-
-## 五、分析器说明
-
-| 分析器 | 类名 | 功能 | 风险计分 |
-|--------|------|------|----------|
-| ELF 头分析 | `ElfAnalyzer` | 解析 ELF 头信息（类型、架构、入口点等） | 固定 0 分 |
-| 符号分析 | `SymbolAnalyzer` | 检测导出符号中的 RCE 相关危险函数 | 每个危险符号 5 分（上限 30） |
-| 字符串分析 | `StringAnalyzer` | 提取可打印字符串并统计 | 每 100 个字符串 1 分 |
-| 敏感模式 | `SensitiveAnalyzer` | 检测 API Key、Token、JWT 等 | Key/Token 4 分，JWT 3 分，其他 2 分 |
-| URL 检测 | `UrlAnalyzer` | 检测硬编码 URL | 每个 URL 2 分 |
-| Base64 检测 | `Base64Analyzer` | 检测 Base64 编码数据 | 每个 3 分 |
-| JNI 分析 | `JniAnalyzer` | 检测 JNI 相关符号和方法 | 每个 JNI 符号 2 分 |
-
-## 六、风险等级划分
-
-| 等级 | 分数范围 | 说明 |
-|------|----------|------|
-| LOW | 0–19 | 风险较低 |
-| MEDIUM | 20–39 | 存在一定风险 |
-| HIGH | 40–59 | 存在较高风险 |
-| CRITICAL | 60+ | 存在严重风险 |
-
-## 七、输出结果
-
-- 终端实时显示各分析器的扫描进度
-- 自动生成 `reports/report_*.txt` 报告文件（包含完整 JSON 结果）
-- 报告包含：风险等级、总风险分、各模块风险分明细、详细检测结果
-
-## 八、扩展开发
-
-新增分析器只需三步：
-
-1. 在 `src/analyzer/` 下创建新文件，继承 `BaseAnalyzer`
-2. 实现 `analyze()` 和 `summarize()` 方法
-3. 在 `AnalysisCoordinator.__init__()` 中注册新分析器实例
-
-```python
-from .base import BaseAnalyzer
-
-class MyAnalyzer(BaseAnalyzer):
-    name = "自定义分析"
-    key = "my_analysis"
-    summary_key = "my_summary"
-
-    def analyze(self, so_file, **context):
-        # 实现分析逻辑
-        ...
-
-    def summarize(self, results):
-        return {"risk_score": 0, ...}
+```bash
+python3 -m pip install -e '.[legacy]'
 ```
+
+## 当前仓库结构
+
+```text
+AndroidNativeScanner/
+├── main.py                    # V1 入口
+├── src/
+│   ├── analyzer/              # V1 具体分析器
+│   ├── cli.py                 # V1 CLI
+│   └── soinsight/             # V2 模块化工具箱
+│       ├── cli/               # CLI 适配层
+│       ├── application/       # 应用服务层
+│       ├── core/              # 模型、Analyzer、Rule、Runtime
+│       ├── analyzers/         # V2 内置分析器注册位置
+│       ├── renderers/         # text/json 输出
+│       ├── infrastructure/    # 配置、工具、存储、插件边界
+│       └── compatibility/     # V1 兼容适配预留
+├── tests/                     # V2 单元与集成测试
+├── scripts/build_cli.sh       # 构建并校验 V2 CLI Wheel
+├── docs/                      # 使用和开发文档
+└── design/                    # 总体设计与历史规划
+```
+
+## V1 当前能力
+
+V1 当前包含：
+
+- ELF Header 基础信息；
+- 导出符号和危险函数检测；
+- 字符串提取与统计；
+- URL、敏感信息、Base64 数据检测；
+- JNI 符号分析；
+- 单文件和目录扫描；
+- 文本报告及风险汇总。
+
+V1 的扩展方式仍然是继承 `src/analyzer/base.py` 中的 `BaseAnalyzer` 并注册到 `AnalysisCoordinator`。新能力原则上应优先面向 V2 Analyzer SDK 开发；需要复用 V1 时，通过兼容适配层逐步迁移。
+
+## V2 当前能力
+
+V2 已实现：
+
+- `soinsight` 命令树；
+- `AnalysisTarget`、`AnalysisResult`、`ScanResult`、`Finding` 和 `Diagnostic`；
+- Analyzer、Rule、Profile、Renderer 注册机制；
+- Analyzer 依赖 DAG 规划和循环检测；
+- 串行 Scheduler、失败隔离和依赖跳过；
+- Text/JSON Renderer；
+- 外部工具调用和 Artifact Store 基础边界；
+- Python 包安装、Wheel 构建；
+- 框架单元测试和 CLI 集成测试。
+
+V2 当前尚未实现：
+
+- 具体 `file`、`elf`、`symbols`、`strings`、`security` Analyzer；
+- Runtime 缓存读写；
+- 并发 Scheduler；
+- 外部插件自动发现；
+- Markdown/HTML/SARIF 报告；
+- 目录递归扫描；
+- DWARF、反汇编、CFG、Diff、动态分析、Fuzz 和 AI 实际功能。
+
+详细状态参见[项目状态与路线图](docs/project-status.md)。
+
+## 开发原则
+
+- 默认不执行被分析文件；
+- Analyzer 返回结构化数据，不直接负责终端输出；
+- 安全判断优先放在 Rule 中，基础事实提取放在 Analyzer 中；
+- Analyzer 通过 `requires` 声明依赖，不在内部主动调度其他 Analyzer；
+- V2 输出协议通过 Schema 版本字段演进；
+- V1 在迁移完成前保持可用，不直接替换其入口。
+
+## License
+
+仓库当前未声明独立 License 文件。对外发布或引入第三方依赖前，应先补充许可证和依赖合规策略。

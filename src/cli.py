@@ -8,7 +8,13 @@ import concurrent.futures
 import json
 from datetime import datetime
 from pathlib import Path
-from termcolor import colored
+try:
+    from termcolor import colored
+except ImportError:
+    def colored(text, color=None):
+        """Fallback when the optional termcolor dependency is unavailable."""
+        del color
+        return text
 
 from .utils import check_tools_exist
 from .analyzer import analyze_so_file, get_analysis_summary
