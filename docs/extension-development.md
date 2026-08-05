@@ -1,10 +1,29 @@
 # SOInsight V2 扩展开发指南
 
-## 1. 新增 Analyzer
+## 1. 先确定产品能力
 
-Analyzer 负责提取或转换事实，返回结构化 `AnalysisResult`。
+新增实现前，先确认它属于六大产品模块中的哪项能力：
 
-### 1.1 最小实现
+```text
+basic / advanced / security / dynamic / ai / automation
+```
+
+如果是已有能力，在对应目录使用稳定 ID；如果确实需要新增能力，先更新 `src/soinsight/modules/<domain>/__init__.py` 和 `docs/module-system.md`。不要把 Analyzer、Rule、Renderer 或某个第三方工具名称新增为一级产品模块。
+
+## 2. Analyzer ID
+
+Analyzer ID 必须 namespaced：
+
+```text
+basic.file
+basic.elf
+advanced.strings
+security.hardening
+```
+
+禁止新增无命名空间的 `file`、`elf`、`security` 等 ID。开发期扁平 CLI 别名只用于兼容，不是 Analyzer ID 规范。
+
+## 3. 最小 Analyzer
 
 ```python
 from soinsight.core.analyzer import Analyzer, AnalyzerMetadata
@@ -13,10 +32,10 @@ from soinsight.core.models import AnalysisResult, AnalysisStatus
 
 class FileAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
-        id="file",
-        name="File Metadata",
+        id="basic.file",
+        name="File Analysis",
         version="1.0.0",
-        description="Collect basic file metadata",
+        description="Collect file metadata and fingerprints",
     )
 
     def analyze(self, target, context):
@@ -34,40 +53,42 @@ class FileAnalyzer(Analyzer):
 
 约束：
 
-- `metadata.id` 必须非空且全局唯一；
-- 返回的 `analyzer_id` 必须与注册 ID 一致；
-- 数据必须可序列化为 JSON；
-- 不直接打印终端输出；
-- 不捕获后又静默丢弃错误；
-- 能降级时返回诊断，不能继续时允许抛出异常，由 Runtime 隔离。
+- ID 全局唯一并与能力目录一致；
+- 返回 ID 与注册 ID 一致；
+- 数据可 JSON 序列化；
+- 不直接打印或决定退出码；
+- 可降级问题写入 Diagnostic；
+- 未知异常交给 Runtime 隔离。
 
-### 1.2 声明依赖
+## 4. 声明跨域依赖
 
 ```python
-class ElfAnalyzer(Analyzer):
+class DangerousApiAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
-        id="elf",
-        name="ELF Metadata",
+        id="security.dangerous-api",
+        name="Dangerous API Detection",
         version="1.0.0",
-        requires=("file",),
+        requires=(
+            "basic.symbols",
+            "basic.disasm",
+            "basic.callgraph",
+        ),
     )
 
     def analyze(self, target, context):
-        file_result = context.require("file")
+        symbols = context.require("basic.symbols")
+        disasm = context.require("basic.disasm")
+        callgraph = context.require("basic.callgraph")
         ...
 ```
 
-可选结果：
+只能通过 Context 消费依赖结果，禁止直接实例化或调用其他 Analyzer。
 
-```python
-symbols_result = context.optional("symbols")
-```
+`optional_requires` 已存在于元数据，但当前 Planner 尚未自动调度可选依赖；真正必需的结果必须放在 `requires`。
 
-`optional_requires` 字段已经存在，但当前 Planner 不会自动加入可选依赖。如果 Analyzer 需要某结果才能工作，应放入 `requires`。
+## 5. 注册内置 Analyzer
 
-### 1.3 注册内置 Analyzer
-
-在 `src/soinsight/analyzers/builtin.py` 中注册：
+在 `src/soinsight/analyzers/builtin.py` 集中注册：
 
 ```python
 from .file import FileAnalyzer
@@ -75,22 +96,19 @@ from .elf import ElfAnalyzer
 
 
 def register_builtin_analyzers(registry):
-    registry.register_many([
-        FileAnalyzer(),
-        ElfAnalyzer(),
-    ])
+    registry.register_many([FileAnalyzer(), ElfAnalyzer()])
 ```
 
-注册后验证：
+验证：
 
 ```bash
 PYTHONPATH=src python3 -m soinsight plugins list
-PYTHONPATH=src python3 -m soinsight file README.md --format json
+PYTHONPATH=src python3 -m soinsight basic file README.md --format json
 ```
 
-## 2. 调用外部工具
+## 6. 调用外部工具
 
-Analyzer 应通过 `ToolRunner` 调用外部程序：
+使用 `ToolRunner`，不要拼接 shell 字符串：
 
 ```python
 from soinsight.infrastructure.tools import ToolRequest, ToolRunner
@@ -104,19 +122,11 @@ result = ToolRunner().run(
 )
 ```
 
-必须处理：
+必须处理返回码、超时、截断、stderr 和工具缺失。动态分析还必须增加显式授权、沙箱、资源限制和目标生命周期控制。
 
-- `result.return_code`；
-- `result.timed_out`；
-- `result.truncated`；
-- stderr；
-- 工具不存在。当前 `ToolRunner` 对不存在的 executable 会抛出异常，由 Runtime 转换为 `ANALYZER_EXCEPTION`；具体 Analyzer 后续应提供更明确诊断。
+## 7. Rule
 
-禁止使用拼接后的 shell 字符串执行不可信路径。
-
-## 3. 新增 Rule
-
-Rule 消费 Analyzer 结果并生成 Finding：
+Rule 消费 Analyzer 的事实并生成 Finding：
 
 ```python
 from soinsight.core.models import Confidence, Finding, Severity
@@ -125,15 +135,15 @@ from soinsight.core.rules import Rule, RuleMetadata
 
 class MissingPieRule(Rule):
     metadata = RuleMetadata(
-        id="elf.security.missing-pie",
+        id="security.hardening.missing-pie",
         name="Missing PIE",
         version="1.0.0",
-        requires=("elf",),
+        requires=("security.hardening",),
     )
 
     def evaluate(self, context):
-        elf = context.require("elf")
-        if elf.data.get("pie") is not False:
+        hardening = context.require("security.hardening")
+        if hardening.data.get("pie") is not False:
             return []
         return [
             Finding(
@@ -149,27 +159,37 @@ class MissingPieRule(Rule):
         ]
 ```
 
-当前 CLI 默认 Runtime 使用空 `RuleRegistry`。在内置规则接入前，需要构造 `RuleEngine(registry)` 并注入 `AnalysisRuntime`，或者后续增加统一内置 Rule 注册入口。
+事实采集放 Analyzer，可配置判断放 Rule，最终排版放 Renderer。
 
-## 4. 新增 Profile
+## 8. Profile
 
 ```python
 from soinsight.core.profiles import ProfileRegistry, ScanProfile
 
-profiles = ProfileRegistry()
 profiles.register(
     ScanProfile(
         id="quick",
         name="Quick Scan",
-        analyzer_ids=("file", "elf"),
-        description="Fast metadata scan",
+        analyzer_ids=("basic.file", "basic.elf", "basic.symbols"),
+        description="Fast cross-capability metadata scan",
     )
 )
 ```
 
-CLI `main()` 支持注入 ProfileRegistry，默认实例当前为空。后续内置 Profile 应集中注册，避免散落在命令处理代码中。
+Profile 可以跨模块组合，但应使用稳定 capability/Analyzer ID。
 
-## 5. 新增 Renderer
+Analyzer 的可订制参数从 `context.config.extra["capability_options"]` 读取，并以自身 namespaced ID 取值：
+
+```python
+options = context.config.extra.get("capability_options", {}).get(
+    self.metadata.id, {}
+)
+min_length = int(options.get("min_length", 4))
+```
+
+能力实现应定义默认值、类型、范围和未知键策略；不要让 Renderer 或 CLI 解释某个 Analyzer 的业务参数。YAML 结构见 [配置指南](configuration.md)。
+
+## 9. Renderer
 
 ```python
 from soinsight.renderers.base import Renderer
@@ -182,74 +202,34 @@ class MarkdownRenderer(Renderer):
         return "# SOInsight Result\n"
 ```
 
-注册：
+注册 Renderer 后还需扩展 CLI `--format` choices 和测试。
 
-```python
-renderer_registry.register(MarkdownRenderer())
-```
+## 10. AI 与自动化实现约束
 
-注意：还需要把 CLI `--format` choices 扩展为新格式，否则命令行不会接受该值。
+- AI Analyzer 消费基础/高级/安全结果，输出建议、证据引用、模型和提示版本；
+- AI 结论不得覆盖确定性事实；
+- 敏感二进制、符号和字符串默认不发送到远程 Provider；
+- 自动化模块负责编排已有能力，不复制底层分析；
+- Binary Diff 等多目标能力需要先扩展 Request/TargetSet 模型，不应塞入单目标 Analyzer 接口。
 
-## 6. Analyzer 设计建议
-
-推荐 ID：
-
-```text
-file
-elf
-elf.sections
-elf.dynamic
-symbols
-strings
-security.hardening
-```
-
-推荐职责边界：
-
-- Collector：读取文件或工具输出，产生事实；
-- Transformer：基于已有结果生成中间表示；
-- Detector：检测模式或产生候选问题；
-- Rule：形成正式 Finding 和风险级别；
-- Renderer：只负责展示。
-
-不要在单个 Analyzer 中同时完成 ELF 解析、风险评分、文本报告和文件写入。
-
-## 7. 测试要求
+## 11. 测试要求
 
 每个 Analyzer 至少覆盖：
 
 1. 正常输入；
-2. 工具缺失或返回非 0；
-3. 超时；
-4. 损坏/非 ELF 输入；
-5. 返回数据可以 JSON 序列化；
-6. 依赖成功和失败；
-7. 不把异常 traceback 直接泄漏到 CLI。
+2. 非 ELF 或损坏输入；
+3. 外部工具缺失/失败/超时；
+4. 依赖缺失和上游失败；
+5. JSON 可序列化；
+6. namespaced ID 与模块目录一致；
+7. CLI Text/JSON；
+8. V1 对照或 Golden 样本（适用时）。
 
-运行测试：
+提交前运行：
 
 ```bash
 PYTHONPATH=src python3 -m pytest -q
+python3 -m compileall -q src/soinsight
+./scripts/build_cli.sh
+git diff --check
 ```
-
-建议结构：
-
-```text
-tests/unit/test_<analyzer>.py
-tests/integration/test_<command>_cli.py
-tests/fixtures/
-```
-
-## 8. 完成定义
-
-一个 Analyzer 只有满足以下条件才算接入完成：
-
-- 已实现并注册；
-- `plugins list` 可见；
-- 单项命令可运行；
-- `scan --enable` 可组合；
-- 依赖由 Planner 自动补全；
-- Text/JSON 均可输出；
-- 失败产生结构化 Diagnostic；
-- 有单元测试和至少一个 CLI 集成测试；
-- 使用文档和状态文档同步更新。

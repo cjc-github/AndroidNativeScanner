@@ -4,169 +4,166 @@
 
 ## 1. 当前里程碑
 
-当前处于：
+> Phase 1A+ — 六大产品模块和共享技术框架已经搭建；具体 Analyzer 迁移尚未开始。
 
-> Phase 1A — V2 外部框架骨架完成，具体 Analyzer 迁移尚未开始。
+这里的“模块完成”指模块目录、能力 ID、CLI 路由和测试完成，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
-### 设计和工程化
+### 产品外部框架
 
-- [x] V2 CLI 工具箱总体设计；
-- [x] `src/soinsight/` 独立包；
-- [x] Python 3.10+ 包配置；
-- [x] `soinsight` console script；
-- [x] V1/V2 入口隔离；
-- [x] Wheel 构建验证。
+- [x] 六个一级产品模块：基础、高级、安全、动态、AI、自动化；
+- [x] 原始设计 40 项能力进入模块目录；
+- [x] 补充报告自动化和工作流自动化；
+- [x] `<module>.<capability>` 命名空间；
+- [x] 领域 CLI 命令树；
+- [x] `modules list/show`；
+- [x] `scan --module` 跨域展开；
+- [x] 隐藏开发期兼容别名。
 
-### Core Runtime
+### 技术框架
 
-- [x] Analyzer SDK 和 Registry；
-- [x] AnalysisContext；
-- [x] 依赖 DAG Planner；
-- [x] 循环依赖检测；
-- [x] 串行 Scheduler；
-- [x] Analyzer 异常隔离；
-- [x] 上游失败后的依赖跳过；
-- [x] Rule SDK、Registry 和 RuleEngine；
-- [x] Profile 模型和 Registry；
-- [x] Result Aggregator。
-
-### 模型和输出
-
-- [x] `AnalysisTarget`；
-- [x] `AnalysisResult`；
-- [x] `ScanResult`；
-- [x] `Finding`；
-- [x] `Diagnostic`；
-- [x] Text Renderer；
-- [x] JSON Renderer；
-- [x] Schema 版本字段。
-
-### 基础设施边界
-
-- [x] ConfigLoader 默认值和 CLI override；
-- [x] ToolRunner；
-- [x] ArtifactStore 接口；
-- [x] FileArtifactStore 原子写入；
-- [x] PluginLoader 占位接口；
-- [x] 序列化工具。
+- [x] 独立 `src/soinsight/` 包和 console script；
+- [x] Target/Result/Finding/Diagnostic；
+- [x] Analyzer/Rule/Profile/Renderer SDK 和 Registry；
+- [x] 依赖 DAG、循环检测和串行 Scheduler；
+- [x] 异常隔离、依赖跳过和结果聚合；
+- [x] Text/JSON Renderer；
+- [x] ToolRunner、ArtifactStore 和 PluginLoader 边界；
+- [x] Wheel 构建脚本和入口校验。
 
 ### 测试
 
-- [x] DAG 排序测试；
-- [x] 循环依赖测试；
-- [x] Runtime 执行顺序测试；
-- [x] 失败隔离和依赖跳过测试；
-- [x] RuleEngine 测试；
-- [x] CLI JSON 集成测试；
-- [x] 缺失 Analyzer 测试；
-- [x] Profile 解析测试。
+- [x] DAG 排序与循环检测；
+- [x] Runtime 顺序、失败隔离和依赖跳过；
+- [x] RuleEngine；
+- [x] CLI JSON、缺失 Analyzer 和 Profile；
+- [x] 六大模块顺序、能力查找和命名空间校验；
+- [x] `modules list --format json`；
+- [x] `scan --module` 展开；
+- [x] YAML Schema、托管/外部配置、活动配置；
+- [x] `config create/list/show/validate/use/current/clear/set/unset`；
+- [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前测试：`8 passed`。
+当前自动化测试：`30 passed`。
 
-## 3. 已有入口但未完成实际能力
+## 3. 已有外壳但未实现
 
-| 能力 | 已有部分 | 缺少部分 |
+| 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| `scan` | CLI、目标解析、Runtime、输出 | 内置 Analyzer |
-| `file/elf/...` | 命令和 Runtime 路由 | 对应具体 Analyzer |
-| Profile | 模型和 Registry | 内置 Profile、配置加载 |
-| Rule | SDK 和 Runtime 执行 | 内置安全规则和 CLI 管理 |
-| Cache | 配置和 ArtifactStore | Runtime 命中、失效、清理 |
-| Plugins | Registry 和 Loader 边界 | 外部发现和加载协议 |
+| 六大模块 | Catalog、CLI、ID | 具体 Analyzer/Rule/Provider |
+| `scan` | 目标解析、CLI/YAML 选择、Runtime、输出 | 内置 Analyzer/Profile |
+| Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
+| Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
+| AI | 命令和能力定义 | Provider、隐私、证据引用、成本治理 |
+| Automation | 能力目录 | Workflow/CI/Fuzz 编排器 |
+| Cache | 配置和 FileArtifactStore | Runtime 命中/失效/清理 |
+| Plugins | Registry/Loader 边界 | 自动发现和兼容协议 |
+| Reports | Text/JSON 基础 | Schema、Markdown/HTML/SARIF |
 | Parallel | DAG stage | 并发 Scheduler |
-| Report | JSON 读取/格式化 | Schema 校验、HTML/Markdown/SARIF |
-| Config | 默认值 | TOML/YAML/环境变量合并 |
 
-## 4. 下一里程碑：Phase 1B
+## 4. 下一里程碑：第一条真实跨域链路
 
-目标：完成第一个真实可用的最小分析链路。
+目标：
 
-推荐任务：
-
-1. 实现并注册 `FileAnalyzer`；
-2. 实现并注册 `ElfAnalyzer`；
-3. 定义两个 Analyzer 的稳定数据字段；
-4. 增加 `quick` Profile；
-5. 增加非 ELF、损坏 ELF 和工具缺失测试；
-6. 补充对应 CLI 示例和结果样例；
-7. 验证 V1 不受影响。
-
-验收标准：
-
-```bash
-soinsight file libfoo.so
-soinsight elf libfoo.so
-soinsight scan libfoo.so --profile quick --format json
+```text
+basic.file → basic.elf → security.hardening → Finding → JSON
 ```
 
-三条命令均能输出真实分析结果，不再依赖测试注入 Analyzer。
+任务：
 
-## 5. 后续里程碑
+1. 实现并注册 `basic.file`；
+2. 实现并注册 `basic.elf`；
+3. 实现 `security.hardening` 和基础规则；
+4. 固化数据字段与依赖；
+5. 增加 `quick`/`security` Profile；
+6. 增加非 ELF、损坏 ELF、工具缺失测试；
+7. 与 V1 样本结果对照。
 
-### Phase 1C：迁移 V1 基础能力
+验收：
 
-- SymbolsAnalyzer；
-- StringsAnalyzer；
-- URL/Secret/Base64/JNI 检测器；
-- 基础 Security Rules；
-- default/security Profile。
+```bash
+soinsight basic file libfoo.so
+soinsight basic elf libfoo.so
+soinsight security hardening libfoo.so
+soinsight scan libfoo.so --module basic,security --format json
+```
 
-### Phase 2：协议、报告和缓存
+相关命令输出真实结果，不再依赖测试注入。
 
-- JSON Schema 文件；
-- Schema 兼容性测试；
-- Artifact Store 接入 Runtime；
-- 缓存键和失效策略；
-- Markdown/HTML/SARIF Renderer；
-- 完整 `report` 命令。
+## 5. 后续 Roadmap
 
-### Phase 3：ELF 深度分析
+### Phase 1B：V1 能力迁移
 
-- Section/Segment/Dynamic/Relocation；
-- 符号版本；
-- TLS；
-- DWARF；
-- C++ RTTI/vtable 基础恢复。
+- `basic.symbols`；
+- `advanced.strings`；
+- `security.dangerous-api`；
+- `security.risk`；
+- V1 URL/Secret/Base64/JNI 规则迁移。
 
-### Phase 4：代码和图分析
+### Phase 2：共享基础设施
 
-- 反汇编；
-- 函数边界；
-- CFG；
-- Call Graph；
-- 图导出。
+- JSON Schema 和兼容测试；
+- 内置 Profile；
+- Runtime 缓存；
+- Markdown/HTML/SARIF；
+- 插件发现；
+- 并发和资源预算。
 
-### Phase 5+：高级能力
+### Phase 3：基础与高级分析深化
 
-- 安全识别；
+- DWARF、类型、C++；
+- 反汇编、CFG、Call Graph、Data Flow；
+- 算法、协议、格式、库、编译器和混淆识别。
+
+### Phase 4：安全分析闭环
+
+- 漏洞模式；
+- 证据链、去重、置信度和风险评分；
+- CI Gate 和基线抑制。
+
+### Phase 5：动态分析
+
+- 明确授权和隔离执行器；
+- Trace、参数、内存、系统调用和覆盖率；
+- 静态/动态结果关联。
+
+### Phase 6：AI 分析
+
+- Provider 抽象和本地优先策略；
+- 命名、类型/结构恢复辅助；
+- 算法/协议/漏洞/汇编解释；
+- 证据引用、模型版本和可复现性。
+
+### Phase 7：自动化
+
 - Binary Diff；
-- 隔离动态分析；
-- Fuzz 辅助；
-- 可选 AI Provider。
+- Fuzz Target/Harness/Seed；
+- Crash 聚类；
+- 报告流水线、批处理、CI Gate 和 Workflow。
 
-## 6. 当前不应宣称的能力
+## 6. 当前不可宣称
 
-在实现和验收前，项目文档、发布说明和 CLI 帮助不应宣称：
+在实现和验收前，不应宣称：
 
-- V2 已经可以完成 ELF 深度扫描；
-- `--jobs` 已实现并行；
-- `--no-cache` 已控制真实缓存；
-- Plugin Loader 可以自动加载第三方包；
-- `report` 已生成 HTML 或执行完整 Schema 校验；
-- 高级占位命令已经可用；
-- V2 已替代 V1。
+- V2 已具备 42 项真实分析能力；
+- V2 已替代 V1；
+- `--jobs` 已并行；
+- 缓存已接入 Runtime；
+- 插件可自动加载；
+- 动态分析会安全执行目标；
+- AI 输出具备事实保证；
+- 报告已支持 HTML/SARIF 或完整 Schema。
 
 ## 7. 发布门槛
 
-将版本从 `2.0.0.dev0` 提升为可公开测试版本前，至少需要：
+公开测试版本至少需要：
 
-- File/ELF/Symbols/Strings/Security 基础 Analyzer；
-- 至少一个内置 Profile；
-- CLI 行为与文档一致；
-- JSON Schema 固化；
-- V1/V2 回归测试；
+- 第一条跨域真实链路；
+- File/ELF/Symbols/Strings/Hardening/Dangerous API；
+- 内置 Profile；
+- CLI 与文档一致；
+- JSON Schema；
+- V1/V2 Golden 回归；
 - License；
-- 安装、升级和卸载说明；
-- 样本与 Golden Test 策略。
+- 安装、升级、卸载和安全说明。

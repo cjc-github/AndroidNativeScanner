@@ -1,0 +1,30 @@
+# SOInsight V2 example configuration.
+# Managed `config set/unset` writes canonical YAML and does not preserve comments.
+schema_version: 1
+name: quick-security
+description: Quick basic and security analysis example
+analysis:
+  modules:
+    basic:
+      - file
+      - elf
+      - symbols
+    security:
+      - hardening
+  capabilities:
+    - advanced.strings
+  exclude: []
+runtime:
+  jobs: 1
+  timeout_seconds: 60
+  cache_enabled: true
+  cache_dir: .soinsight/cache
+  fail_fast: false
+  quiet: false
+  verbose: false
+  no_color: false
+output:
+  format: text
+capability_options:
+  advanced.strings:
+    min_length: 4

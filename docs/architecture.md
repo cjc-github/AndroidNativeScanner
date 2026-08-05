@@ -1,211 +1,219 @@
 # SOInsight V2 架构说明
 
-## 1. 架构目标
+## 1. 架构原则
 
-V2 使用“模块化单体 + 分层架构”，优先解决以下问题：
+V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要区分：
 
-- CLI 不直接依赖具体 ELF 实现；
-- 分析器之间通过声明式依赖组合；
-- 事实采集、安全判断和输出渲染分离；
-- 单个扩展异常不能导致整个进程无结构崩溃；
-- 为缓存、并发、外部插件和新前端保留边界。
+- **产品模块**：基础、高级、安全、动态、AI、自动化；
+- **技术机制**：CLI、Analyzer、Rule、Planner、Scheduler、Renderer、Store 等。
 
-当前不引入 Web 服务、数据库或微服务。
+产品模块回答“用户获得什么能力”，技术机制回答“能力如何实现和复用”。当前不引入 Web 服务、微服务或强制数据库。
 
-## 2. 分层结构
+## 2. 总体分层
 
 ```text
-CLI Layer
-    ↓
-Application Layer
-    ↓
-Core Runtime
-    ├── Target / Result / Finding / Diagnostic
-    ├── Analyzer Registry
-    ├── Dependency Planner
-    ├── Scheduler
-    ├── Rule Engine
-    └── Result Aggregator
-    ↓
-Infrastructure
-    ├── Config
-    ├── Tool Runner
-    ├── Artifact Store
-    ├── Plugin Loader
-    └── Serialization
-    ↓
-Renderer
+┌──────────────────────────────────────────────────────────────┐
+│ Product Capability Layer                                     │
+│ Basic │ Advanced │ Security │ Dynamic │ AI │ Automation      │
+│ 领域命令、能力目录、稳定 capability ID、用户心智模型          │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+┌───────────────────────────▼──────────────────────────────────┐
+│ CLI / Application Orchestration                              │
+│ 参数解析 │ YAML Config │ TargetResolver │ Request │ Profile │ 输出控制 │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+┌───────────────────────────▼──────────────────────────────────┐
+│ Shared Analysis Core                                        │
+│ Analyzer SDK/Registry │ Rule Engine │ DAG Planner │ Scheduler │
+│ Context │ Result/Finding/Diagnostic │ Aggregator              │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+┌───────────────────────────▼──────────────────────────────────┐
+│ Infrastructure / Adapters                                   │
+│ ToolRunner │ ArtifactStore │ PluginLoader │ Config │ Provider  │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+┌───────────────────────────▼──────────────────────────────────┐
+│ Renderers / Integrations                                    │
+│ Text │ JSON │ future Markdown/HTML/SARIF │ CI                 │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+## 3. 代码结构与职责
+
+### Product Capability Layer
+
+位置：`src/soinsight/modules/`
+
+职责：
+
+- 注册六个一级产品模块；
+- 定义能力名称、命令、稳定 ID 和输入形态；
+- 为 CLI、文档、Profile 和能力发现提供单一目录；
+- 校验能力 ID 必须使用 `<module>.<capability>` 命名空间。
+
+该层只描述“有哪些能力”，不直接实现 ELF 解析。
 
 ### CLI Layer
 
 位置：`src/soinsight/cli/`
 
-职责：
-
-- 定义命令和参数；
-- 将 CLI 参数转换为 `AnalysisRequest` 和 `RuntimeConfig`；
-- 选择 Renderer；
-- 映射退出码。
-
-CLI 不包含 ELF 解析逻辑。
+职责：构建领域命令树、解析参数、选择模块/能力、映射输出和退出码。CLI 不包含分析逻辑。
 
 ### Application Layer
 
 位置：`src/soinsight/application/`
 
-职责：
-
-- 解析和校验目标；
-- 调用 Runtime；
-- 将领域异常转换为 `ApplicationResponse`；
-- 保持 CLI 与核心执行逻辑解耦。
+职责：解析目标、构造请求、调用 Runtime，并将领域异常转换为结构化响应。
 
 ### Core Layer
 
 位置：`src/soinsight/core/`
 
-这是 V2 的稳定核心，包括：
+职责：统一模型、Analyzer/Rule/Profile SDK、DAG Planner、Scheduler、Context 和聚合。
 
-- 统一模型；
-- Analyzer/Rule/Profile SDK；
-- 依赖规划；
-- 调度和聚合。
+### Analyzer Implementations
+
+位置：`src/soinsight/analyzers/`
+
+具体能力实现应注册与能力目录一致的 namespaced ID，例如 `basic.elf`。Analyzer 是内部最小执行单元，不是一级产品模块。
 
 ### Infrastructure Layer
 
 位置：`src/soinsight/infrastructure/`
 
-用于隔离易变化的实现细节：
-
-- 文件和环境配置；
-- subprocess；
-- 文件缓存；
-- 外部插件发现；
-- 序列化。
+隔离 YAML 配置仓库、subprocess、文件缓存、外部插件和序列化等易变化细节。`infrastructure/config` 当前提供类型化 Schema、原子写入、托管目录和活动配置指针。
 
 ### Renderer Layer
 
 位置：`src/soinsight/renderers/`
 
-把 `ApplicationResponse` 转换为 Text、JSON 或未来格式。Analyzer 不应自行打印报告。
+把 `ApplicationResponse` 转换为 Text/JSON 等格式；不得重新执行分析。
 
-## 3. 一次扫描的调用链
+## 4. 调用链
+
+配置驱动的综合扫描：
 
 ```text
-1. CLI 解析 scan/file/elf 等命令
-2. ConfigLoader 构造 RuntimeConfig
-3. TargetResolver 校验单个文件并计算 SHA-256
-4. Profile/--enable/单项命令确定 requested analyzer IDs
-5. DependencyPlanner 递归补全 requires
-6. Planner 检查 Analyzer 缺失和依赖环
-7. SerialScheduler 按 stage 和拓扑顺序执行
-8. Analyzer 将 AnalysisResult 写入 AnalysisContext
-9. RuleEngine 消费成功的 Analyzer 结果并生成 Finding
-10. ResultAggregator 生成 ScanResult
-11. Renderer 输出 text/json
-12. CLI 根据结果状态返回退出码
+scan --config NAME / active-config
+  → YamlConfigStore.load + Schema 校验
+  → 模块功能点展开 + Profile/CLI 合并 + exclude
+  → CLI > YAML > Runtime 默认值
+  → capability_options 注入 RuntimeConfig.extra
+  → AnalysisRequest → Runtime → Renderer
 ```
 
-## 4. 依赖模型
+显式领域命令只复用 YAML 的 Runtime、输出和能力参数，能力选择仍固定为该命令。`Profile` 是稳定能力包，YAML Config 是用户分析策略，Workflow 是未来的多阶段/多目标编排。
 
-Analyzer 使用 `AnalyzerMetadata.requires` 声明硬依赖：
+单能力命令：
+
+```text
+soinsight security dangerous-api libfoo.so
+  → ModuleCatalog 解析 security.dangerous-api
+  → CLI 构造 AnalysisRequest
+  → TargetResolver 校验目标并计算 SHA-256
+  → DependencyPlanner 补全 basic.symbols/basic.disasm/...（实现后）
+  → Scheduler 按 DAG 执行 Analyzer
+  → RuleEngine 形成 Finding
+  → ResultAggregator 生成 ScanResult
+  → Renderer 输出 text/json
+```
+
+组合扫描：
+
+```text
+soinsight scan libfoo.so --module basic,security
+  → ModuleCatalog 展开两个领域的能力 ID
+  → Planner 去重并补全跨域依赖
+  → Runtime 执行统一计划
+```
+
+## 5. 依赖模型
 
 ```python
 AnalyzerMetadata(
-    id="elf",
-    name="ELF Metadata",
+    id="security.dangerous-api",
+    name="Dangerous API Detection",
     version="1.0.0",
-    requires=("file",),
+    requires=("basic.symbols", "basic.disasm", "basic.callgraph"),
 )
 ```
 
-Planner 将请求：
+Planner 负责：
 
-```text
-security
-```
-
-扩展为：
-
-```text
-file → elf → security
-```
-
-当前：
-
-- 硬依赖参与 DAG；
+- 递归补全硬依赖；
+- 检测缺失 Analyzer；
 - 检测循环依赖；
-- 上游失败时下游标记为 `skipped`；
-- `optional_requires` 已存在于元数据，但 Runtime 尚未做自动调度处理。
+- 按拓扑 stage 排序；
+- 在上游失败时跳过下游。
 
-## 5. 状态模型
+跨域依赖不是模块耦合。下游只能从 `AnalysisContext` 读取标准结果，不能直接调用上游实现。
 
-Analyzer 状态：
+## 6. 统一结果
+
+所有能力共享：
+
+- `AnalysisTarget`：目标身份、路径、大小、SHA-256；
+- `AnalysisResult`：Analyzer 状态、数据、诊断和版本；
+- `Finding`：规则、严重度、置信度、证据和修复建议；
+- `ScanResult`：跨能力聚合结果；
+- `Diagnostic`：配置、规划、执行和降级信息。
+
+AI 和自动化能力应消费这些结果，避免重复解析原始文件。
+
+## 7. 状态与失败隔离
+
+状态模型：
 
 ```text
 pending, running, success, partial, skipped,
 timeout, failed, cancelled, cached
 ```
 
-当前 Scheduler 实际主要产生：
+当前串行 Scheduler 主要产生 `success`、`failed`、`skipped`、`cancelled`。单个 Analyzer 异常被转换为诊断；无关 DAG 分支可以继续运行。
 
-- `success`
-- `failed`
-- `skipped`
-- `cancelled`
+## 8. 扩展点
 
-`timeout` 和 `cached` 已在模型中定义，等待 Runtime 集成。
-
-聚合规则：
-
-- 所有结果成功/缓存：`success`；
-- 全部失败类状态：`failed`；
-- 成功与失败混合：`partial`；
-- 无 Analyzer：扫描框架为 `success`，附加 warning。
-
-## 6. 扩展点
-
-| 扩展点 | 当前接口 | 当前状态 |
+| 扩展点 | 用途 | 当前状态 |
 |---|---|---|
-| Analyzer | `Analyzer` | 可用 |
-| Rule | `Rule` | 可用并已接入 Runtime |
-| Profile | `ScanProfile` | 可注册，默认未内置 |
-| Renderer | `Renderer` | Text/JSON 已实现 |
-| Plugin Loader | `PluginLoader` | 空实现，占位 |
-| Artifact Store | `ArtifactStore` | 文件实现存在，未接 Runtime |
-| Scheduler | `SerialScheduler` | 串行可用 |
+| Module Catalog | 产品模块与能力发现 | 已实现六大模块 |
+| Analyzer | 提取/转换事实 | SDK 可用，具体能力待实现 |
+| Rule | 从事实形成 Finding | SDK 和 Runtime 可用 |
+| Profile | 组合能力 | Registry 可用，尚无内置 Profile |
+| Renderer | 输出格式 | Text/JSON 已实现 |
+| Scheduler | 任务执行 | 串行实现可用 |
+| Artifact Store | 中间结果缓存 | 文件实现存在，未接 Runtime |
+| Plugin Loader | 外部扩展发现 | 占位 |
+| Provider Adapter | AI/动态/反编译等外部能力 | 待设计 |
 
-## 7. 包依赖约束
-
-推荐依赖方向：
+## 9. 包依赖约束
 
 ```text
-cli → application → core
-renderers → application/core
-infrastructure → core contracts
+cli → modules + application + renderers
+application → core
 analyzers → core + selected infrastructure
-core 不依赖 cli
-core 不依赖具体 analyzer
+infrastructure → core contracts
+core 不依赖 cli/modules/具体 analyzer
 ```
 
 禁止：
 
-- Analyzer 直接解析 CLI 参数；
-- Rule 调用外部命令重新采集同一事实；
-- Renderer 修改分析结果；
-- Core 引入 V1 的协调器；
-- Analyzer 通过 import 直接调用另一个 Analyzer 的 `analyze()`。
+- 用 Analyzer/Rule 等技术类型替代六大产品模块；
+- Analyzer 解析 CLI 参数或直接打印；
+- Analyzer 直接调用另一个 Analyzer；
+- Rule 重新执行已有事实采集；
+- AI 能力绕过统一结果自行重复扫描；
+- 动态分析默认执行不可信目标。
 
-## 8. 当前与目标架构差距
+## 10. 当前差距
 
-尚需补齐：
-
-1. 内置 Analyzer 和内置 Profile 注册；
-2. `RuntimeConfig` 与文件/环境变量合并；
-3. Artifact Store 缓存键、命中、失效和清理；
-4. stage 内并发 Scheduler；
-5. 插件 entry point 或插件目录发现；
-6. JSON Schema 文件与兼容性测试；
-7. 日志、指标和追踪 ID 输出；
-8. V1 Compatibility Adapter。
+1. 为能力目录接入真实 Analyzer 和跨域依赖；
+2. 支持双目标、多样本、结果集等复杂输入模型；
+3. 内置 quick/security/deep/ci Profile；
+4. Artifact Store 接入 Runtime；
+5. 并发 Scheduler 与资源预算；
+6. 外部插件发现与 API 兼容策略；
+7. JSON Schema、Markdown/HTML/SARIF；
+8. 动态分析沙箱和 AI Provider 治理；
+9. V1 Compatibility Adapter。

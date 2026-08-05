@@ -1,203 +1,153 @@
 # SOInsight 快速开始
 
-## 1. 版本选择
+## 1. 选择版本
 
 | 需求 | 推荐入口 |
 |---|---|
 | 立即使用已有 `.so` 扫描功能 | V1：`python3 main.py` |
-| 查看或开发 V2 CLI 框架 | V2：`python3 -m soinsight` / `soinsight` |
-| 新增长期维护的分析能力 | 优先使用 V2 Analyzer SDK |
+| 查看或开发六大模块 CLI 框架 | V2：`python3 -m soinsight` / `soinsight` |
+| 新增长期维护能力 | V2 namespaced Analyzer SDK |
 
-V1 和 V2 当前并存。V2 尚未迁移具体分析器，因此不能替代 V1 的实际扫描功能。
+V2 目前不能替代 V1 的真实扫描能力。
 
-## 2. 环境要求
+## 2. 环境
 
-V2：
+- V2：Python 3.10+、pip；
+- 构建 Wheel：setuptools、wheel；
+- V1 及未来基础分析：`readelf`、`nm`、`strings`（通常来自 binutils）。
 
-- Python 3.10+
-- `pip`
-- 构建 Wheel 时需要 `setuptools` 和 `wheel`
-
-V1 以及未来基础 ELF Analyzer 需要：
-
-- `readelf`
-- `nm`
-- `strings`
-
-Ubuntu/Debian 通常可以通过以下方式安装：
-
-```bash
-sudo apt-get install python3 python3-pip binutils
-```
-
-## 3. 获取并进入项目
-
-```bash
-git clone <repository-url>
-cd AndroidNativeScanner
-```
-
-## 4. 运行 V2
-
-### 4.1 无安装运行
+## 3. 无安装运行 V2
 
 ```bash
 PYTHONPATH=src python3 -m soinsight --version
 PYTHONPATH=src python3 -m soinsight --help
+PYTHONPATH=src python3 -m soinsight modules list
+PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 ```
 
-### 4.2 可编辑安装
+尝试一个领域命令：
 
 ```bash
-python3 -m pip install -e .
-soinsight --version
+PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
+```
+
+当前具体 `basic.elf` Analyzer 未实现，预期返回 `ANALYSIS_PLAN_ERROR` 和退出码 3。
+
+## 4. 安装开发版本
+
+推荐在项目内创建 Python 虚拟环境后安装，避免系统 Python 目录权限问题：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip setuptools wheel
+python -m pip install -e .
 soinsight --help
+soinsight modules list
 ```
 
-开发环境：
+开发依赖与测试：
 
 ```bash
-python3 -m pip install -e '.[dev]'
-python3 -m pytest -q
+# 若已激活 .venv，可直接复用该环境
+python -m pip install -e '.[dev]'
+python -m pytest -q
 ```
 
-### 4.3 构建 CLI Wheel
+## 5. 构建 CLI Wheel
 
-推荐使用仓库脚本：
+推荐命令：
 
 ```bash
 ./scripts/build_cli.sh
 ```
 
-脚本会：
-
-1. 清理本次构建相关的临时目录；
-2. 使用当前 Python 环境构建 Wheel；
-3. 检查 Wheel 中是否包含 `soinsight/cli/main.py`；
-4. 检查 console entry point 是否为 `soinsight = soinsight.cli.main:main`；
-5. 执行 `python3 -m soinsight --version` 冒烟测试。
-
-默认产物：
+脚本会构建 Wheel、校验 `soinsight` CLI、六大模块包和 console entry point，并执行源码树版本冒烟测试。默认产物：
 
 ```text
 dist/soinsight-2.0.0.dev0-py3-none-any.whl
 ```
 
-安装生成的 CLI：
+安装产物：
 
 ```bash
-python3 -m pip install --force-reinstall dist/soinsight-*.whl
+python -m pip install --force-reinstall dist/soinsight-*.whl
 soinsight --version
-soinsight --help
 ```
 
-也可以构建后直接安装到当前 Python 环境：
+构建后直接安装：
 
 ```bash
 ./scripts/build_cli.sh --install
 ```
 
-指定 Python 或输出目录：
-
-```bash
-PYTHON_BIN=python3.10 ./scripts/build_cli.sh
-DIST_DIR=/tmp/soinsight-dist ./scripts/build_cli.sh
-```
-
-不使用脚本时，等价的核心构建命令是：
+等价核心构建命令：
 
 ```bash
 python3 -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist
 ```
 
-## 5. 验证 V2 框架
-
-检查环境：
+## 6. 验证框架
 
 ```bash
-soinsight doctor
-soinsight doctor --format json
-```
-
-查看已注册 Analyzer：
-
-```bash
+soinsight modules list
 soinsight plugins list
-soinsight plugins list --format json
-```
-
-当前内置 Analyzer 数量为 0 时会显示：
-
-```text
-No analyzers registered. Framework shell is ready.
-```
-
-执行框架扫描：
-
-```bash
-soinsight scan README.md
+soinsight doctor
 soinsight scan README.md --format json
 ```
 
-当前会产生 `NO_ANALYZERS_SELECTED` warning，但命令本身成功。这可以验证以下链路已经工作：
+预期：
 
-```text
-CLI → TargetResolver → Runtime → Aggregator → Renderer
+- `modules list` 显示六个产品模块；
+- `plugins list` 当前显示 0 个 Analyzer；
+- `doctor` 显示 `Product modules: 6`；
+- 未选择 Analyzer 的 `scan` 返回包含 `NO_ANALYZERS_SELECTED` 的结构化结果。
+
+## 7. 创建首个 YAML 配置
+
+```bash
+export SOINSIGHT_CONFIG_DIR="$PWD/.soinsight-configs"
+soinsight config create quick
+soinsight config set quick analysis.modules.basic '[file, elf]'
+soinsight config validate quick
+soinsight config use quick
+soinsight config current
+soinsight scan README.md --format json
 ```
 
-## 6. 运行 V1
+由于真实 Analyzer 尚未迁移，最后一步可能返回 `ANALYSIS_PLAN_ERROR`；诊断中列出的 Analyzer 应来自 YAML，这说明选择链路已生效。完整说明见 [YAML 配置指南](configuration.md)。
 
-扫描单个 `.so`：
+## 8. 运行 V1
 
 ```bash
 python3 main.py libexample.so
-```
-
-扫描目录：
-
-```bash
 python3 main.py ./lib/
-```
-
-查看参数：
-
-```bash
 python3 main.py --help
 ```
 
-V1 的可选彩色输出依赖：
+V1 彩色输出可选依赖：
 
 ```bash
 python3 -m pip install termcolor
 ```
 
-缺少 `termcolor` 时仍可运行，只是输出不带颜色。
-
-## 7. 常见安装问题
+## 9. 常见问题
 
 ### `No module named soinsight`
 
-尚未安装包时，应在仓库根目录运行：
+在仓库根目录使用：
 
 ```bash
 PYTHONPATH=src python3 -m soinsight --help
 ```
 
-或者执行：
+或先创建并激活虚拟环境，再执行 `python -m pip install -e .`。
 
-```bash
-python3 -m pip install -e .
-```
+### `basic elf` 返回 `ANALYSIS_PLAN_ERROR`
 
-### `readelf: not found`
+领域命令已经建立，但 `basic.elf` 具体 Analyzer 尚未注册，这是当前阶段预期行为。
 
-安装 `binutils`，然后执行：
+### 为什么 `modules` 有内容而 `plugins` 为空？
 
-```bash
-soinsight doctor
-```
-
-### V2 `elf` 返回 `ANALYSIS_PLAN_ERROR`
-
-当前 `elf` 命令入口已经存在，但具体 `elf` Analyzer 尚未注册。这属于当前框架阶段的预期结果。
+`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已经完成，后者等待迁移真实 Analyzer。

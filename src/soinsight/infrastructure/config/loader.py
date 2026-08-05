@@ -1,7 +1,7 @@
-"""Configuration loading boundary.
+"""Build validated runtime settings from already-resolved configuration values.
 
-File and environment merging will be added behind this interface. The initial
-implementation supplies validated runtime defaults and CLI overrides.
+YAML persistence and selection are handled by :class:`YamlConfigStore`; the CLI
+applies precedence and passes the resolved values through this boundary.
 """
 
 from pathlib import Path
@@ -21,6 +21,7 @@ class ConfigLoader:
         cache_enabled: bool = True,
         cache_dir: str | Path | None = None,
         fail_fast: bool = False,
+        extra: dict[str, object] | None = None,
     ) -> RuntimeConfig:
         resolved_jobs = jobs if jobs is not None else 1
         resolved_timeout = timeout_seconds if timeout_seconds is not None else 60
@@ -37,4 +38,5 @@ class ConfigLoader:
             cache_enabled=cache_enabled,
             cache_dir=Path(cache_dir) if cache_dir else Path(".soinsight/cache"),
             fail_fast=fail_fast,
+            extra=dict(extra or {}),
         )

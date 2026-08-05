@@ -78,8 +78,24 @@ import zipfile
 wheel = Path(sys.argv[1])
 with zipfile.ZipFile(wheel) as archive:
     names = archive.namelist()
-    if "soinsight/cli/main.py" not in names:
-        raise SystemExit("Wheel does not contain soinsight/cli/main.py")
+    required_files = {
+        "soinsight/cli/main.py",
+        "soinsight/infrastructure/config/analysis_config.py",
+        "soinsight/infrastructure/config/yaml_store.py",
+        "soinsight/modules/__init__.py",
+        "soinsight/modules/basic/__init__.py",
+        "soinsight/modules/advanced/__init__.py",
+        "soinsight/modules/security/__init__.py",
+        "soinsight/modules/dynamic/__init__.py",
+        "soinsight/modules/ai/__init__.py",
+        "soinsight/modules/automation/__init__.py",
+    }
+    missing_files = sorted(required_files.difference(names))
+    if missing_files:
+        raise SystemExit(
+            "Wheel is missing required CLI/module files: "
+            + ", ".join(missing_files)
+        )
 
     entry_points = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
     if len(entry_points) != 1:

@@ -1,12 +1,8 @@
-"""Built-in analyzer registration point.
-
-Concrete ELF analyzers are intentionally not migrated in the framework-only
-phase. Future analyzers register here without changing the runtime.
-"""
+"""Built-in analyzer registration point."""
 
 from ..core.analyzer import AnalyzerRegistry
+from .basic import BasicFileAnalyzer
 
 
 def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
-    del registry
-    return None
+    registry.register(BasicFileAnalyzer())

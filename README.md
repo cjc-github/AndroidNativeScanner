@@ -1,156 +1,152 @@
 # SOInsight / Android Native Scanner
 
-SOInsight 是一个面向 Linux/Android ELF 动态库（主要为 `.so` 文件）的本地分析工具项目。
+SOInsight 是面向 Linux/Android ELF 动态库（主要为 `.so`）的本地分析工具项目。
 
-仓库当前同时保留两个版本：
+仓库当前并行保留：
 
-- **V1（可用功能）**：现有 Android Native Scanner，使用 `python3 main.py` 运行；
-- **V2（框架阶段）**：模块化 CLI 工具箱，使用 `soinsight` 或 `python3 -m soinsight` 运行。
+- **V1（已有分析能力）**：Android Native Scanner，入口为 `python3 main.py`；
+- **V2（新 CLI 工具箱框架）**：入口为 `soinsight` 或 `python3 -m soinsight`。
 
-> 截至 2026-08-04，V2 已完成外部框架骨架，但尚未迁移具体 ELF 分析器。执行 V2 `scan` 时如果没有注册 Analyzer，会返回 `NO_ANALYZERS_SELECTED`，这是当前阶段的预期行为。
+V2 的产品结构以六个一级能力域组织，而不是按内部技术组件分类：
+
+1. **基础分析**（`basic`）
+2. **高级分析**（`advanced`）
+3. **安全分析**（`security`）
+4. **动态分析**（`dynamic`）
+5. **AI 分析**（`ai`）
+6. **自动化**（`automation`）
+
+Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
+
+> 截至 2026-08-04，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立；具体 ELF/安全/动态/AI Analyzer 尚未迁移。因此领域命令可能返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
-| [快速开始](docs/getting-started.md) | 环境要求、安装、V1/V2 首次运行 |
-| [V2 使用手册](docs/user-guide.md) | 扫描、输出、诊断、常见问题 |
-| [V2 CLI 命令参考](docs/cli-reference.md) | 当前命令、参数、退出码和实现状态 |
-| [V2 架构说明](docs/architecture.md) | 分层结构、运行链路、扩展边界 |
-| [Analyzer 与 Rule 开发指南](docs/extension-development.md) | 新增分析器、规则、Profile 和 Renderer |
-| [V1 到 V2 迁移指南](docs/migration-v1-to-v2.md) | 迁移原则、映射和推荐顺序 |
-| [项目状态与路线图](docs/project-status.md) | 已完成、未实现、下一阶段验收标准 |
-| [V2 总体设计](design/SOInsight_V2.0_Software_Design_Specification.md) | V2 主设计和长期规划 |
-| [V1 深度分析规划](design/SOInsight_Deep_SO_Analysis_Plan_V1.0.md) | 历史规划，仅供参考 |
+| [快速开始](docs/getting-started.md) | 环境、安装、构建和首次运行 |
+| [使用手册](docs/user-guide.md) | 六大模块、组合扫描、输出和诊断 |
+| [YAML 配置指南](docs/configuration.md) | 模块/功能点订制、配置创建、激活和管理 |
+| [CLI 命令参考](docs/cli-reference.md) | 当前命令树、参数、状态和退出码 |
+| [模块体系](docs/module-system.md) | 六大产品模块、42 项能力及跨域依赖规则 |
+| [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
+| [扩展开发指南](docs/extension-development.md) | 为能力实现 Analyzer、Rule、Profile、Renderer |
+| [V1 到 V2 迁移](docs/migration-v1-to-v2.md) | 迁移原则、领域映射和顺序 |
+| [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
+| [V2 软件设计说明书](design/design_v2.0.md) | 六大能力域、CLI、设计模式与详细架构的唯一主设计 |
+| [V3 设计占位](design/design_v3.0.md) | V3 尚未启动及其启动条件 |
+| [V1 历史规划](design/design_v1.0.md) | 历史参考 |
 
 ## 快速运行
 
-### V2：开发模式
-
 ```bash
+# 无安装运行
 PYTHONPATH=src python3 -m soinsight --help
+PYTHONPATH=src python3 -m soinsight modules list
+PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
-PYTHONPATH=src python3 -m soinsight plugins list
-PYTHONPATH=src python3 -m soinsight scan README.md --format json
+
+# 领域命令（当前为能力外壳，具体 Analyzer 未实现）
+PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
+PYTHONPATH=src python3 -m soinsight security hardening README.md
+
+# 创建并使用可复用 YAML 分析配置
+PYTHONPATH=src python3 -m soinsight config create quick-security
+PYTHONPATH=src python3 -m soinsight config set quick-security analysis.modules.basic '[file, elf]'
+PYTHONPATH=src python3 -m soinsight config use quick-security
+PYTHONPATH=src python3 -m soinsight scan README.md
 ```
 
-### V2：可编辑安装
-
-要求 Python 3.10 或更高版本：
+可编辑安装（推荐先创建虚拟环境，避免系统 Python 目录权限问题）：
 
 ```bash
-python3 -m pip install -e .
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip setuptools wheel
+python -m pip install -e .
 soinsight --version
-soinsight doctor
+soinsight modules list
 ```
 
-安装开发依赖并运行测试：
+运行测试：
 
 ```bash
-python3 -m pip install -e '.[dev]'
-python3 -m pytest -q
+# 若已激活 .venv，可直接复用该环境
+python -m pip install -e '.[dev]'
+python -m pytest -q
 ```
 
-构建可安装的 CLI Wheel：
+构建可安装 CLI Wheel：
 
 ```bash
 ./scripts/build_cli.sh
-python3 -m pip install --force-reinstall dist/soinsight-*.whl
+python -m pip install --force-reinstall dist/soinsight-*.whl
 soinsight --help
 ```
 
-也可以构建后直接安装到当前 Python 环境：
+构建后直接安装：
 
 ```bash
 ./scripts/build_cli.sh --install
-```
-
-### V1：运行现有扫描功能
-
-V1 依赖系统中的 `readelf`、`nm` 和 `strings`，通常由 `binutils` 提供：
-
-```bash
-python3 main.py libexample.so
-python3 main.py ./lib/
-```
-
-`termcolor` 是 V1 的可选依赖：
-
-```bash
-python3 -m pip install -e '.[legacy]'
 ```
 
 ## 当前仓库结构
 
 ```text
 AndroidNativeScanner/
-├── main.py                    # V1 入口
+├── main.py                       # V1 入口
 ├── src/
-│   ├── analyzer/              # V1 具体分析器
-│   ├── cli.py                 # V1 CLI
-│   └── soinsight/             # V2 模块化工具箱
-│       ├── cli/               # CLI 适配层
-│       ├── application/       # 应用服务层
-│       ├── core/              # 模型、Analyzer、Rule、Runtime
-│       ├── analyzers/         # V2 内置分析器注册位置
-│       ├── renderers/         # text/json 输出
-│       ├── infrastructure/    # 配置、工具、存储、插件边界
-│       └── compatibility/     # V1 兼容适配预留
-├── tests/                     # V2 单元与集成测试
-├── scripts/build_cli.sh       # 构建并校验 V2 CLI Wheel
-├── docs/                      # 使用和开发文档
-└── design/                    # 总体设计与历史规划
+│   ├── analyzer/                 # V1 具体分析器
+│   ├── cli.py                    # V1 CLI
+│   └── soinsight/                # V2 CLI 工具箱
+│       ├── modules/              # 六大产品能力域及能力目录
+│       │   ├── basic/
+│       │   ├── advanced/
+│       │   ├── security/
+│       │   ├── dynamic/
+│       │   ├── ai/
+│       │   └── automation/
+│       ├── cli/                  # CLI 适配层
+│       ├── application/          # 应用服务层
+│       ├── core/                 # Analyzer/Rule/Planner/Runtime 等共享机制
+│       ├── analyzers/            # 具体 Analyzer 注册位置
+│       ├── renderers/            # Text/JSON 输出
+│       ├── infrastructure/       # 配置、工具、存储、插件边界
+│       └── compatibility/        # V1 兼容适配预留
+├── tests/                        # V2 单元与集成测试
+├── scripts/build_cli.sh          # Wheel 构建与入口校验
+├── docs/                         # 使用与开发文档
+└── design/                       # V2 主设计、V3 占位与 V1 历史规划
 ```
 
-## V1 当前能力
+## 当前能力边界
 
-V1 当前包含：
+V1 已具备 ELF Header、符号、字符串、URL/敏感信息/Base64/JNI 检测以及批量扫描等能力。
 
-- ELF Header 基础信息；
-- 导出符号和危险函数检测；
-- 字符串提取与统计；
-- URL、敏感信息、Base64 数据检测；
-- JNI 符号分析；
-- 单文件和目录扫描；
-- 文本报告及风险汇总。
+V2 已具备：
 
-V1 的扩展方式仍然是继承 `src/analyzer/base.py` 中的 `BaseAnalyzer` 并注册到 `AnalysisCoordinator`。新能力原则上应优先面向 V2 Analyzer SDK 开发；需要复用 V1 时，通过兼容适配层逐步迁移。
+- 六大产品模块和能力目录；
+- 领域化 CLI 命令树与 `modules` 查询命令；
+- `scan --module` 跨域选择；
+- YAML 配置 Schema、创建/查看/校验/激活/set/unset 管理及活动配置；
+- YAML 模块/功能点选择、排除、runtime/output 和 capability options 合并；
+- Analyzer/Rule/Profile/Renderer 扩展接口；
+- Analyzer 依赖 DAG、串行 Scheduler 和失败隔离；
+- Target/Result/Finding/Diagnostic 统一模型；
+- Text/JSON Renderer、ToolRunner、ArtifactStore 基础边界；
+- Python 包安装和 Wheel 构建脚本。
 
-## V2 当前能力
-
-V2 已实现：
-
-- `soinsight` 命令树；
-- `AnalysisTarget`、`AnalysisResult`、`ScanResult`、`Finding` 和 `Diagnostic`；
-- Analyzer、Rule、Profile、Renderer 注册机制；
-- Analyzer 依赖 DAG 规划和循环检测；
-- 串行 Scheduler、失败隔离和依赖跳过；
-- Text/JSON Renderer；
-- 外部工具调用和 Artifact Store 基础边界；
-- Python 包安装、Wheel 构建；
-- 框架单元测试和 CLI 集成测试。
-
-V2 当前尚未实现：
-
-- 具体 `file`、`elf`、`symbols`、`strings`、`security` Analyzer；
-- Runtime 缓存读写；
-- 并发 Scheduler；
-- 外部插件自动发现；
-- Markdown/HTML/SARIF 报告；
-- 目录递归扫描；
-- DWARF、反汇编、CFG、Diff、动态分析、Fuzz 和 AI 实际功能。
-
-详细状态参见[项目状态与路线图](docs/project-status.md)。
+V2 尚未具备具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
 
 ## 开发原则
 
-- 默认不执行被分析文件；
-- Analyzer 返回结构化数据，不直接负责终端输出；
-- 安全判断优先放在 Rule 中，基础事实提取放在 Analyzer 中；
-- Analyzer 通过 `requires` 声明依赖，不在内部主动调度其他 Analyzer；
-- V2 输出协议通过 Schema 版本字段演进；
-- V1 在迁移完成前保持可用，不直接替换其入口。
+- 产品和文档先按六大能力域表达，技术组件下沉；
+- 能力 ID 使用 `<module>.<capability>` 命名空间；
+- 跨域协作通过声明式 DAG 和统一结果，不直接调用另一个模块实现；
+- 默认不执行被分析文件，动态分析必须显式授权并隔离；
+- 结构化结果优先，终端展示由 Renderer 负责；
+- V1 在 V2 真实能力达到验收标准前继续保留。
 
 ## License
 
-仓库当前未声明独立 License 文件。对外发布或引入第三方依赖前，应先补充许可证和依赖合规策略。
+项目当前尚未提供 License 文件；公开分发前需要补齐许可证。

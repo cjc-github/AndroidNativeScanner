@@ -1,229 +1,146 @@
 # SOInsight V2 使用手册
 
-> 本文档描述 2026-08-04 仓库中的实际实现。规划中的命令会明确标注为“占位”。
+> 本文档对应 2026-08-04 的仓库实现。V2 已搭建六大产品模块和 CLI 外壳，但尚未接入具体业务 Analyzer。
 
-## 1. 基本语法
-
-```text
-soinsight [--version] COMMAND [COMMAND_OPTIONS]
-```
-
-查看主帮助：
+## 1. 查看模块
 
 ```bash
-soinsight --help
+soinsight modules list
+soinsight modules show basic
+soinsight modules list --format json
 ```
 
-查看子命令帮助：
+六个模块为 `basic`、`advanced`、`security`、`dynamic`、`ai`、`automation`。完整能力表见[模块体系](module-system.md)。
+
+## 2. 运行单项能力
 
 ```bash
-soinsight scan --help
-soinsight doctor --help
+soinsight basic file libfoo.so
+soinsight basic elf libfoo.so --format json
+soinsight advanced strings libfoo.so
+soinsight security hardening libfoo.so
+soinsight dynamic trace libfoo.so
+soinsight ai function-name libfoo.so
+soinsight automation fuzz-target libfoo.so
 ```
 
-## 2. 扫描单个文件
+当前命令会进入统一 Runtime；由于 Analyzer 尚未注册，将结构化返回 `ANALYSIS_PLAN_ERROR`，而不是执行真实分析。
 
-```bash
-soinsight scan <target>
-```
-
-当前 TargetResolver 只接受存在的单个文件，不支持目录：
+## 3. 综合扫描
 
 ```bash
 soinsight scan libfoo.so
-soinsight scan libfoo.so --format json
 soinsight scan libfoo.so --format json -o result.json
 ```
 
-未注册 Analyzer 时，扫描仍会建立目标信息，包括：
+当前目标必须是存在的单个文件。TargetResolver 会记录真实路径、名称、大小、SHA-256 和扫描时间。
 
-- 输入路径和真实路径；
-- 文件名；
-- 文件大小；
-- SHA-256；
-- 扫描开始时间；
-- Schema 和工具版本；
-- 诊断信息。
-
-## 3. 选择 Analyzer
-
-显式选择：
+按产品模块选择：
 
 ```bash
-soinsight scan libfoo.so --enable file,elf,symbols
+soinsight scan libfoo.so --module basic,security --format json
 ```
 
-不传 `--enable` 时，使用 Registry 中 `default_enabled=True` 的 Analyzer。
+精确选择能力实现：
 
-通过 Profile 选择：
+```bash
+soinsight scan libfoo.so --enable basic.file,basic.elf
+```
+
+`--module` 是用户侧领域选择，`--enable` 是 Analyzer ID 级别的精确选择。两者同时使用时会合并并去重，也可以与 YAML 配置共同使用。
+
+## 4. 使用 Profile
 
 ```bash
 soinsight scan libfoo.so --profile quick
 ```
 
-当前默认 CLI 没有注册内置 Profile，因此只有应用注入或后续内置 Profile 注册后才能使用。未知 Profile 会返回规划错误。
+Profile 用于保存跨域能力组合。当前框架支持 ProfileRegistry，但默认 CLI 尚未内置 Profile，因此会返回 `PROFILE_NOT_FOUND`。
 
-Analyzer 依赖会由 Planner 自动补全。例如 `elf` 声明 `requires=("file",)` 后，只请求 `elf` 也会先执行 `file`。
+规划中的 Profile：
 
-## 4. 单项命令
+- `quick`：基础文件、ELF、符号和字符串；
+- `security`：安全保护、危险 API、漏洞模式与必要依赖；
+- `deep`：基础和高级静态分析；
+- `ci`：稳定、可复现、适合风险门禁的组合。
 
-以下命令已经接入统一 Runtime，但目前没有对应内置 Analyzer：
-
-```bash
-soinsight file libfoo.so
-soinsight elf libfoo.so
-soinsight symbols libfoo.so
-soinsight strings libfoo.so
-soinsight security libfoo.so
-```
-
-在 Analyzer 尚未注册时，它们会返回 `ANALYSIS_PLAN_ERROR` 和退出码 `3`。
-
-## 5. 输出格式
-
-### Text
+## 5. 自动化能力
 
 ```bash
-soinsight scan libfoo.so --format text
+soinsight automation binary-diff old.so new.so
+soinsight automation report result.json
+soinsight automation workflow manifest.json
 ```
 
-Text 输出包含目标、SHA-256、状态、已解析 Analyzer、Finding 数量、耗时和诊断信息。
+领域内的 `automation report/workflow` 代表产品自动化能力；顶层 `report` 当前只是技术性的 JSON 重格式化命令。后续二者应通过统一结果和工作流引擎衔接。
 
-### JSON
+## 6. 输出
 
 ```bash
-soinsight scan libfoo.so --format json
-```
-
-顶层结构：
-
-```json
-{
-  "diagnostics": [],
-  "exit_code": 0,
-  "result": {
-    "schema_version": "soinsight.scan/v1",
-    "status": "success",
-    "target": {},
-    "results": {},
-    "findings": [],
-    "diagnostics": []
-  }
-}
-```
-
-JSON 是自动化集成的优先格式。消费者应检查 `schema_version`，不要依赖未声明的字段顺序。
-
-### 写入文件
-
-```bash
+soinsight basic elf libfoo.so --format text
+soinsight basic elf libfoo.so --format json
 soinsight scan libfoo.so --format json --output result.json
-soinsight scan libfoo.so --format json --output -
 ```
 
-父目录不存在时会自动创建。
+当前支持 Text 和 JSON。Markdown、HTML、SARIF 尚未实现。
 
-## 6. Runtime 参数
-
-```bash
-soinsight scan libfoo.so \
-  --jobs 1 \
-  --timeout 60 \
-  --no-color \
-  --no-cache \
-  --cache-dir .soinsight/cache \
-  --fail-fast
-```
-
-当前实现边界：
-
-- `--jobs` 已进入配置模型，但 Scheduler 仍是串行执行；
-- `--timeout` 已进入配置模型，Analyzer 应将其传递给 `ToolRunner`；
-- `--no-cache` 和 `--cache-dir` 已进入配置模型，但 Runtime 尚未接入缓存；
-- `--fail-fast` 已进入配置模型，但串行 Scheduler 尚未使用该选项停止后续独立任务；
-- `--quiet`、`--verbose`、`--no-color` 已保留，完整日志和颜色策略尚未实现。
-
-这些参数已经形成稳定入口，但不能误认为相应高级行为已经全部完成。
-
-## 7. 环境检查
+## 7. 环境诊断
 
 ```bash
 soinsight doctor
 soinsight doctor --format json
 ```
 
-检查内容：
+输出包含：SOInsight 版本、Python、产品模块数量、已注册 Analyzer 数量，以及 `readelf`、`nm`、`strings` 路径。
 
-- SOInsight 版本；
-- Python 版本和解释器路径；
-- 已注册 Analyzer 数量；
-- `readelf`、`nm`、`strings` 的路径。
-
-`doctor` 当前只报告状态，不会自动安装依赖。
-
-## 8. Analyzer 列表
+## 8. 模块与插件的区别
 
 ```bash
-soinsight plugins list
-soinsight plugins list --format json
+soinsight modules list   # 产品“准备提供什么”
+soinsight plugins list   # 当前进程“实际加载了什么 Analyzer”
 ```
 
-当前这里展示的是 Analyzer Registry 内容。外部插件自动发现尚未实现。
+在当前阶段，模块数量为 6、能力数量为 42，而 Analyzer 数量可以是 0。这不是冲突：外部产品框架已建立，具体实现仍待迁移。
 
-## 9. 报告读取
+## 9. 报告、缓存和 YAML 配置
 
 ```bash
-soinsight report result.json
-soinsight report result.json --format text
 soinsight report result.json --format json -o normalized.json
+soinsight cache info
+soinsight config create quick-security
+soinsight config set quick-security analysis.modules.basic '[file, elf]'
+soinsight config set quick-security analysis.modules.security '[hardening]'
+soinsight config validate quick-security
+soinsight config use quick-security
+soinsight scan libfoo.so
 ```
 
-当前 `report` 功能只负责读取并验证输入是否为合法 JSON：
-
-- `--format json`：重新格式化 JSON；
-- `--format text`：输出输入是合法 JSON 的提示；
-- 尚未执行完整 SOInsight Schema 校验；
-- 尚未生成 Markdown 或 HTML 报告。
-
-## 10. Cache 和 Config
+也可以不激活配置，直接指定托管名称或外部路径：
 
 ```bash
-soinsight cache info
-soinsight cache info --cache-dir /tmp/soinsight-cache
-soinsight config show
+soinsight scan libfoo.so --config quick-security
+soinsight scan libfoo.so --config ./configs/quick-security.yaml
 ```
 
-当前：
+YAML 可以订制模块、模块内功能点、跨模块 capability、排除项、Runtime、输出和能力专属选项。显式 CLI 参数优先于 YAML；显式领域命令只运行该项能力，不会被 YAML 扩大。完整 Schema 和管理方式见 [YAML 配置指南](configuration.md)。
 
-- `cache info` 只显示缓存目录；
-- `config show` 只显示 Runtime 默认值；
-- 配置文件和环境变量合并尚未实现；
-- 缓存查看、清理、统计尚未实现。
+当前其他限制：
 
-## 11. 占位命令
+- `report` 不做完整 SOInsight Schema 校验；
+- ArtifactStore 尚未接入 Runtime；
+- `--jobs` 已进入配置但尚未启用并行。
 
-以下命令只保留 CLI 入口，执行时返回退出码 `3`：
-
-```text
-dwarf, disasm, cfg, callgraph, identify,
-diff, dynamic, fuzz, ai
-```
-
-它们用于稳定未来命令空间，不代表对应功能已经可用。
-
-## 12. 状态和诊断
-
-常见诊断码：
+## 10. 常见诊断
 
 | 诊断码 | 含义 |
 |---|---|
-| `NO_ANALYZERS_SELECTED` | 没有注册或选中 Analyzer |
-| `INVALID_TARGET` | 输入不存在或当前不是单个文件 |
-| `INVALID_CONFIGURATION` | jobs、timeout 等配置非法 |
-| `ANALYSIS_PLAN_ERROR` | Analyzer/Profile 缺失或依赖规划失败 |
-| `ANALYZER_EXCEPTION` | Analyzer 执行抛出异常 |
-| `DEPENDENCY_FAILED` | 必需的上游 Analyzer 未成功 |
-| `RULE_DEPENDENCY_MISSING` | Rule 所需结果不可用 |
+| `NO_ANALYZERS_SELECTED` | 没有默认 Analyzer 或明确选择 |
+| `INVALID_TARGET` | 目标不存在或不是当前支持的单文件 |
+| `INVALID_CONFIGURATION` | jobs、timeout 等非法 |
+| `INVALID_ANALYSIS_CONFIG` | YAML 不存在、格式错误或引用未知能力 |
+| `MODULE_NOT_FOUND` | `--module` 包含未知模块 |
+| `PROFILE_NOT_FOUND` | Profile 未注册 |
+| `ANALYSIS_PLAN_ERROR` | Analyzer 缺失、依赖缺失或 DAG 规划失败 |
+| `ANALYZER_EXCEPTION` | Analyzer 执行异常 |
+| `DEPENDENCY_FAILED` | 必需上游未成功 |
 | `RULE_EXCEPTION` | Rule 执行异常 |
-
-详细命令和退出码参见 [CLI 命令参考](cli-reference.md)。
