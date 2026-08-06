@@ -73,7 +73,7 @@ soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TA
 | `-o, --output PATH` | stdout | 输出文件，`-` 表示 stdout |
 | `-j, --jobs N` | `1` | 预留并发配置，当前仍串行 |
 | `--timeout SECONDS` | `60` | 超时配置 |
-| `-q, --quiet` | false | 静默配置入口 |
+| `-q, --quiet` | false | 静默模式；成功分析不输出正文，失败仍输出错误摘要 |
 | `-v, --verbose` | false | 详细配置入口 |
 | `--no-color` | false | 禁用颜色配置入口 |
 | `--no-cache` | false | 禁用缓存配置入口，Runtime 缓存尚未接入 |
@@ -98,7 +98,7 @@ soinsight scan libfoo.so --module basic,security --format json
 soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
 ```
 
-当前没有内置 Analyzer。无选择时会产生 `NO_ANALYZERS_SELECTED`；选择模块时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
+当前内置 `basic.file` Analyzer。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
 
 ## 5. `modules`
 
@@ -106,12 +106,13 @@ soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
 
 ```bash
 soinsight modules list
+soinsight modules list --no-color
 soinsight modules list --format json
 soinsight modules show basic
 soinsight modules show security --format json
 ```
 
-`modules` 展示产品能力；它不等同于 `plugins`。
+`modules` 展示产品能力目录和实现状态；它不等同于 `plugins`。`STATUS` 为 `catalog-only` 表示只有产品目录，`partial` 表示已有部分 Analyzer，`implemented` 表示该模块单目标能力均已注册。TTY 下状态默认带颜色，可通过 `--no-color` 禁用；窄终端会使用紧凑布局。
 
 ## 6. `plugins`
 
@@ -122,7 +123,7 @@ soinsight plugins list
 soinsight plugins list --format json
 ```
 
-它展示当前进程真正注册的 Analyzer。模块目录可以有 42 项能力，而已注册 Analyzer 仍为 0。
+它展示当前进程真正注册的 Analyzer。模块目录可以有 42 项能力，而已注册 Analyzer 数量取决于当前版本和插件加载结果。
 
 ## 7. 配置与其他技术命令
 
@@ -161,7 +162,7 @@ soinsight report INPUT [--format text|json] [-o OUTPUT]
 soinsight cache [info] [--cache-dir PATH]
 ```
 
-- `doctor`：显示版本、Python、六大产品模块数量、Analyzer 数量和 V1 外部工具；
+- `doctor`：以健康检查格式显示版本、Python、六大产品模块数量、Analyzer 数量和 V1 外部工具状态；
 - `report`：当前只读取并重新格式化合法 JSON；
 - `cache info`：当前只显示缓存路径。
 

@@ -131,6 +131,36 @@ def _add_compatibility_aliases(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
+def _render_main_help() -> str:
+    return (
+        f"SOInsight {__version__}\n"
+        "Linux/Android ELF analysis toolbox\n"
+        "\n"
+        "Usage:\n"
+        "  soinsight <command> [options]\n"
+        "\n"
+        "Analysis domains:\n"
+        "  basic       Basic file, ELF, symbol and code-structure analysis\n"
+        "  advanced    Strings, constants, compiler and obfuscation analysis\n"
+        "  security    Hardening, dangerous API and vulnerability analysis\n"
+        "  dynamic     Authorized runtime tracing and coverage\n"
+        "  ai          Evidence-based AI assistance\n"
+        "  automation  Diff, fuzzing, reports and workflow automation\n"
+        "\n"
+        "Project commands:\n"
+        "  scan        Run a composed analysis plan\n"
+        "  modules     Inspect product capability catalog\n"
+        "  plugins     Inspect registered analyzers\n"
+        "  config      Manage YAML analysis configurations\n"
+        "  doctor      Inspect local environment\n"
+        "  report      Validate or display JSON result\n"
+        "  cache       Inspect cache location\n"
+        "\n"
+        "Use:\n"
+        "  soinsight <command> --help\n"
+    )
+
+
 def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParser:
     module_catalog = catalog or create_builtin_module_catalog()
     parser = argparse.ArgumentParser(
@@ -169,6 +199,7 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
     modules.add_argument("action", choices=("list", "show"), nargs="?", default="list")
     modules.add_argument("module_id", nargs="?")
     modules.add_argument("--format", choices=("text", "json"), default="text")
+    modules.add_argument("--no-color", action="store_true", help="Disable ANSI color output")
     modules.set_defaults(handler="modules")
 
     report = subparsers.add_parser(
@@ -255,6 +286,36 @@ def _write_output(text: str, output: str | None, stdout: TextIO) -> None:
     temporary.replace(destination)
 
 
+def _render_text_error(response: ApplicationResponse) -> str | None:
+    if response.result is not None or not response.diagnostics:
+        return None
+    diagnostic = response.diagnostics[0]
+    analyzer_id: str | None = None
+    if diagnostic.code == "ANALYSIS_PLAN_ERROR":
+        if "Analyzer not found:" in diagnostic.message:
+            analyzer_id = diagnostic.message.split("Analyzer not found:", 1)[1].strip()
+        elif "Missing analyzer '" in diagnostic.message:
+            analyzer_id = diagnostic.message.split("Missing analyzer '", 1)[1].split("'", 1)[0]
+    if analyzer_id:
+        module_id = analyzer_id.split(".", 1)[0] if "." in analyzer_id else "basic"
+        return (
+            "Error: capability is not implemented\n"
+            "\n"
+            "Capability:\n"
+            f"  {analyzer_id}\n"
+            "\n"
+            "Reason:\n"
+            f"  Analyzer not found: {analyzer_id}\n"
+            "\n"
+            "Try:\n"
+            f"  soinsight modules show {module_id}\n"
+            "  soinsight basic file <target>\n"
+            "\n"
+            f"Exit code: {response.exit_code}\n"
+        )
+    return None
+
+
 def _render_response(
     response: ApplicationResponse,
     output_format: str,
@@ -262,6 +323,11 @@ def _render_response(
     renderers: RendererRegistry,
     stdout: TextIO,
 ) -> int:
+    if output_format == "text":
+        text_error = _render_text_error(response)
+        if text_error is not None:
+            _write_output(text_error, output, stdout)
+            return response.exit_code
     text = renderers.get(output_format).render(response)
     _write_output(text, output, stdout)
     return response.exit_code
@@ -464,6 +530,8 @@ def _handle_analysis(
         ),
         runtime_config,
     )
+    if runtime_config.quiet and output_format == "text" and response.exit_code == 0:
+        return response.exit_code
     return _render_response(response, output_format, output, renderers, stdout)
 
 
@@ -485,9 +553,56 @@ def _module_payload(module) -> dict[str, object]:
     }
 
 
+def _display_width(text: str) -> int:
+    return sum(2 if "一" <= char <= "鿿" else 1 for char in text)
+
+
+def _pad_display(text: str, width: int) -> str:
+    return text + " " * max(0, width - _display_width(text))
+
+
+def _supports_color(stdout: TextIO, no_color: bool = False) -> bool:
+    return bool(getattr(stdout, "isatty", lambda: False)()) and not no_color
+
+
+def _color(text: str, color: str, enabled: bool) -> str:
+    if not enabled:
+        return text
+    codes = {
+        "green": "32",
+        "yellow": "33",
+        "red": "31",
+        "dim": "2",
+    }
+    return f"\x1b[{codes[color]}m{text}\x1b[0m"
+
+
+def _status_color(status: str) -> str:
+    if status == "implemented":
+        return "green"
+    if status == "partial":
+        return "yellow"
+    return "dim"
+
+
+def _capability_status(capability_id: str, registry: AnalyzerRegistry) -> str:
+    return "implemented" if registry.contains(capability_id) else "planned"
+
+
+def _module_status(module, registry: AnalyzerRegistry) -> str:
+    capability_ids = module.analyzer_ids
+    implemented = sum(1 for analyzer_id in capability_ids if registry.contains(analyzer_id))
+    if implemented == 0:
+        return "catalog-only"
+    if implemented == len(capability_ids):
+        return "implemented"
+    return "partial"
+
+
 def _handle_modules(
     args: argparse.Namespace,
     catalog: ModuleCatalog,
+    registry: AnalyzerRegistry,
     stdout: TextIO,
 ) -> int:
     if args.action == "show":
@@ -513,17 +628,44 @@ def _handle_modules(
         )
         return 0
 
-    for module in selected:
-        stdout.write(
-            f"{module.id}\t{module.name}\t{len(module.capabilities)} capabilities\n"
-        )
-        if args.action == "show":
-            stdout.write(f"  {module.description}\n")
-            for capability in module.capabilities:
-                stdout.write(
-                    f"  - {capability.command:<26} {capability.name} "
-                    f"[{capability.id}]\n"
-                )
+    if args.action != "show":
+        use_color = _supports_color(stdout, getattr(args, "no_color", False))
+        narrow = bool(getattr(stdout, "isatty", lambda: False)()) and shutil.get_terminal_size().columns < 60
+        if narrow:
+            stdout.write("MODULE      STATUS\n")
+            for module in selected:
+                module_id = _pad_display(module.id, 12)
+                status = _module_status(module, registry)
+                stdout.write(f"{module_id}{_color(status, _status_color(status), use_color)}\n")
+            return 0
+        stdout.write("MODULE      NAME      CAPABILITIES  STATUS\n")
+        for module in selected:
+            module_id = _pad_display(module.id, 12)
+            module_name = _pad_display(module.name, 10)
+            count = f"{len(module.capabilities):>12}"
+            status = _module_status(module, registry)
+            stdout.write(
+                f"{module_id}{module_name}{count}  "
+                f"{_color(status, _status_color(status), use_color)}\n"
+            )
+        return 0
+
+    module = selected[0]
+    stdout.write(f"Module: {module.id}\n")
+    stdout.write(f"Name:   {module.name}\n")
+    stdout.write(f"Status: {_module_status(module, registry)}\n")
+    stdout.write("\n")
+    stdout.write("Description:\n")
+    stdout.write(f"  {module.description}\n")
+    stdout.write("\n")
+    stdout.write("Capabilities:\n")
+    stdout.write("  COMMAND     ID                NAME             STATUS\n")
+    for capability in module.capabilities:
+        command = _pad_display(capability.command, 12)
+        capability_id = _pad_display(capability.id, 18)
+        name = _pad_display(capability.name, 17)
+        status = _capability_status(capability.id, registry)
+        stdout.write(f"  {command}{capability_id}{name}{status}\n")
     return 0
 
 
@@ -552,10 +694,18 @@ def _handle_plugins(
             + "\n"
         )
     elif metadata:
+        stdout.write("ID          VERSION  KIND       DEFAULT  NAME\n")
         for item in metadata:
-            stdout.write(f"{item.id}\t{item.version}\t{item.name}\n")
+            analyzer_id = _pad_display(item.id, 12)
+            version = _pad_display(item.version, 9)
+            kind = _pad_display(item.kind.value, 11)
+            default = _pad_display("yes" if item.default_enabled else "no", 9)
+            stdout.write(f"{analyzer_id}{version}{kind}{default}{item.name}\n")
     else:
-        stdout.write("No analyzers registered. Framework shell is ready.\n")
+        stdout.write("No analyzers registered.\n")
+        stdout.write("\n")
+        stdout.write("Product capabilities may still appear under `soinsight modules`.\n")
+        stdout.write("Use `soinsight modules list` to inspect the catalog.\n")
     return 0
 
 
@@ -578,12 +728,30 @@ def _handle_doctor(
     if args.format == "json":
         stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:
-        stdout.write(f"SOInsight: {payload['soinsight_version']}\n")
-        stdout.write(f"Python: {payload['python_version']}\n")
-        stdout.write(f"Product modules: {payload['product_modules']}\n")
-        stdout.write(f"Registered analyzers: {payload['registered_analyzers']}\n")
+        missing_tools = [name for name, path in payload["legacy_tools"].items() if not path]
+        stdout.write("SOInsight doctor\n")
+        stdout.write("\n")
+        stdout.write("Core:\n")
+        stdout.write(f"  Version               {payload['soinsight_version']}\n")
+        stdout.write(f"  Python                {payload['python_version']}\n")
+        stdout.write(f"  Executable            {payload['python_executable']}\n")
+        stdout.write("\n")
+        stdout.write("Capabilities:\n")
+        stdout.write(f"  Product modules        {payload['product_modules']}\n")
+        stdout.write(f"  Registered analyzers   {payload['registered_analyzers']}\n")
+        stdout.write("\n")
+        stdout.write("External tools:\n")
         for name, path in payload["legacy_tools"].items():
-            stdout.write(f"{name}: {path or 'not found'}\n")
+            tool = _pad_display(name, 22)
+            status = _pad_display("ok" if path else "missing", 9)
+            stdout.write(f"  {tool}{status}{path or ''}\n")
+        stdout.write("\n")
+        stdout.write("Status:\n")
+        stdout.write(f"  {'warning' if missing_tools else 'ok'}\n")
+        if missing_tools:
+            stdout.write("\n")
+            stdout.write("Hint:\n")
+            stdout.write("  Install binutils: sudo apt-get install binutils\n")
     return 0
 
 
@@ -701,9 +869,12 @@ def main(
     module_catalog = modules or create_builtin_module_catalog()
     parser = build_parser(module_catalog)
     raw_argv = sys.argv[1:] if argv is None else argv
+    output_stream = stdout or sys.stdout
+    if raw_argv in ([], ["-h"], ["--help"]):
+        output_stream.write(_render_main_help())
+        return 0
     rewritten_argv = _rewrite_module_analysis_command(raw_argv, module_catalog)
     args = parser.parse_args(rewritten_argv)
-    output_stream = stdout or sys.stdout
     analyzer_registry = registry or create_analyzer_registry()
     profile_registry = profiles or ProfileRegistry()
     renderer_registry = renderers or create_default_renderer_registry()
@@ -712,7 +883,7 @@ def main(
     )
 
     if not args.command:
-        parser.print_help(file=output_stream)
+        output_stream.write(_render_main_help())
         return 0
     if args.handler == "module_help":
         args.help_parser.print_help(file=output_stream)
@@ -728,7 +899,7 @@ def main(
             output_stream,
         )
     if args.handler == "modules":
-        return _handle_modules(args, module_catalog, output_stream)
+        return _handle_modules(args, module_catalog, analyzer_registry, output_stream)
     if args.handler == "plugins":
         return _handle_plugins(args, analyzer_registry, output_stream)
     if args.handler == "doctor":

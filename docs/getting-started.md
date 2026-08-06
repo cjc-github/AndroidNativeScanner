@@ -99,10 +99,10 @@ soinsight scan README.md --format json
 
 预期：
 
-- `modules list` 显示六个产品模块；
-- `plugins list` 当前显示 0 个 Analyzer；
-- `doctor` 显示 `Product modules: 6`；
-- 未选择 Analyzer 的 `scan` 返回包含 `NO_ANALYZERS_SELECTED` 的结构化结果。
+- `modules list` 显示六个产品模块及其实现状态；
+- `plugins list` 当前至少显示内置 `basic.file` Analyzer；
+- `doctor` 以健康检查格式显示 `Product modules        6`；
+- 默认 `scan README.md --format json` 会执行默认启用的 `basic.file` Analyzer。
 
 ## 7. 创建首个 YAML 配置
 
