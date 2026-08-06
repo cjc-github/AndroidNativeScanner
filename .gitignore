@@ -186,3 +186,8 @@ test/
 target/
 # SOInsight local state
 .soinsight/
+
+
+# Input and output directories
+in/
+out/
