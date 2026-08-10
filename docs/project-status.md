@@ -56,7 +56,7 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`66 passed`。
+当前自动化测试：`68 passed`。
 
 ## 3. 已有外壳但未实现
 
@@ -88,7 +88,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 3. 实现 `security.hardening` 和基础规则（✅ hardening 已完成；基础规则待做）；
 4. 固化数据字段与依赖（待做）；
 5. 增加 `quick`/`security` Profile（✅ 已完成）；
-6. 增加非 ELF、损坏 ELF、工具缺失测试（✅ 非 ELF/DYN 路径已覆盖；损坏 ELF、工具缺失待做）；
+6. 增加非 ELF、损坏 ELF、工具缺失测试（✅ 非 ELF、截断 ELF、未知字段降级已覆盖；工具缺失待做）；
 7. 与 V1 样本结果对照（待做）。
 
 验收：

@@ -52,3 +52,50 @@ def test_basic_elf_analyzer_rejects_non_elf(tmp_path):
 
     assert result.status == AnalysisStatus.FAILED
     assert result.diagnostics[0].code == "INVALID_ELF"
+
+
+def test_basic_elf_analyzer_rejects_truncated_elf_header(tmp_path):
+    sample = tmp_path / "truncated.so"
+    sample.write_bytes(b"\x7fELF" + bytes(30))  # valid magic but header < 52 bytes
+    analyzer = BasicElfAnalyzer()
+    target = _target(sample)
+    context = AnalysisContext("run", target, RuntimeConfig())
+
+    result = analyzer.analyze(target, context)
+
+    assert result.status == AnalysisStatus.FAILED
+    assert result.diagnostics[0].code == "INVALID_ELF"
+
+
+def _elf64_header_with(type_: int, machine: int) -> bytes:
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
+    header = (
+        type_.to_bytes(2, "little")
+        + machine.to_bytes(2, "little")
+        + (1).to_bytes(4, "little")
+        + (0x401000).to_bytes(8, "little")
+        + (64).to_bytes(8, "little")
+        + (1024).to_bytes(8, "little")
+        + (0).to_bytes(4, "little")
+        + (64).to_bytes(2, "little")
+        + (56).to_bytes(2, "little")
+        + (8).to_bytes(2, "little")
+        + (64).to_bytes(2, "little")
+        + (12).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+    )
+    return ident + header
+
+
+def test_basic_elf_analyzer_degrades_unknown_type_and_machine(tmp_path):
+    sample = tmp_path / "unknown.so"
+    sample.write_bytes(_elf64_header_with(type_=99, machine=999))
+    analyzer = BasicElfAnalyzer()
+    target = _target(sample)
+    context = AnalysisContext("run", target, RuntimeConfig())
+
+    result = analyzer.analyze(target, context)
+
+    assert result.status == AnalysisStatus.SUCCESS
+    assert result.data["type"] == "99"
+    assert result.data["machine"] == "999"
