@@ -84,7 +84,7 @@ soinsight basic elf libfoo.so --format json
 soinsight scan libfoo.so --format json --output result.json
 ```
 
-当前支持 Text 和 JSON。Markdown、HTML、SARIF 尚未实现。
+当前支持 Text、JSON、Markdown、HTML。SARIF 尚未实现。
 
 ## 7. 环境诊断
 

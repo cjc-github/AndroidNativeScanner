@@ -110,7 +110,7 @@ AndroidNativeScanner/
 │       ├── application/          # 应用服务层
 │       ├── core/                 # Analyzer/Rule/Planner/Runtime 等共享机制
 │       ├── analyzers/            # 具体 Analyzer 注册位置
-│       ├── renderers/            # Text/JSON 输出
+│       ├── renderers/            # Text/JSON/Markdown/HTML 输出
 │       ├── infrastructure/       # 配置、工具、存储、插件边界
 │       └── compatibility/        # V1 兼容适配预留
 ├── tests/                        # V2 单元与集成测试
@@ -133,7 +133,7 @@ V2 已具备：
 - Analyzer/Rule/Profile/Renderer 扩展接口；
 - Analyzer 依赖 DAG、串行 Scheduler 和失败隔离；
 - Target/Result/Finding/Diagnostic 统一模型；
-- Text/JSON Renderer、ToolRunner、ArtifactStore 基础边界；
+- Text/JSON/Markdown/HTML Renderer、ToolRunner、ArtifactStore 基础边界；
 - Python 包安装和 Wheel 构建脚本。
 
 V2 已实现 `basic.file`，尚未具备其他具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。

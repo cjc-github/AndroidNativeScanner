@@ -127,6 +127,27 @@ def test_cli_uses_builtin_security_profile(tmp_path):
     ]
 
 
+def test_cli_renders_markdown_and_html_reports(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_minimal_elf64_little())
+
+    stdout = StringIO()
+    assert main(
+        ["scan", str(target), "--profile", "quick", "--format", "markdown"], stdout=stdout
+    ) == 0
+    markdown = stdout.getvalue()
+    assert markdown.startswith("# SOInsight Analysis Report\n")
+    assert "## Target" in markdown
+
+    stdout = StringIO()
+    assert main(
+        ["scan", str(target), "--profile", "quick", "--format", "html"], stdout=stdout
+    ) == 0
+    html = stdout.getvalue()
+    assert html.startswith("<!doctype html>")
+    assert "<title>SOInsight Analysis Report</title>" in html
+
+
 def test_cli_resolves_analyzers_from_profile(tmp_path):
     from soinsight.core.profiles import ProfileRegistry, ScanProfile
 

@@ -42,7 +42,7 @@ def _add_runtime_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "markdown", "html"),
         default=None,
         help="Output format (overrides YAML; default: text)",
     )

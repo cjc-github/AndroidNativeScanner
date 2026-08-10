@@ -69,7 +69,7 @@ soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TA
 | 参数 | 默认值 | 说明 |
 |---|---:|---|
 | `--config NAME_OR_PATH` | 活动配置/无 | 使用托管名称或外部 YAML |
-| `--format {text,json}` | YAML/`text` | 输出格式 |
+| `--format {text,json,markdown,html}` | YAML/`text` | 输出格式 |
 | `-o, --output PATH` | stdout | 输出文件，`-` 表示 stdout |
 | `-j, --jobs N` | `1` | 并行度；`>1` 时同 stage 内 Analyzer 并发执行 |
 | `--timeout SECONDS` | `60` | 超时配置 |
