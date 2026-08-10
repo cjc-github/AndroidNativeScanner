@@ -24,26 +24,6 @@ class FrameworkAnalyzer(Analyzer):
         )
 
 
-def _minimal_elf64_little() -> bytes:
-    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
-    header = (
-        (3).to_bytes(2, "little")
-        + (62).to_bytes(2, "little")
-        + (1).to_bytes(4, "little")
-        + (0x401000).to_bytes(8, "little")
-        + (64).to_bytes(8, "little")
-        + (1024).to_bytes(8, "little")
-        + (0).to_bytes(4, "little")
-        + (64).to_bytes(2, "little")
-        + (56).to_bytes(2, "little")
-        + (8).to_bytes(2, "little")
-        + (64).to_bytes(2, "little")
-        + (12).to_bytes(2, "little")
-        + (1).to_bytes(2, "little")
-    )
-    return ident + header
-
-
 def test_cli_runs_registered_analyzer_and_emits_json(tmp_path):
     target = tmp_path / "sample.so"
     target.write_bytes(b"ELF-test")
@@ -63,9 +43,9 @@ def test_cli_runs_registered_analyzer_and_emits_json(tmp_path):
     assert payload["result"]["results"]["basic.file"]["data"]["size"] == 8
 
 
-def test_basic_module_command_runs_available_basic_analysis(tmp_path):
+def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_elf64_little):
     target = tmp_path / "sample.so"
-    target.write_bytes(_minimal_elf64_little())
+    target.write_bytes(minimal_elf64_little)
     stdout = StringIO()
 
     exit_code = main(["basic", str(target), "--format", "json"], stdout=stdout)
@@ -79,9 +59,9 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path):
     assert payload["result"]["results"]["basic.elf"]["data"]["type"] == "DYN"
 
 
-def test_cli_runs_builtin_basic_elf_analyzer(tmp_path):
+def test_cli_runs_builtin_basic_elf_analyzer(tmp_path, minimal_elf64_little):
     target = tmp_path / "libsample.so"
-    target.write_bytes(_minimal_elf64_little())
+    target.write_bytes(minimal_elf64_little)
     stdout = StringIO()
 
     exit_code = main(["basic", "elf", str(target), "--format", "json"], stdout=stdout)
@@ -92,9 +72,9 @@ def test_cli_runs_builtin_basic_elf_analyzer(tmp_path):
     assert payload["result"]["results"]["basic.elf"]["data"]["machine"] == "x86-64"
 
 
-def test_cli_runs_first_cross_domain_chain(tmp_path):
+def test_cli_runs_first_cross_domain_chain(tmp_path, minimal_elf64_little):
     target = tmp_path / "libsample.so"
-    target.write_bytes(_minimal_elf64_little())
+    target.write_bytes(minimal_elf64_little)
     stdout = StringIO()
 
     exit_code = main(["security", "hardening", str(target), "--format", "json"], stdout=stdout)
@@ -109,9 +89,9 @@ def test_cli_runs_first_cross_domain_chain(tmp_path):
     assert "security.hardening" in payload["result"]["results"]
 
 
-def test_cli_uses_builtin_security_profile(tmp_path):
+def test_cli_uses_builtin_security_profile(tmp_path, minimal_elf64_little):
     target = tmp_path / "libsample.so"
-    target.write_bytes(_minimal_elf64_little())
+    target.write_bytes(minimal_elf64_little)
     stdout = StringIO()
 
     exit_code = main(["scan", str(target), "--profile", "security", "--format", "json"], stdout=stdout)
@@ -127,9 +107,9 @@ def test_cli_uses_builtin_security_profile(tmp_path):
     ]
 
 
-def test_cli_renders_markdown_and_html_reports(tmp_path):
+def test_cli_renders_markdown_and_html_reports(tmp_path, minimal_elf64_little):
     target = tmp_path / "libsample.so"
-    target.write_bytes(_minimal_elf64_little())
+    target.write_bytes(minimal_elf64_little)
 
     stdout = StringIO()
     assert main(

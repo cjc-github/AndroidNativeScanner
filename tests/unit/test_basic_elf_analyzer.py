@@ -19,29 +19,9 @@ def _target(path: Path) -> AnalysisTarget:
     )
 
 
-def _minimal_elf64_little() -> bytes:
-    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
-    header = (
-        (3).to_bytes(2, "little")
-        + (62).to_bytes(2, "little")
-        + (1).to_bytes(4, "little")
-        + (0x401000).to_bytes(8, "little")
-        + (64).to_bytes(8, "little")
-        + (1024).to_bytes(8, "little")
-        + (0).to_bytes(4, "little")
-        + (64).to_bytes(2, "little")
-        + (56).to_bytes(2, "little")
-        + (8).to_bytes(2, "little")
-        + (64).to_bytes(2, "little")
-        + (12).to_bytes(2, "little")
-        + (1).to_bytes(2, "little")
-    )
-    return ident + header
-
-
-def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path):
+def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path, minimal_elf64_little):
     sample = tmp_path / "libsample.so"
-    sample.write_bytes(_minimal_elf64_little())
+    sample.write_bytes(minimal_elf64_little)
     analyzer = BasicElfAnalyzer()
     target = _target(sample)
     context = AnalysisContext("run", target, RuntimeConfig())
