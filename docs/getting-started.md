@@ -116,7 +116,7 @@ soinsight config current
 soinsight scan README.md --format json
 ```
 
-由于真实 Analyzer 尚未迁移，最后一步可能返回 `ANALYSIS_PLAN_ERROR`；诊断中列出的 Analyzer 应来自 YAML，这说明选择链路已生效。完整说明见 [YAML 配置指南](configuration.md)。
+`basic.file` 已实现会正常执行；若 YAML 选择了尚未注册的 `basic.elf`，会返回 `ANALYSIS_PLAN_ERROR`。诊断中列出的 Analyzer 应来自 YAML，这说明选择链路已生效。完整说明见 [YAML 配置指南](configuration.md)。
 
 ## 8. 运行 V1
 
@@ -148,6 +148,6 @@ PYTHONPATH=src python3 -m soinsight --help
 
 领域命令已经建立，但 `basic.elf` 具体 Analyzer 尚未注册，这是当前阶段预期行为。
 
-### 为什么 `modules` 有内容而 `plugins` 为空？
+### 为什么 `modules` 比 `plugins` 多？
 
-`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已经完成，后者等待迁移真实 Analyzer。
+`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已包含 42 项能力定义，后者当前仅注册了 `basic.file`，其余 Analyzer 待实现后注册。

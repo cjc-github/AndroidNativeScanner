@@ -1,6 +1,6 @@
 # SOInsight V2 使用手册
 
-> 本文档对应 2026-08-04 的仓库实现。V2 已搭建六大产品模块和 CLI 外壳，但尚未接入具体业务 Analyzer。
+> 本文档对应 2026-08-10 的仓库实现。V2 已搭建六大产品模块和 CLI 框架，并实现首个真实 `basic.file` Analyzer；其余能力保持 `partial` 或 `planned`。
 
 ## 1. 查看模块
 
@@ -24,7 +24,7 @@ soinsight ai function-name libfoo.so
 soinsight automation fuzz-target libfoo.so
 ```
 
-当前命令会进入统一 Runtime；由于 Analyzer 尚未注册，将结构化返回 `ANALYSIS_PLAN_ERROR`，而不是执行真实分析。
+当前命令会进入统一 Runtime。已注册的能力（如 `basic.file`）执行真实分析；未注册的能力（如 `basic elf`、`security hardening`）结构化返回 `ANALYSIS_PLAN_ERROR`。
 
 ## 3. 综合扫描
 
@@ -100,7 +100,7 @@ soinsight modules list   # 产品“准备提供什么”
 soinsight plugins list   # 当前进程“实际加载了什么 Analyzer”
 ```
 
-在当前阶段，模块数量为 6、能力数量为 42，而 Analyzer 数量可以是 0。这不是冲突：外部产品框架已建立，具体实现仍待迁移。
+在当前阶段，模块数量为 6、能力数量为 42，而 Analyzer 数量为 1（`basic.file`）。这不是冲突：外部产品框架已建立，具体实现仍在迁移中。
 
 ## 9. 报告、缓存和 YAML 配置
 

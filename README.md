@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-08-04，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立；具体 ELF/安全/动态/AI Analyzer 尚未迁移。因此领域命令可能返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-08-10，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file` Analyzer 已实现；ELF/安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
@@ -46,7 +46,7 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（当前为能力外壳，具体 Analyzer 未实现）
+# 领域命令（basic.file 已实现；其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 PYTHONPATH=src python3 -m soinsight security hardening README.md
 
@@ -136,7 +136,7 @@ V2 已具备：
 - Text/JSON Renderer、ToolRunner、ArtifactStore 基础边界；
 - Python 包安装和 Wheel 构建脚本。
 
-V2 尚未具备具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
+V2 已实现 `basic.file`，尚未具备其他具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
 
 ## 开发原则
 
