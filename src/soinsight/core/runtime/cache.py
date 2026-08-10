@@ -4,8 +4,51 @@ import json
 
 from ...infrastructure.config import RuntimeConfig
 from ...infrastructure.serialization import to_primitive
-from ..models import AnalysisResult, AnalysisStatus, AnalysisTarget
+from ..models import (
+    AnalysisResult,
+    AnalysisStatus,
+    AnalysisTarget,
+    Confidence,
+    Diagnostic,
+    DiagnosticLevel,
+    Finding,
+    Severity,
+)
 from ..models.result import RESULT_SCHEMA_VERSION
+
+
+def _reconstruct_finding(item: dict) -> Finding:
+    return Finding(
+        rule_id=item["rule_id"],
+        title=item["title"],
+        category=item["category"],
+        severity=Severity(item["severity"]),
+        confidence=Confidence(item["confidence"]),
+        message=item["message"],
+        fingerprint=item.get("fingerprint", ""),
+        rule_version=item.get("rule_version", "1.0.0"),
+        locations=tuple(item.get("locations", ())),
+        evidence=tuple(item.get("evidence", ())),
+        remediation=item.get("remediation"),
+        references=tuple(item.get("references", ())),
+    )
+
+
+def _reconstruct_findings(items: list[dict]) -> list[Finding]:
+    return [_reconstruct_finding(item) for item in items]
+
+
+def _reconstruct_diagnostics(items: list[dict]) -> list[Diagnostic]:
+    return [
+        Diagnostic(
+            code=item["code"],
+            level=DiagnosticLevel(item["level"]),
+            message=item["message"],
+            analyzer_id=item.get("analyzer_id"),
+            details=dict(item.get("details", {})),
+        )
+        for item in items
+    ]
 
 
 class RuntimeCache:
@@ -30,8 +73,8 @@ class RuntimeCache:
             analyzer_version=payload["analyzer_version"],
             status=AnalysisStatus(payload["status"]),
             data=payload.get("data", {}),
-            findings=payload.get("findings", []),
-            diagnostics=payload.get("diagnostics", []),
+            findings=_reconstruct_findings(payload.get("findings", [])),
+            diagnostics=_reconstruct_diagnostics(payload.get("diagnostics", [])),
             duration_ms=payload.get("duration_ms", 0),
             cache_hit=True,
             schema_version=payload.get("schema_version", RESULT_SCHEMA_VERSION),

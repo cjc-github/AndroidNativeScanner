@@ -51,11 +51,7 @@ class AnalysisRuntime:
         self.scheduler.run(plan, self.registry, context, getattr(config, "jobs", 1))
         if cache:
             for result in context.results.values():
-                if (
-                    result.status == AnalysisStatus.SUCCESS
-                    and not result.cache_hit
-                    and not result.findings
-                ):
+                if result.status == AnalysisStatus.SUCCESS and not result.cache_hit:
                     cache.put(target, result)
         self.rule_engine.evaluate(context)
         duration_ms = int((perf_counter() - started) * 1000)
