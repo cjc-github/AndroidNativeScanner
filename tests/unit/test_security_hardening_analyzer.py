@@ -49,3 +49,40 @@ def test_security_hardening_skips_shared_object(tmp_path):
     assert result.status == AnalysisStatus.SUCCESS
     assert not result.findings
     assert result.data["hardening_summary"]["finding_count"] == 0
+
+
+def test_security_hardening_flags_executable_stack_and_missing_relro(tmp_path):
+    context = _target_and_context(tmp_path, name="app")
+    context.add_result(
+        AnalysisResult(
+            analyzer_id="basic.elf",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={"type": "DYN", "executable_stack": True, "has_gnu_relro": False},
+        )
+    )
+
+    result = SecurityHardeningAnalyzer().analyze(context.target, context)
+
+    assert result.status == AnalysisStatus.SUCCESS
+    rule_ids = {finding.rule_id for finding in result.findings}
+    assert "security.hardening.executable-stack" in rule_ids
+    assert "security.hardening.missing-relro" in rule_ids
+    assert result.data["hardening_summary"]["finding_count"] == 2
+
+
+def test_security_hardening_accepts_hardened_dynamic_binary(tmp_path):
+    context = _target_and_context(tmp_path, name="libsample.so")
+    context.add_result(
+        AnalysisResult(
+            analyzer_id="basic.elf",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={"type": "DYN", "executable_stack": False, "has_gnu_relro": True},
+        )
+    )
+
+    result = SecurityHardeningAnalyzer().analyze(context.target, context)
+
+    assert result.status == AnalysisStatus.SUCCESS
+    assert not result.findings

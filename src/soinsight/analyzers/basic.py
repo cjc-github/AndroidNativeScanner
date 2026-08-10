@@ -66,6 +66,42 @@ _ELF_MACHINES = {
     183: "AArch64",
 }
 
+_PT_GNU_STACK = 0x6474E551
+_PT_GNU_RELRO = 0x6474E552
+_PF_X = 0x1
+
+
+def _parse_program_header_hardening(
+    path: Path, elf_class: str, endian: str, phoff: int, phnum: int
+) -> dict:
+    """Return NX/RELRO facts from the program header table, or None if unreadable.
+
+    None means the table is absent or truncated, so callers must not treat the
+    absence of a feature as proof of its absence.
+    """
+    if elf_class not in ("ELF64", "ELF32") or phoff <= 0 or phnum <= 0:
+        return {"has_gnu_relro": None, "executable_stack": None}
+    prefix = "<" if endian == "little" else ">"
+    if elf_class == "ELF64":
+        phdr_size, phdr_format = 56, prefix + "IIQQQQQQ"
+    else:
+        phdr_size, phdr_format = 32, prefix + "IIIIIIII"
+    total = phnum * phdr_size
+    raw = path.read_bytes()[phoff:phoff + total]
+    if len(raw) < total:
+        return {"has_gnu_relro": None, "executable_stack": None}
+    has_relro = False
+    executable_stack = None
+    for index in range(phnum):
+        p_type, p_flags = struct.unpack_from(
+            phdr_format, raw, index * phdr_size
+        )[:2]
+        if p_type == _PT_GNU_RELRO:
+            has_relro = True
+        elif p_type == _PT_GNU_STACK:
+            executable_stack = bool(p_flags & _PF_X)
+    return {"has_gnu_relro": has_relro, "executable_stack": executable_stack}
+
 
 class BasicElfAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
@@ -96,10 +132,13 @@ class BasicElfAnalyzer(Analyzer):
         prefix = "<" if endian == "little" else ">"
         if elf_class == "ELF64":
             fields = struct.unpack(prefix + "HHIQQQIHHHHHH", data[16:64])
-            e_type, e_machine, _, e_entry, _, _, _, _, _, e_phnum, _, e_shnum, _ = fields
+            e_type, e_machine, _, e_entry, e_phoff, _, _, _, _, e_phnum, _, e_shnum, _ = fields
         else:
             fields = struct.unpack(prefix + "HHIIIIIHHHHHH", data[16:52])
-            e_type, e_machine, _, e_entry, _, _, _, _, _, e_phnum, _, e_shnum, _ = fields
+            e_type, e_machine, _, e_entry, e_phoff, _, _, _, _, e_phnum, _, e_shnum, _ = fields
+        hardening = _parse_program_header_hardening(
+            target.real_path, elf_class, endian, e_phoff, e_phnum
+        )
         return AnalysisResult(
             analyzer_id=self.metadata.id,
             analyzer_version=self.metadata.version,
@@ -112,5 +151,7 @@ class BasicElfAnalyzer(Analyzer):
                 "entry_point": hex(e_entry),
                 "program_header_count": e_phnum,
                 "section_header_count": e_shnum,
+                "has_gnu_relro": hardening["has_gnu_relro"],
+                "executable_stack": hardening["executable_stack"],
             },
         )

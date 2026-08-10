@@ -38,6 +38,8 @@ def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path, minimal_elf64_
         "entry_point": "0x401000",
         "program_header_count": 8,
         "section_header_count": 12,
+        "has_gnu_relro": None,
+        "executable_stack": None,
     }
 
 
@@ -99,3 +101,63 @@ def test_basic_elf_analyzer_degrades_unknown_type_and_machine(tmp_path):
     assert result.status == AnalysisStatus.SUCCESS
     assert result.data["type"] == "99"
     assert result.data["machine"] == "999"
+
+
+def _phdr64(p_type: int, p_flags: int) -> bytes:
+    return p_type.to_bytes(4, "little") + p_flags.to_bytes(4, "little") + bytes(48)
+
+
+def _elf64_with_phdrs(phdrs: list[bytes]) -> bytes:
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
+    phoff = 64
+    phnum = len(phdrs)
+    header = (
+        (3).to_bytes(2, "little")  # e_type DYN
+        + (62).to_bytes(2, "little")
+        + (1).to_bytes(4, "little")
+        + (0x401000).to_bytes(8, "little")
+        + (phoff).to_bytes(8, "little")
+        + (phoff + phnum * 56).to_bytes(8, "little")
+        + (0).to_bytes(4, "little")
+        + (64).to_bytes(2, "little")
+        + (56).to_bytes(2, "little")
+        + (phnum).to_bytes(2, "little")
+        + (64).to_bytes(2, "little")
+        + (0).to_bytes(2, "little")
+        + (0).to_bytes(2, "little")
+    )
+    return ident + header + b"".join(phdrs)
+
+
+def test_basic_elf_analyzer_parses_program_header_hardening_facts(tmp_path):
+    sample = tmp_path / "lib.so"
+    sample.write_bytes(
+        _elf64_with_phdrs(
+            [
+                _phdr64(0x6474E551, 0x7),  # PT_GNU_STACK executable
+                _phdr64(0x6474E552, 0x4),  # PT_GNU_RELRO
+            ]
+        )
+    )
+    analyzer = BasicElfAnalyzer()
+    target = _target(sample)
+    context = AnalysisContext("run", target, RuntimeConfig())
+
+    result = analyzer.analyze(target, context)
+
+    assert result.data["has_gnu_relro"] is True
+    assert result.data["executable_stack"] is True
+
+
+def test_basic_elf_analyzer_reports_none_when_phdrs_truncated(tmp_path):
+    sample = tmp_path / "short.so"
+    sample.write_bytes(_elf64_with_phdrs([_phdr64(0x6474E551, 0x4)])[:70])
+    analyzer = BasicElfAnalyzer()
+    target = _target(sample)
+    context = AnalysisContext("run", target, RuntimeConfig())
+
+    result = analyzer.analyze(target, context)
+
+    assert result.status == AnalysisStatus.SUCCESS
+    assert result.data["has_gnu_relro"] is None
+    assert result.data["executable_stack"] is None

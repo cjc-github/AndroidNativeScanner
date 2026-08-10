@@ -33,7 +33,7 @@
 - [x] Wheel 构建脚本和入口校验；
 - [x] 内置 `basic.file` Analyzer（文件属性、SHA-256、Magic 与格式识别）；
 - [x] 内置 `basic.elf` Analyzer（ELF 类、字节序、类型、机器、入口与段表计数）；
-- [x] 内置 `security.hardening` Analyzer（基于 ELF 事实生成 Finding）；
+- [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
 - [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
 - [x] Runtime 文件缓存（按目标 sha256 + analyzer 版本命中/写入）；
@@ -56,7 +56,7 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`68 passed`。
+当前自动化测试：`72 passed`。
 
 ## 3. 已有外壳但未实现
 
