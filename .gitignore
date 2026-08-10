@@ -191,3 +191,5 @@ target/
 # Input and output directories
 in/
 out/
+# Claude Code 本地运行时（worktrees 等）
+.claude/
