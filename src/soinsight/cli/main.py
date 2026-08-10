@@ -13,7 +13,7 @@ from ..analyzers import register_builtin_analyzers
 from ..application import AnalysisRequest, AnalysisService, ApplicationResponse
 from ..core.analyzer import AnalyzerRegistry
 from ..core.models import Diagnostic, DiagnosticLevel
-from ..core.profiles import ProfileRegistry
+from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
 from ..core.runtime import AnalysisRuntime
 from ..infrastructure.config import AnalysisConfig, ConfigLoader, YamlConfigStore
 from ..infrastructure.plugins import PluginLoader
@@ -894,7 +894,7 @@ def main(
     rewritten_argv = _rewrite_module_analysis_command(raw_argv, module_catalog)
     args = parser.parse_args(rewritten_argv)
     analyzer_registry = registry or create_analyzer_registry()
-    profile_registry = profiles or ProfileRegistry()
+    profile_registry = profiles or create_builtin_profile_registry()
     renderer_registry = renderers or create_default_renderer_registry()
     yaml_config_store = config_store or YamlConfigStore(
         module_catalog, getattr(args, "config_dir", None)

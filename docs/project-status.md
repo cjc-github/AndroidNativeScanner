@@ -4,7 +4,7 @@
 
 ## 1. 当前里程碑
 
-> Phase 1A++ — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf` 真实 Analyzer 和第一条跨域链路（`basic.file → basic.elf → security.hardening`）已完成；内置 Profile 与运行时基础设施仍在建设中。
+> Phase 1A++ — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf` 真实 Analyzer、第一条跨域链路（`basic.file → basic.elf → security.hardening`）和内置 Profile 已完成；运行时基础设施仍在建设中。
 
 这里的”模块完成”指模块目录、能力 ID、CLI 路由和测试完成；`basic.file` 是首个接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
@@ -35,6 +35,7 @@
 - [x] 内置 `basic.elf` Analyzer（ELF 类、字节序、类型、机器、入口与段表计数）；
 - [x] 内置 `security.hardening` Analyzer（基于 ELF 事实生成 Finding）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
+- [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
 - [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
@@ -50,14 +51,14 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`53 passed`。
+当前自动化测试：`54 passed`。
 
 ## 3. 已有外壳但未实现
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
 | 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`security.hardening` 之外的 Analyzer/Rule/Provider |
-| `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file` | 内置 Profile（`quick`/`security`） |
+| `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file`、内置 Profile（`quick`/`security`） | 无 |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
 | AI | 命令和能力定义 | Provider、隐私、证据引用、成本治理 |
@@ -81,7 +82,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 2. 实现并注册 `basic.elf`（✅ 已完成）；
 3. 实现 `security.hardening` 和基础规则（✅ hardening 已完成；基础规则待做）；
 4. 固化数据字段与依赖（待做）；
-5. 增加 `quick`/`security` Profile（待做）；
+5. 增加 `quick`/`security` Profile（✅ 已完成）；
 6. 增加非 ELF、损坏 ELF、工具缺失测试（待做）；
 7. 与 V1 样本结果对照（待做）。
 
@@ -109,7 +110,7 @@ soinsight scan libfoo.so --module basic,security --format json
 ### Phase 2：共享基础设施
 
 - JSON Schema 和兼容测试；
-- 内置 Profile；
+- 内置 Profile（✅ 已完成）；
 - Runtime 缓存；
 - Markdown/HTML/SARIF；
 - 插件发现；
@@ -166,7 +167,7 @@ soinsight scan libfoo.so --module basic,security --format json
 
 - 第一条跨域真实链路（✅ 已完成）；
 - File/ELF/Symbols/Strings/Hardening/Dangerous API；
-- 内置 Profile；
+- 内置 Profile（✅ 已完成）；
 - CLI 与文档一致；
 - JSON Schema；
 - V1/V2 Golden 回归；

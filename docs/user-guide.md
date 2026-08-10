@@ -53,14 +53,16 @@ soinsight scan libfoo.so --enable basic.file,basic.elf
 
 ```bash
 soinsight scan libfoo.so --profile quick
+soinsight scan libfoo.so --profile security
 ```
 
-Profile 用于保存跨域能力组合。当前框架支持 ProfileRegistry，但默认 CLI 尚未内置 Profile，因此会返回 `PROFILE_NOT_FOUND`。
+Profile 用于保存跨域能力组合。默认 CLI 已内置：
+
+- `quick`：`basic.file`、`basic.elf`；
+- `security`：`security.hardening`（含其依赖链）。
 
 规划中的 Profile：
 
-- `quick`：基础文件、ELF、符号和字符串；
-- `security`：安全保护、危险 API、漏洞模式与必要依赖；
 - `deep`：基础和高级静态分析；
 - `ci`：稳定、可复现、适合风险门禁的组合。
 

@@ -109,6 +109,24 @@ def test_cli_runs_first_cross_domain_chain(tmp_path):
     assert "security.hardening" in payload["result"]["results"]
 
 
+def test_cli_uses_builtin_security_profile(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_minimal_elf64_little())
+    stdout = StringIO()
+
+    exit_code = main(["scan", str(target), "--profile", "security", "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["result"]["profile"] == "security"
+    assert payload["result"]["requested_analyzers"] == ["security.hardening"]
+    assert payload["result"]["resolved_analyzers"] == [
+        "basic.file",
+        "basic.elf",
+        "security.hardening",
+    ]
+
+
 def test_cli_resolves_analyzers_from_profile(tmp_path):
     from soinsight.core.profiles import ProfileRegistry, ScanProfile
 
