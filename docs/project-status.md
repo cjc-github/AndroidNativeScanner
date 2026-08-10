@@ -1,12 +1,12 @@
 # SOInsight V2 项目状态与路线图
 
-**状态日期：2026-08-04**
+**状态日期：2026-08-10**
 
 ## 1. 当前里程碑
 
-> Phase 1A+ — 六大产品模块和共享技术框架已经搭建；具体 Analyzer 迁移尚未开始。
+> Phase 1A++ — 六大产品模块、共享技术框架、CLI 输出规范和 `basic.file` 真实 Analyzer 已完成；第一条跨域真实链路仍在建设中。
 
-这里的“模块完成”指模块目录、能力 ID、CLI 路由和测试完成，不代表 42 项业务能力已经实现。
+这里的”模块完成”指模块目录、能力 ID、CLI 路由和测试完成；`basic.file` 是首个接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -30,7 +30,9 @@
 - [x] 异常隔离、依赖跳过和结果聚合；
 - [x] Text/JSON Renderer；
 - [x] ToolRunner、ArtifactStore 和 PluginLoader 边界；
-- [x] Wheel 构建脚本和入口校验。
+- [x] Wheel 构建脚本和入口校验；
+- [x] 内置 `basic.file` Analyzer（文件属性、SHA-256、Magic 与格式识别）；
+- [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
 
@@ -45,14 +47,14 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`30 passed`。
+当前自动化测试：`44 passed`。
 
 ## 3. 已有外壳但未实现
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | 具体 Analyzer/Rule/Provider |
-| `scan` | 目标解析、CLI/YAML 选择、Runtime、输出 | 内置 Analyzer/Profile |
+| 六大模块 | Catalog、CLI、ID | `basic.file` 之外的 Analyzer/Rule/Provider |
+| `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file` | 内置 Profile（`quick`/`security`） |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
 | AI | 命令和能力定义 | Provider、隐私、证据引用、成本治理 |
@@ -72,7 +74,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 
 任务：
 
-1. 实现并注册 `basic.file`；
+1. 实现并注册 `basic.file`（✅ 已完成）；
 2. 实现并注册 `basic.elf`；
 3. 实现 `security.hardening` 和基础规则；
 4. 固化数据字段与依赖；
