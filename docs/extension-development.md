@@ -233,3 +233,27 @@ python3 -m compileall -q src/soinsight
 ./scripts/build_cli.sh
 git diff --check
 ```
+
+## 12. 通过 Entry Point 分发插件
+
+外部包可以通过 Python entry point 组 `soinsight.analyzers` 暴露 Analyzer。每个 entry point 必须加载一个可调用对象，返回一个 Analyzer 实例或可迭代的 Analyzer 实例集合。
+
+在外部包的 `setup.cfg` 中声明：
+
+```ini
+[options.entry_points]
+soinsight.analyzers =
+    my-plugin = mypackage.plugin:create_analyzers
+```
+
+对应的工厂函数：
+
+```python
+from mypackage.plugin import MyAnalyzer
+
+
+def create_analyzers():
+    return MyAnalyzer()
+```
+
+安装该包后，`soinsight plugins list` 会显示自动加载的插件 Analyzer。内置 Analyzer 仍通过 `src/soinsight/analyzers/builtin.py` 注册；entry point 加载发生在 CLI 构造默认注册表时。
