@@ -144,3 +144,29 @@ P2 终端体验能力仅影响 `text` 输出：
 - JSON 输出永不带颜色；
 - `--quiet` 在成功分析时不输出正文，失败时仍输出错误摘要；
 - 窄终端下 `modules list` 使用紧凑布局。
+
+## 8. Markdown / HTML / SARIF 输出
+
+### Markdown output
+
+`--format markdown` 生成人类可读报告，以 `# SOInsight Analysis Report` 开头，包含 `## Target`、`## Findings` 等章节。
+
+```bash
+soinsight scan libfoo.so --profile security --format markdown
+```
+
+### HTML output
+
+`--format html` 生成完整 HTML 文档：以 `<!doctype html>` 开头，含 `<title>SOInsight Analysis Report</title>`。目标路径等用户内容经 HTML 转义。
+
+```bash
+soinsight scan libfoo.so --profile security --format html -o report.html
+```
+
+### SARIF output
+
+`--format sarif` 生成 SARIF **2.1.0** 兼容文档，`$schema` 指向 `https://json.schemastore.org/sarif-2.1.0.json`，`runs[0].tool.driver.name` 为 `SOInsight`，每个 Finding 输出为一条 `results` 记录（`ruleId`、`level`、`message.text`、`locations`）。
+
+```bash
+soinsight scan libfoo.so --profile security --format sarif -o result.sarif
+```

@@ -88,7 +88,7 @@ soinsight scan TARGET [--config NAME_OR_PATH] [--module IDS] [--enable IDS] [--p
 
 - `--module basic,security`：展开产品模块内与当前单目标 Runtime 兼容的能力 ID；
 - `--enable basic.elf,security.hardening`：精确选择 namespaced Analyzer ID；
-- `--profile quick`：使用已注册 Profile；当前没有内置 Profile；
+- `--profile quick`：使用内置 Profile（`quick`、`security`）；
 - `--config quick-security`：加载托管 YAML 名称或外部路径；未指定时加载活动配置；
 - YAML 选择与 CLI `--module`/`--enable` 合并、去重，再应用 YAML `exclude`；
 - 没有 YAML/CLI/Profile 选择项时使用 Registry 中默认启用的 Analyzer。
@@ -96,9 +96,12 @@ soinsight scan TARGET [--config NAME_OR_PATH] [--module IDS] [--enable IDS] [--p
 ```bash
 soinsight scan libfoo.so --module basic,security --format json
 soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
+soinsight scan libfoo.so --profile security --format sarif -o result.sarif
+soinsight basic elf libfoo.so --format json
+soinsight security hardening libfoo.so --format markdown
 ```
 
-当前内置 `basic.file` Analyzer。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
+当前内置 `basic.file`、`basic.elf`、`security.hardening` Analyzer 和 `quick`/`security` Profile。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
 
 ## 5. `modules`
 

@@ -6,7 +6,7 @@
 
 > Phase 1A++ — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf` 真实 Analyzer、第一条跨域链路（`basic.file → basic.elf → security.hardening`）和内置 Profile 已完成；运行时基础设施仍在建设中。
 
-这里的”模块完成”指模块目录、能力 ID、CLI 路由和测试完成；`basic.file` 是首个接入的真实 Analyzer，不代表 42 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`security.hardening` 是首批接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -88,7 +88,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 3. 实现 `security.hardening` 和基础规则（✅ hardening 已完成；基础规则待做）；
 4. 固化数据字段与依赖（待做）；
 5. 增加 `quick`/`security` Profile（✅ 已完成）；
-6. 增加非 ELF、损坏 ELF、工具缺失测试（待做）；
+6. 增加非 ELF、损坏 ELF、工具缺失测试（✅ 非 ELF/DYN 路径已覆盖；损坏 ELF、工具缺失待做）；
 7. 与 V1 样本结果对照（待做）。
 
 验收：
