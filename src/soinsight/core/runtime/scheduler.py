@@ -1,9 +1,11 @@
 """Analyzer execution scheduler.
 
-The initial implementation is deliberately serial. The stage model preserves the
-boundary required for future parallel execution without changing analyzer APIs.
+Serial by default; when `jobs > 1`, analyzers within an independent stage run
+concurrently in a thread pool. The stage model preserves the boundary required
+for parallel execution without changing analyzer APIs.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 
 from ..analyzer import AnalysisContext, AnalyzerRegistry
@@ -22,12 +24,18 @@ class SerialScheduler:
         plan: AnalysisPlan,
         registry: AnalyzerRegistry,
         context: AnalysisContext,
+        jobs: int = 1,
     ) -> None:
         for stage in plan.stages:
-            for analyzer_id in stage.analyzer_ids:
-                if analyzer_id in context.results:
-                    continue
-                if context.cancellation.cancelled:
+            pending = [
+                analyzer_id
+                for analyzer_id in stage.analyzer_ids
+                if analyzer_id not in context.results
+            ]
+            if not pending:
+                continue
+            if context.cancellation.cancelled:
+                for analyzer_id in pending:
                     context.add_result(
                         AnalysisResult(
                             analyzer_id=analyzer_id,
@@ -35,8 +43,18 @@ class SerialScheduler:
                             status=AnalysisStatus.CANCELLED,
                         )
                     )
-                    continue
-                self._run_one(analyzer_id, registry, context)
+                continue
+            if jobs <= 1 or len(pending) <= 1:
+                for analyzer_id in pending:
+                    self._run_one(analyzer_id, registry, context)
+            else:
+                with ThreadPoolExecutor(max_workers=jobs) as executor:
+                    list(
+                        executor.map(
+                            lambda analyzer_id: self._run_one(analyzer_id, registry, context),
+                            pending,
+                        )
+                    )
 
     def _run_one(
         self,

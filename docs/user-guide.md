@@ -130,7 +130,7 @@ YAML 可以订制模块、模块内功能点、跨模块 capability、排除项�
 
 - `report` 不做完整 SOInsight Schema 校验；
 - ArtifactStore 尚未接入 Runtime；
-- `--jobs` 已进入配置但尚未启用并行。
+- `--jobs > 1` 已支持同 stage Analyzer 并发；资源预算和取消协调待做。
 
 ## 10. 常见诊断
 

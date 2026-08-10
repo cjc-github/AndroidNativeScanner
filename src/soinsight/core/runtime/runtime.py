@@ -48,7 +48,7 @@ class AnalysisRuntime:
                 cached = cache.get(target, analyzer_id, analyzer.metadata.version)
                 if cached is not None:
                     context.add_result(cached)
-        self.scheduler.run(plan, self.registry, context)
+        self.scheduler.run(plan, self.registry, context, getattr(config, "jobs", 1))
         if cache:
             for result in context.results.values():
                 if (
