@@ -11,7 +11,7 @@ class RuntimeConfig:
     quiet: bool = False
     verbose: bool = False
     no_color: bool = False
-    cache_enabled: bool = True
+    cache_enabled: bool = False
     cache_dir: Path = Path(".soinsight/cache")
     fail_fast: bool = False
     extra: dict[str, object] = field(default_factory=dict)

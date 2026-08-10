@@ -25,6 +25,8 @@ class SerialScheduler:
     ) -> None:
         for stage in plan.stages:
             for analyzer_id in stage.analyzer_ids:
+                if analyzer_id in context.results:
+                    continue
                 if context.cancellation.cancelled:
                     context.add_result(
                         AnalysisResult(

@@ -36,6 +36,7 @@
 - [x] 内置 `security.hardening` Analyzer（基于 ELF 事实生成 Finding）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
 - [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
+- [x] Runtime 文件缓存（按目标 sha256 + analyzer 版本命中/写入）；
 - [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
@@ -51,7 +52,7 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`54 passed`。
+当前自动化测试：`56 passed`。
 
 ## 3. 已有外壳但未实现
 
@@ -63,7 +64,7 @@
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
 | AI | 命令和能力定义 | Provider、隐私、证据引用、成本治理 |
 | Automation | 能力目录 | Workflow/CI/Fuzz 编排器 |
-| Cache | 配置和 FileArtifactStore | Runtime 命中/失效/清理 |
+| Cache | 配置、FileArtifactStore、Runtime 命中/写入 | 失效/清理 |
 | Plugins | Registry/Loader 边界 | 自动发现和兼容协议 |
 | Reports | Text/JSON 基础 | Schema、Markdown/HTML/SARIF |
 | Parallel | DAG stage | 并发 Scheduler |
@@ -111,7 +112,7 @@ soinsight scan libfoo.so --module basic,security --format json
 
 - JSON Schema 和兼容测试；
 - 内置 Profile（✅ 已完成）；
-- Runtime 缓存；
+- Runtime 缓存（✅ 已完成）；
 - Markdown/HTML/SARIF；
 - 插件发现；
 - 并发和资源预算。
@@ -155,7 +156,6 @@ soinsight scan libfoo.so --module basic,security --format json
 - V2 已具备 42 项真实分析能力；
 - V2 已替代 V1；
 - `--jobs` 已并行；
-- 缓存已接入 Runtime；
 - 插件可自动加载；
 - 动态分析会安全执行目标；
 - AI 输出具备事实保证；

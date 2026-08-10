@@ -76,7 +76,7 @@ soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TA
 | `-q, --quiet` | false | 静默模式；成功分析不输出正文，失败仍输出错误摘要 |
 | `-v, --verbose` | false | 详细配置入口 |
 | `--no-color` | false | 禁用颜色配置入口 |
-| `--no-cache` | false | 禁用缓存配置入口，Runtime 缓存尚未接入 |
+| `--no-cache` | false | 禁用缓存（默认开启）；命中结果按目标 sha256 复用 |
 | `--cache-dir PATH` | `.soinsight/cache` | 缓存目录 |
 | `--fail-fast` | false | 快速失败配置 |
 

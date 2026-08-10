@@ -4,9 +4,10 @@ from time import perf_counter
 from uuid import uuid4
 
 from ..analyzer import AnalysisContext, AnalyzerRegistry
-from ..models import AnalysisTarget, ScanResult
+from ..models import AnalysisStatus, AnalysisTarget, ScanResult
 from ..rules import RuleEngine
 from .aggregator import ResultAggregator
+from .cache import RuntimeCache
 from .planner import DependencyPlanner
 from .scheduler import SerialScheduler
 
@@ -40,7 +41,22 @@ class AnalysisRuntime:
             config=config,
         )
         started = perf_counter()
+        cache = RuntimeCache(config) if getattr(config, "cache_enabled", False) else None
+        if cache:
+            for analyzer_id in plan.resolved:
+                analyzer = self.registry.get(analyzer_id)
+                cached = cache.get(target, analyzer_id, analyzer.metadata.version)
+                if cached is not None:
+                    context.add_result(cached)
         self.scheduler.run(plan, self.registry, context)
+        if cache:
+            for result in context.results.values():
+                if (
+                    result.status == AnalysisStatus.SUCCESS
+                    and not result.cache_hit
+                    and not result.findings
+                ):
+                    cache.put(target, result)
         self.rule_engine.evaluate(context)
         duration_ms = int((perf_counter() - started) * 1000)
         return self.aggregator.aggregate(context, plan, duration_ms, profile)
