@@ -66,7 +66,7 @@ Each track can ship independently. If time or risk becomes an issue, stop at the
 - Consumes: current CLI behavior from `soinsight modules list`, `soinsight plugins list`, `soinsight doctor`, `soinsight basic file`.
 - Produces: docs that truthfully state `basic.file` is implemented, P0/P1/P2 CLI output spec is implemented, and other capabilities remain planned.
 
-- [ ] **Step 1: Write documentation consistency test**
+- [x] **Step 1: Write documentation consistency test**
 
 Create `tests/unit/test_documentation_status.py`:
 
@@ -97,7 +97,7 @@ def test_user_guide_describes_partial_implementation_status():
     assert "尚未接入具体业务 Analyzer" not in text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -107,7 +107,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_documentation_status.py -q
 
 Expected: FAIL because project docs still contain old framework-only claims.
 
-- [ ] **Step 3: Update `docs/project-status.md`**
+- [x] **Step 3: Update `docs/project-status.md`**
 
 Replace the current milestone statement with:
 
@@ -130,7 +130,7 @@ Update current test count to:
 
 Update missing section so `basic.file` is no longer listed as missing.
 
-- [ ] **Step 4: Update `README.md`, `docs/getting-started.md`, and `docs/user-guide.md`**
+- [x] **Step 4: Update `README.md`, `docs/getting-started.md`, and `docs/user-guide.md`**
 
 Make these exact content changes:
 
@@ -149,7 +149,7 @@ Remove or rewrite statements saying:
 具体 Analyzer 迁移尚未开始
 ```
 
-- [ ] **Step 5: Run documentation test**
+- [x] **Step 5: Run documentation test**
 
 Run:
 
@@ -159,7 +159,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_documentation_status.py -q
 
 Expected: PASS.
 
-- [ ] **Step 6: Run full suite**
+- [x] **Step 6: Run full suite**
 
 Run:
 
@@ -169,7 +169,7 @@ PYTHONPATH=src python3 -m pytest -q
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add README.md docs/project-status.md docs/getting-started.md docs/user-guide.md docs/cli-reference.md tests/unit/test_documentation_status.py
@@ -190,7 +190,7 @@ git commit -m "docs: sync project status with implemented CLI features"
 - Consumes: `AnalysisTarget`, `AnalysisContext`, `AnalysisResult`, `AnalysisStatus`.
 - Produces: `BasicElfAnalyzer` with metadata `id="basic.elf"`, `requires=("basic.file",)`, and data fields `elf_class`, `endianness`, `type`, `machine`, `entry_point`, `program_header_count`, `section_header_count`.
 
-- [ ] **Step 1: Write unit test for valid ELF header parsing**
+- [x] **Step 1: Write unit test for valid ELF header parsing**
 
 Create `tests/unit/test_basic_elf_analyzer.py`:
 
@@ -257,7 +257,7 @@ def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path):
     }
 ```
 
-- [ ] **Step 2: Run unit test to verify it fails**
+- [x] **Step 2: Run unit test to verify it fails**
 
 Run:
 
@@ -267,7 +267,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_basic_elf_analyzer.py::test_bas
 
 Expected: FAIL with `ImportError` or missing `BasicElfAnalyzer`.
 
-- [ ] **Step 3: Implement `BasicElfAnalyzer`**
+- [x] **Step 3: Implement `BasicElfAnalyzer`**
 
 In `src/soinsight/analyzers/basic.py`, add:
 
@@ -342,7 +342,7 @@ class BasicElfAnalyzer(Analyzer):
 
 Also import `Diagnostic` and `DiagnosticLevel` from `..core.models` at the top of the file.
 
-- [ ] **Step 4: Register `BasicElfAnalyzer`**
+- [x] **Step 4: Register `BasicElfAnalyzer`**
 
 In `src/soinsight/analyzers/builtin.py`, update imports and registration:
 
@@ -355,7 +355,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicElfAnalyzer())
 ```
 
-- [ ] **Step 5: Add CLI integration test for `basic elf`**
+- [x] **Step 5: Add CLI integration test for `basic elf`**
 
 Append to `tests/integration/test_cli.py`:
 
@@ -375,7 +375,7 @@ def test_cli_runs_builtin_basic_elf_analyzer(tmp_path):
 
 Move `_minimal_elf64_little()` into a shared test helper in this file or duplicate it exactly; duplication is acceptable here because it keeps the integration test standalone.
 
-- [ ] **Step 6: Run basic ELF tests**
+- [x] **Step 6: Run basic ELF tests**
 
 Run:
 
@@ -385,7 +385,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_basic_elf_analyzer.py tests/int
 
 Expected: PASS.
 
-- [ ] **Step 7: Update old unimplemented `basic.elf` tests**
+- [x] **Step 7: Update old unimplemented `basic.elf` tests**
 
 Find tests expecting `basic elf` to fail and update them to use a still-planned capability such as `basic symbols`.
 
@@ -402,7 +402,7 @@ exit_code = main(["basic", "symbols", str(target)], stdout=stdout)
 assert exit_code == 3
 ```
 
-- [ ] **Step 8: Full verification and commit**
+- [x] **Step 8: Full verification and commit**
 
 Run:
 
@@ -433,7 +433,7 @@ git commit -m "feat: add basic ELF analyzer"
 - Consumes: `context.require("basic.elf") -> AnalysisResult`.
 - Produces: `SecurityHardeningAnalyzer` with metadata `id="security.hardening"`, `requires=("basic.elf",)` and Finding for executable ELF type.
 
-- [ ] **Step 1: Write unit test for hardening analyzer**
+- [x] **Step 1: Write unit test for hardening analyzer**
 
 Create `tests/unit/test_security_hardening_analyzer.py`:
 
@@ -466,7 +466,7 @@ def test_security_hardening_flags_executable_elf(tmp_path):
     assert result.data["hardening_summary"]["finding_count"] == 1
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -476,11 +476,11 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_security_hardening_analyzer.py 
 
 Expected: FAIL because `SecurityHardeningAnalyzer` does not exist.
 
-- [ ] **Step 3: Inspect Finding model before implementation**
+- [x] **Step 3: Inspect Finding model before implementation**
 
 Read `src/soinsight/core/models/finding.py` and use the exact dataclass fields in the implementation. Do not guess field names.
 
-- [ ] **Step 4: Implement `SecurityHardeningAnalyzer`**
+- [x] **Step 4: Implement `SecurityHardeningAnalyzer`**
 
 Create `src/soinsight/analyzers/security.py` with:
 
@@ -527,7 +527,7 @@ class SecurityHardeningAnalyzer(Analyzer):
 
 If `Finding` requires different enum or field names, adapt only to the actual dataclass while preserving the test intent.
 
-- [ ] **Step 5: Register hardening analyzer**
+- [x] **Step 5: Register hardening analyzer**
 
 Update `src/soinsight/analyzers/builtin.py`:
 
@@ -537,7 +537,7 @@ from .security import SecurityHardeningAnalyzer
 registry.register(SecurityHardeningAnalyzer())
 ```
 
-- [ ] **Step 6: Add CLI chain test**
+- [x] **Step 6: Add CLI chain test**
 
 Add to `tests/integration/test_cli.py`:
 
@@ -559,7 +559,7 @@ def test_cli_runs_first_cross_domain_chain(tmp_path):
     assert "security.hardening" in payload["result"]["results"]
 ```
 
-- [ ] **Step 7: Run hardening tests**
+- [x] **Step 7: Run hardening tests**
 
 Run:
 
@@ -569,7 +569,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_security_hardening_analyzer.py 
 
 Expected: PASS.
 
-- [ ] **Step 8: Full verification and commit**
+- [x] **Step 8: Full verification and commit**
 
 Run:
 
@@ -597,7 +597,7 @@ git commit -m "feat: add security hardening analyzer"
 - Consumes: `ProfileRegistry`, `ScanProfile`.
 - Produces: `create_builtin_profile_registry() -> ProfileRegistry` with profiles `quick=("basic.file", "basic.elf")` and `security=("security.hardening",)`.
 
-- [ ] **Step 1: Write failing profile CLI test**
+- [x] **Step 1: Write failing profile CLI test**
 
 Add to `tests/integration/test_cli.py`:
 
@@ -620,7 +620,7 @@ def test_cli_uses_builtin_security_profile(tmp_path):
     ]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -630,7 +630,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_uses_bu
 
 Expected: FAIL with `PROFILE_NOT_FOUND`.
 
-- [ ] **Step 3: Implement built-in profile registry**
+- [x] **Step 3: Implement built-in profile registry**
 
 Create `src/soinsight/core/profiles/builtin.py`:
 
@@ -647,7 +647,7 @@ def create_builtin_profile_registry() -> ProfileRegistry:
     return registry
 ```
 
-- [ ] **Step 4: Export and use built-in profiles**
+- [x] **Step 4: Export and use built-in profiles**
 
 Update `src/soinsight/core/profiles/__init__.py`:
 
@@ -663,7 +663,7 @@ from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
 profile_registry = profiles or create_builtin_profile_registry()
 ```
 
-- [ ] **Step 5: Verify profile test passes**
+- [x] **Step 5: Verify profile test passes**
 
 Run:
 
@@ -673,7 +673,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_uses_bu
 
 Expected: PASS.
 
-- [ ] **Step 6: Full verification and commit**
+- [x] **Step 6: Full verification and commit**
 
 Run:
 
@@ -704,7 +704,7 @@ git commit -m "feat: add built-in scan profiles"
   - `RuntimeCache.get(target: AnalysisTarget, analyzer_id: str, analyzer_version: str) -> AnalysisResult | None`
   - `RuntimeCache.put(target: AnalysisTarget, result: AnalysisResult) -> None`
 
-- [ ] **Step 1: Write failing cache test**
+- [x] **Step 1: Write failing cache test**
 
 Create `tests/unit/test_runtime_cache.py`:
 
@@ -734,7 +734,7 @@ def test_runtime_cache_round_trips_analysis_result(tmp_path):
     assert cached.data == {"size": 6}
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -744,7 +744,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_runtime_cache.py -q
 
 Expected: FAIL because `RuntimeCache` does not exist.
 
-- [ ] **Step 3: Implement cache using JSON serialization**
+- [x] **Step 3: Implement cache using JSON serialization**
 
 Create `src/soinsight/core/runtime/cache.py`:
 
@@ -786,7 +786,7 @@ class RuntimeCache:
 
 If `from_primitive` is not available, add a small explicit `AnalysisResult(...)` reconstruction using existing model fields.
 
-- [ ] **Step 4: Wire cache into runtime**
+- [x] **Step 4: Wire cache into runtime**
 
 In `src/soinsight/core/runtime/runtime.py`, before `self.scheduler.run(...)`, pre-populate context with cached results for analyzers whose dependencies are already satisfied; after scheduling, write successful/cacheable results. Keep this minimal:
 
@@ -807,7 +807,7 @@ if cache:
 
 Then update `SerialScheduler` so it skips analyzer IDs already present in `context.results`.
 
-- [ ] **Step 5: Add runtime cache integration test**
+- [x] **Step 5: Add runtime cache integration test**
 
 Extend `tests/unit/test_runtime_cache.py`:
 
@@ -820,7 +820,7 @@ def test_runtime_uses_cached_result_on_second_run(tmp_path):
 
 Implement by copying `RecordingAnalyzer` from `tests/unit/test_runtime.py` and asserting `calls == ["basic.file"]` after two executes.
 
-- [ ] **Step 6: Verify cache tests and commit**
+- [x] **Step 6: Verify cache tests and commit**
 
 Run:
 
@@ -849,7 +849,7 @@ git commit -m "feat: add runtime result cache"
 - Consumes: `RuntimeConfig.jobs`, `AnalysisPlan.stages`.
 - Produces: `ParallelScheduler` or a `SerialScheduler(jobs=N)` implementation that runs analyzers within a stage concurrently when `jobs > 1`.
 
-- [ ] **Step 1: Write failing parallel scheduler test**
+- [x] **Step 1: Write failing parallel scheduler test**
 
 Create `tests/unit/test_parallel_scheduler.py`:
 
@@ -890,7 +890,7 @@ def test_runtime_runs_independent_stage_in_parallel(tmp_path):
     assert duration < 0.35
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -900,7 +900,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_parallel_scheduler.py -q
 
 Expected: FAIL because current serial scheduler takes about 0.4 seconds.
 
-- [ ] **Step 3: Implement parallel stage execution**
+- [x] **Step 3: Implement parallel stage execution**
 
 In `src/soinsight/core/runtime/scheduler.py`, add `jobs` to `run()`:
 
@@ -921,7 +921,7 @@ def run(self, plan, registry, context, jobs: int = 1) -> None:
 
 Keep cancellation and dependency checks inside `_run_one`.
 
-- [ ] **Step 4: Pass jobs from runtime**
+- [x] **Step 4: Pass jobs from runtime**
 
 In `AnalysisRuntime.execute`, change:
 
@@ -935,7 +935,7 @@ to:
 self.scheduler.run(plan, self.registry, context, getattr(config, "jobs", 1))
 ```
 
-- [ ] **Step 5: Verify scheduler tests**
+- [x] **Step 5: Verify scheduler tests**
 
 Run:
 
@@ -945,7 +945,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_parallel_scheduler.py tests/uni
 
 Expected: PASS.
 
-- [ ] **Step 6: Full verification and commit**
+- [x] **Step 6: Full verification and commit**
 
 Run:
 
@@ -973,7 +973,7 @@ git commit -m "feat: run independent analyzers in parallel"
 - Consumes: Python entry point group `soinsight.analyzers`.
 - Produces: `PluginLoader.load(registry)` that imports entry points returning analyzer instances or iterables of analyzers.
 
-- [ ] **Step 1: Write failing plugin loader test**
+- [x] **Step 1: Write failing plugin loader test**
 
 Create `tests/unit/test_plugin_loader.py`:
 
@@ -1012,7 +1012,7 @@ def test_plugin_loader_registers_entry_point_analyzer(monkeypatch):
     assert registry.contains("plugin.sample")
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -1022,7 +1022,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_plugin_loader.py -q
 
 Expected: FAIL because loader currently does nothing.
 
-- [ ] **Step 3: Implement entry point loading**
+- [x] **Step 3: Implement entry point loading**
 
 Modify `src/soinsight/infrastructure/plugins/loader.py`:
 
@@ -1045,7 +1045,7 @@ class PluginLoader:
                 registry.register(analyzer)
 ```
 
-- [ ] **Step 4: Document plugin entry point group**
+- [x] **Step 4: Document plugin entry point group**
 
 In `docs/extension-development.md`, add:
 
@@ -1053,7 +1053,7 @@ In `docs/extension-development.md`, add:
 External packages can expose analyzers with the Python entry point group `soinsight.analyzers`. Each entry point must load a callable returning one Analyzer instance or an iterable of Analyzer instances.
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -1085,7 +1085,7 @@ git commit -m "feat: discover analyzer plugins from entry points"
 - Consumes: `Renderer` base class and `ApplicationResponse`.
 - Produces renderer formats `markdown` and `html`, accepted by `--format` for analysis/report commands.
 
-- [ ] **Step 1: Write failing renderer tests**
+- [x] **Step 1: Write failing renderer tests**
 
 Create `tests/unit/test_report_renderers.py`:
 
@@ -1120,7 +1120,7 @@ def test_html_renderer_outputs_document(tmp_path):
     assert "<title>SOInsight Analysis Report</title>" in text
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -1130,7 +1130,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_report_renderers.py -q
 
 Expected: FAIL because renderers are not registered.
 
-- [ ] **Step 3: Implement Markdown renderer**
+- [x] **Step 3: Implement Markdown renderer**
 
 Create `src/soinsight/renderers/markdown_renderer.py`:
 
@@ -1157,7 +1157,7 @@ class MarkdownRenderer(Renderer):
         )
 ```
 
-- [ ] **Step 4: Implement HTML renderer**
+- [x] **Step 4: Implement HTML renderer**
 
 Create `src/soinsight/renderers/html_renderer.py`:
 
@@ -1193,7 +1193,7 @@ class HtmlRenderer(Renderer):
         )
 ```
 
-- [ ] **Step 5: Register formats and CLI choices**
+- [x] **Step 5: Register formats and CLI choices**
 
 Update `src/soinsight/renderers/__init__.py`:
 
@@ -1211,7 +1211,7 @@ Update `_add_runtime_options` format choices in `src/soinsight/cli/main.py`:
 choices=("text", "json", "markdown", "html")
 ```
 
-- [ ] **Step 6: Verify renderers and commit**
+- [x] **Step 6: Verify renderers and commit**
 
 Run:
 
@@ -1243,7 +1243,7 @@ git commit -m "feat: add markdown and html renderers"
 - Consumes: `ApplicationResponse.result.findings`.
 - Produces renderer format `sarif` with SARIF version `2.1.0`.
 
-- [ ] **Step 1: Write failing SARIF renderer test**
+- [x] **Step 1: Write failing SARIF renderer test**
 
 Create `tests/unit/test_sarif_renderer.py`:
 
@@ -1269,7 +1269,7 @@ def test_sarif_renderer_outputs_sarif_document(tmp_path):
     assert payload["runs"][0]["results"] == []
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -1279,7 +1279,7 @@ PYTHONPATH=src python3 -m pytest tests/unit/test_sarif_renderer.py -q
 
 Expected: FAIL because `sarif` renderer is not registered.
 
-- [ ] **Step 3: Implement SARIF renderer**
+- [x] **Step 3: Implement SARIF renderer**
 
 Create `src/soinsight/renderers/sarif_renderer.py`:
 
@@ -1318,7 +1318,7 @@ class SarifRenderer(Renderer):
         return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 ```
 
-- [ ] **Step 4: Register SARIF and CLI choice**
+- [x] **Step 4: Register SARIF and CLI choice**
 
 Update `src/soinsight/renderers/__init__.py`:
 
@@ -1333,7 +1333,7 @@ Update `_add_runtime_options` format choices:
 choices=("text", "json", "markdown", "html", "sarif")
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -1365,19 +1365,17 @@ git commit -m "feat: add sarif renderer"
 - Consumes: all preceding tasks.
 - Produces: docs matching actual implemented behavior after the roadmap slice.
 
-- [ ] **Step 1: Update docs to reflect new capabilities**
+- [x] **Step 1: Update docs to reflect new capabilities**
 
 Update `docs/project-status.md` completed list:
 
-> ⚠️ 守卫：以下条目在 Task 2–9 全部实现前保持 `- [ ]`，实现一项勾选一项；不得提前写入 status 文档（避免文档宣称先行）。
-
 ```markdown
-- [ ] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
-- [ ] 内置 `quick` 和 `security` Profile；
-- [ ] Runtime 文件缓存；
-- [ ] DAG stage 并发执行；
-- [ ] Python entry point 插件发现；
-- [ ] Markdown、HTML、SARIF 输出。
+- [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
+- [x] 内置 `quick` 和 `security` Profile；
+- [x] Runtime 文件缓存；
+- [x] DAG stage 并发执行；
+- [x] Python entry point 插件发现；
+- [x] Markdown、HTML、SARIF 输出。
 ```
 
 Update non-claims section to remove items now implemented:
@@ -1391,7 +1389,7 @@ Update non-claims section to remove items now implemented:
 
 Do not remove still-true non-claims about V2 replacing V1, dynamic analysis, AI guarantees, or all 42 capabilities.
 
-- [ ] **Step 2: Update CLI reference formats**
+- [x] **Step 2: Update CLI reference formats**
 
 In `docs/cli-reference.md`, update format choices:
 
@@ -1407,7 +1405,7 @@ soinsight basic elf libfoo.so --format json
 soinsight security hardening libfoo.so --format markdown
 ```
 
-- [ ] **Step 3: Update output schema doc**
+- [x] **Step 3: Update output schema doc**
 
 Add sections for:
 
@@ -1419,7 +1417,7 @@ Add sections for:
 
 State SARIF version is `2.1.0`.
 
-- [ ] **Step 4: Run final representative commands**
+- [x] **Step 4: Run final representative commands**
 
 Run:
 
@@ -1438,7 +1436,7 @@ Expected:
 - Profile commands resolve through built-in profiles.
 - Markdown/SARIF renderers produce their expected document types.
 
-- [ ] **Step 5: Run full suite**
+- [x] **Step 5: Run full suite**
 
 Run:
 
@@ -1448,7 +1446,7 @@ PYTHONPATH=src python3 -m pytest -q
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit final docs**
+- [x] **Step 6: Commit final docs**
 
 ```bash
 git add docs/project-status.md docs/cli-reference.md docs/user-guide.md docs/cli-output-schema.md
