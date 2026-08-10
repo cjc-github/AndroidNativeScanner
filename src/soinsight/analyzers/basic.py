@@ -1,9 +1,16 @@
 """Built-in Basic domain analyzers."""
 
+import struct
 from pathlib import Path
 
 from ..core.analyzer import Analyzer, AnalyzerMetadata
-from ..core.models import AnalysisResult, AnalysisStatus, AnalysisTarget
+from ..core.models import (
+    AnalysisResult,
+    AnalysisStatus,
+    AnalysisTarget,
+    Diagnostic,
+    DiagnosticLevel,
+)
 
 
 class BasicFileAnalyzer(Analyzer):
@@ -42,3 +49,68 @@ def _detect_format(magic: bytes) -> str:
     if magic.startswith(b"\x7fELF"):
         return "elf"
     return "unknown"
+
+
+_ELF_TYPES = {
+    0: "NONE",
+    1: "REL",
+    2: "EXEC",
+    3: "DYN",
+    4: "CORE",
+}
+
+_ELF_MACHINES = {
+    3: "x86",
+    40: "ARM",
+    62: "x86-64",
+    183: "AArch64",
+}
+
+
+class BasicElfAnalyzer(Analyzer):
+    metadata = AnalyzerMetadata(
+        id="basic.elf",
+        name="ELF Header Analyzer",
+        version="1.0.0",
+        description="Parse ELF identification and header fields.",
+        requires=("basic.file",),
+    )
+
+    def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
+        del context
+        data = target.real_path.read_bytes()[:64]
+        if len(data) < 52 or not data.startswith(b"\x7fELF"):
+            return AnalysisResult(
+                analyzer_id=self.metadata.id,
+                analyzer_version=self.metadata.version,
+                status=AnalysisStatus.FAILED,
+                diagnostics=[Diagnostic(
+                    code="INVALID_ELF",
+                    level=DiagnosticLevel.ERROR,
+                    message="Target is not a valid ELF file",
+                    analyzer_id=self.metadata.id,
+                )],
+            )
+        elf_class = "ELF64" if data[4] == 2 else "ELF32" if data[4] == 1 else "unknown"
+        endian = "little" if data[5] == 1 else "big" if data[5] == 2 else "unknown"
+        prefix = "<" if endian == "little" else ">"
+        if elf_class == "ELF64":
+            fields = struct.unpack(prefix + "HHIQQQIHHHHHH", data[16:64])
+            e_type, e_machine, _, e_entry, _, _, _, _, _, e_phnum, _, e_shnum, _ = fields
+        else:
+            fields = struct.unpack(prefix + "HHIIIIIHHHHHH", data[16:52])
+            e_type, e_machine, _, e_entry, _, _, _, _, _, e_phnum, _, e_shnum, _ = fields
+        return AnalysisResult(
+            analyzer_id=self.metadata.id,
+            analyzer_version=self.metadata.version,
+            status=AnalysisStatus.SUCCESS,
+            data={
+                "elf_class": elf_class,
+                "endianness": endian,
+                "type": _ELF_TYPES.get(e_type, str(e_type)),
+                "machine": _ELF_MACHINES.get(e_machine, str(e_machine)),
+                "entry_point": hex(e_entry),
+                "program_header_count": e_phnum,
+                "section_header_count": e_shnum,
+            },
+        )

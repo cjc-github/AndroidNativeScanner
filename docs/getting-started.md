@@ -32,7 +32,7 @@ PYTHONPATH=src python3 -m soinsight doctor
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 ```
 
-当前具体 `basic.elf` Analyzer 未实现，预期返回 `ANALYSIS_PLAN_ERROR` 和退出码 3。
+当前 `basic.elf` Analyzer 已实现：对 README.md 这类非 ELF 目标会返回 `INVALID_ELF` 诊断（整体状态 `partial`）；对真实 ELF（如 `in/libfuzzgoat.so`）会输出头部解析结果。
 
 ## 4. 安装开发版本
 
@@ -144,9 +144,9 @@ PYTHONPATH=src python3 -m soinsight --help
 
 或先创建并激活虚拟环境，再执行 `python -m pip install -e .`。
 
-### `basic elf` 返回 `ANALYSIS_PLAN_ERROR`
+### `basic elf` 对非 ELF 目标报 `INVALID_ELF`
 
-领域命令已经建立，但 `basic.elf` 具体 Analyzer 尚未注册，这是当前阶段预期行为。
+`basic.elf` Analyzer 已注册；对非 ELF 文件（如 README.md）会返回 `INVALID_ELF` 诊断和整体 `partial` 状态，这是预期行为。`basic.symbols` 等能力仍为 planned，调用会返回 `ANALYSIS_PLAN_ERROR`。
 
 ### 为什么 `modules` 比 `plugins` 多？
 

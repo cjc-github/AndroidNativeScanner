@@ -32,6 +32,7 @@
 - [x] ToolRunner、ArtifactStore 和 PluginLoader 边界；
 - [x] Wheel 构建脚本和入口校验；
 - [x] 内置 `basic.file` Analyzer（文件属性、SHA-256、Magic 与格式识别）；
+- [x] 内置 `basic.elf` Analyzer（ELF 类、字节序、类型、机器、入口与段表计数）；
 - [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
@@ -47,13 +48,13 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`47 passed`。
+当前自动化测试：`50 passed`。
 
 ## 3. 已有外壳但未实现
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | `basic.file` 之外的 Analyzer/Rule/Provider |
+| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf` 之外的 Analyzer/Rule/Provider |
 | `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file` | 内置 Profile（`quick`/`security`） |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
@@ -75,7 +76,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 任务：
 
 1. 实现并注册 `basic.file`（✅ 已完成）；
-2. 实现并注册 `basic.elf`；
+2. 实现并注册 `basic.elf`（✅ 已完成）；
 3. 实现 `security.hardening` 和基础规则；
 4. 固化数据字段与依赖；
 5. 增加 `quick`/`security` Profile；

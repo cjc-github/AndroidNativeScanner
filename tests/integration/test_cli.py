@@ -24,6 +24,26 @@ class FrameworkAnalyzer(Analyzer):
         )
 
 
+def _minimal_elf64_little() -> bytes:
+    ident = b"\x7fELF" + bytes([2, 1, 1]) + bytes(9)
+    header = (
+        (3).to_bytes(2, "little")
+        + (62).to_bytes(2, "little")
+        + (1).to_bytes(4, "little")
+        + (0x401000).to_bytes(8, "little")
+        + (64).to_bytes(8, "little")
+        + (1024).to_bytes(8, "little")
+        + (0).to_bytes(4, "little")
+        + (64).to_bytes(2, "little")
+        + (56).to_bytes(2, "little")
+        + (8).to_bytes(2, "little")
+        + (64).to_bytes(2, "little")
+        + (12).to_bytes(2, "little")
+        + (1).to_bytes(2, "little")
+    )
+    return ident + header
+
+
 def test_cli_runs_registered_analyzer_and_emits_json(tmp_path):
     target = tmp_path / "sample.so"
     target.write_bytes(b"ELF-test")
@@ -45,7 +65,7 @@ def test_cli_runs_registered_analyzer_and_emits_json(tmp_path):
 
 def test_basic_module_command_runs_available_basic_analysis(tmp_path):
     target = tmp_path / "sample.so"
-    target.write_bytes(b"\x7fELF\x02\x01\x01payload")
+    target.write_bytes(_minimal_elf64_little())
     stdout = StringIO()
 
     exit_code = main(["basic", str(target), "--format", "json"], stdout=stdout)
@@ -53,9 +73,23 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path):
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["result"]["status"] == "success"
-    assert payload["result"]["requested_analyzers"] == ["basic.file"]
-    assert payload["result"]["resolved_analyzers"] == ["basic.file"]
+    assert payload["result"]["requested_analyzers"] == ["basic.file", "basic.elf"]
+    assert payload["result"]["resolved_analyzers"] == ["basic.file", "basic.elf"]
     assert payload["result"]["results"]["basic.file"]["data"]["format"] == "elf"
+    assert payload["result"]["results"]["basic.elf"]["data"]["type"] == "DYN"
+
+
+def test_cli_runs_builtin_basic_elf_analyzer(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_minimal_elf64_little())
+    stdout = StringIO()
+
+    exit_code = main(["basic", "elf", str(target), "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["result"]["resolved_analyzers"] == ["basic.file", "basic.elf"]
+    assert payload["result"]["results"]["basic.elf"]["data"]["machine"] == "x86-64"
 
 
 def test_cli_resolves_analyzers_from_profile(tmp_path):
@@ -116,7 +150,7 @@ def test_cli_shows_module_capabilities_with_status():
         "Capabilities:",
         "  COMMAND     ID                NAME             STATUS",
         "  file        basic.file        文件分析         implemented",
-        "  elf         basic.elf         ELF 解析         planned",
+        "  elf         basic.elf         ELF 解析         implemented",
         "  symbols     basic.symbols     Symbol 解析      planned",
         "  dwarf       basic.dwarf       DWARF 解析       planned",
         "  types       basic.types       类型恢复         planned",
@@ -154,6 +188,7 @@ def test_cli_lists_plugins_as_table():
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
         "ID          VERSION  KIND       DEFAULT  NAME",
+        "basic.elf   1.0.0    collector  yes      ELF Header Analyzer",
         "basic.file  1.0.0    collector  yes      File Analyzer",
     ]
 
@@ -233,7 +268,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   1\n" in output
+    assert "  Registered analyzers   2\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -270,17 +305,17 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "elf", str(target)], stdout=stdout)
+    exit_code = main(["basic", "symbols", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.elf",
+        "  basic.symbols",
         "",
         "Reason:",
-        "  Analyzer not found: basic.elf",
+        "  Analyzer not found: basic.symbols",
         "",
         "Try:",
         "  soinsight modules show basic",
@@ -295,12 +330,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "elf", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["basic", "symbols", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.elf" in payload["diagnostics"][0]["message"]
+    assert "basic.symbols" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -493,7 +528,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "elf", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["basic", "symbols", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()

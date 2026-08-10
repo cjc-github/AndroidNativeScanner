@@ -24,7 +24,7 @@ soinsight ai function-name libfoo.so
 soinsight automation fuzz-target libfoo.so
 ```
 
-当前命令会进入统一 Runtime。已注册的能力（如 `basic.file`）执行真实分析；未注册的能力（如 `basic elf`、`security hardening`）结构化返回 `ANALYSIS_PLAN_ERROR`。
+当前命令会进入统一 Runtime。已注册的能力（如 `basic.file`、`basic.elf`）执行真实分析；未注册的能力（如 `basic.symbols`、`security hardening`）结构化返回 `ANALYSIS_PLAN_ERROR`。
 
 ## 3. 综合扫描
 

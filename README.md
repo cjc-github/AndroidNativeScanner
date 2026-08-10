@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-08-10，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file` Analyzer 已实现；ELF/安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-08-10，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf` Analyzer 已实现；安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
