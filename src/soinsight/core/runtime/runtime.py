@@ -9,7 +9,7 @@ from ..rules import RuleEngine
 from .aggregator import ResultAggregator
 from .cache import RuntimeCache
 from .planner import DependencyPlanner
-from .scheduler import SerialScheduler
+from .scheduler import DAGScheduler
 
 
 class AnalysisRuntime:
@@ -17,13 +17,13 @@ class AnalysisRuntime:
         self,
         registry: AnalyzerRegistry,
         planner: DependencyPlanner | None = None,
-        scheduler: SerialScheduler | None = None,
+        scheduler: DAGScheduler | None = None,
         aggregator: ResultAggregator | None = None,
         rule_engine: RuleEngine | None = None,
     ) -> None:
         self.registry = registry
         self.planner = planner or DependencyPlanner()
-        self.scheduler = scheduler or SerialScheduler()
+        self.scheduler = scheduler or DAGScheduler()
         self.aggregator = aggregator or ResultAggregator()
         self.rule_engine = rule_engine or RuleEngine()
 

@@ -18,7 +18,7 @@ from ..models import (
 from .plan import AnalysisPlan
 
 
-class SerialScheduler:
+class DAGScheduler:
     def run(
         self,
         plan: AnalysisPlan,
