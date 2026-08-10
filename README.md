@@ -46,7 +46,7 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（basic.file 已实现；其余为能力外壳）
+# 领域命令（basic.file/basic.elf/security.hardening 已实现；其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 PYTHONPATH=src python3 -m soinsight security hardening README.md
 

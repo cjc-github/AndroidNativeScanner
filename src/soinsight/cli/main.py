@@ -694,13 +694,31 @@ def _handle_plugins(
             + "\n"
         )
     elif metadata:
-        stdout.write("ID          VERSION  KIND       DEFAULT  NAME\n")
-        for item in metadata:
-            analyzer_id = _pad_display(item.id, 12)
-            version = _pad_display(item.version, 9)
-            kind = _pad_display(item.kind.value, 11)
-            default = _pad_display("yes" if item.default_enabled else "no", 9)
-            stdout.write(f"{analyzer_id}{version}{kind}{default}{item.name}\n")
+        records = [
+            (
+                item.id,
+                item.version,
+                item.kind.value,
+                "yes" if item.default_enabled else "no",
+                item.name,
+            )
+            for item in metadata
+        ]
+        headers = ("ID", "VERSION", "KIND", "DEFAULT", "NAME")
+        widths = [
+            max(
+                _display_width(headers[col]),
+                *(_display_width(row[col]) for row in records),
+            )
+            for col in range(5)
+        ]
+        stdout.write(
+            " ".join(_pad_display(headers[col], widths[col]) for col in range(5)).rstrip() + "\n"
+        )
+        for row in records:
+            stdout.write(
+                " ".join(_pad_display(row[col], widths[col]) for col in range(5)).rstrip() + "\n"
+            )
     else:
         stdout.write("No analyzers registered.\n")
         stdout.write("\n")

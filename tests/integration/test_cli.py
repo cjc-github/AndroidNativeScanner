@@ -92,6 +92,23 @@ def test_cli_runs_builtin_basic_elf_analyzer(tmp_path):
     assert payload["result"]["results"]["basic.elf"]["data"]["machine"] == "x86-64"
 
 
+def test_cli_runs_first_cross_domain_chain(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_minimal_elf64_little())
+    stdout = StringIO()
+
+    exit_code = main(["security", "hardening", str(target), "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["result"]["resolved_analyzers"] == [
+        "basic.file",
+        "basic.elf",
+        "security.hardening",
+    ]
+    assert "security.hardening" in payload["result"]["results"]
+
+
 def test_cli_resolves_analyzers_from_profile(tmp_path):
     from soinsight.core.profiles import ProfileRegistry, ScanProfile
 
@@ -126,7 +143,7 @@ def test_cli_lists_product_modules_with_status_column():
         "MODULE      NAME      CAPABILITIES  STATUS",
         "basic       基础分析            10  partial",
         "advanced    高级分析             8  catalog-only",
-        "security    安全分析             4  catalog-only",
+        "security    安全分析             4  partial",
         "dynamic     动态分析             5  catalog-only",
         "ai          AI 分析              8  catalog-only",
         "automation  自动化               7  catalog-only",
@@ -187,9 +204,10 @@ def test_cli_lists_plugins_as_table():
 
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
-        "ID          VERSION  KIND       DEFAULT  NAME",
-        "basic.elf   1.0.0    collector  yes      ELF Header Analyzer",
-        "basic.file  1.0.0    collector  yes      File Analyzer",
+        "ID                 VERSION KIND      DEFAULT NAME",
+        "basic.elf          1.0.0   collector yes     ELF Header Analyzer",
+        "basic.file         1.0.0   collector yes     File Analyzer",
+        "security.hardening 1.0.0   collector yes     Hardening Analyzer",
     ]
 
 
@@ -214,14 +232,14 @@ def test_cli_expands_product_module_for_scan(tmp_path):
     stdout = StringIO()
 
     exit_code = main(
-        ["scan", str(target), "--module", "security", "--format", "json"],
+        ["scan", str(target), "--module", "dynamic", "--format", "json"],
         stdout=stdout,
     )
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "security.hardening" in payload["diagnostics"][0]["message"]
+    assert "dynamic.trace" in payload["diagnostics"][0]["message"]
 
 
 def test_main_help_groups_commands_and_hides_development_aliases():
@@ -268,7 +286,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   2\n" in output
+    assert "  Registered analyzers   3\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
