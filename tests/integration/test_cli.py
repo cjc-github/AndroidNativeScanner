@@ -592,6 +592,38 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     assert "Try:" in stdout.getvalue()
 
 
+@dataclass
+class FailingAnalyzer(Analyzer):
+    metadata: AnalyzerMetadata
+
+    def analyze(self, target, context):
+        raise RuntimeError("boom")
+
+
+def test_cli_exit_code_reflects_partial_result(tmp_path):
+    target = tmp_path / "plain.txt"
+    target.write_bytes(b"not an elf file")
+    stdout = StringIO()
+
+    exit_code = main(["basic", "elf", str(target)], stdout=stdout)
+
+    assert exit_code == 5
+
+
+def test_cli_exit_code_reflects_failed_result(tmp_path):
+    registry = AnalyzerRegistry()
+    registry.register(
+        FailingAnalyzer(AnalyzerMetadata(id="basic.file", name="File", version="1"))
+    )
+    target = tmp_path / "sample.so"
+    target.write_bytes(b"data")
+    stdout = StringIO()
+
+    exit_code = main(["basic", "file", str(target)], registry=registry, stdout=stdout)
+
+    assert exit_code == 4
+
+
 def test_modules_list_uses_compact_layout_for_narrow_terminal(monkeypatch):
     monkeypatch.setattr("shutil.get_terminal_size", lambda fallback=None: __import__("os").terminal_size((48, 24)))
     stdout = TtyStringIO()

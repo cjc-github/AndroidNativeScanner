@@ -56,7 +56,7 @@
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
 - [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
 
-当前自动化测试：`62 passed`。
+当前自动化测试：`64 passed`。
 
 ## 3. 已有外壳但未实现
 

@@ -1,11 +1,19 @@
 """Application facade used by CLI and future frontends."""
 
-from ..core.models import Diagnostic, DiagnosticLevel
+from ..core.models import AnalysisStatus, Diagnostic, DiagnosticLevel
 from ..core.runtime import AnalysisRuntime, PlanningError
 from ..infrastructure.config import RuntimeConfig
 from .requests import AnalysisRequest
 from .responses import ApplicationResponse
 from .target_resolver import TargetResolutionError, TargetResolver
+
+
+def _exit_code_for_status(status: AnalysisStatus) -> int:
+    if status is AnalysisStatus.FAILED:
+        return 4
+    if status is AnalysisStatus.PARTIAL:
+        return 5
+    return 0
 
 
 class AnalysisService:
@@ -40,7 +48,10 @@ class AnalysisService:
                     ),
                 )
                 result.diagnostics.append(warning)
-            return ApplicationResponse(result=result)
+            return ApplicationResponse(
+                result=result,
+                exit_code=_exit_code_for_status(result.status),
+            )
         except TargetResolutionError as exc:
             return ApplicationResponse(
                 result=None,
