@@ -1,12 +1,12 @@
 # SOInsight V2 项目状态与路线图
 
-**状态日期：2026-08-10**
+**状态日期：2026-08-18**
 
 ## 1. 当前里程碑
 
-> Phase 1A++ — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf` 真实 Analyzer、第一条跨域链路（`basic.file → basic.elf → security.hardening`）和内置 Profile 已完成；运行时基础设施仍在建设中。
+> Phase 1B（首项）— 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols` 真实 Analyzer、第一条跨域链路（`basic.file → basic.elf → security.hardening`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时基础设施仍在建设中。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`security.hardening` 是首批接入的真实 Analyzer，不代表 42 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`security.hardening` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -33,14 +33,20 @@
 - [x] Wheel 构建脚本和入口校验；
 - [x] 内置 `basic.file` Analyzer（文件属性、SHA-256、Magic 与格式识别）；
 - [x] 内置 `basic.elf` Analyzer（ELF 类、字节序、类型、机器、入口与段表计数）；
+- [x] 内置 `basic.symbols` Analyzer（导出符号枚举 + 函数签名恢复）；
+- [x] 纯 Python ELF 解析基础设施 `infrastructure/elf`（Header/Section/Symbol 表，无外部工具依赖）；
+- [x] Itanium C++ ABI 符号 demangler（嵌套名、模板与替换、操作符、构造析构、local name、vtable/typeinfo/thunk）；
+- [x] JNI  native 方法名解码器（包名/类名/方法名 + 重载参数类型）；
 - [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
+- [x] 第二条真实跨域链路：`basic.file → basic.elf → basic.symbols`；
 - [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
 - [x] Runtime 文件缓存（按目标 sha256 + analyzer 版本命中/写入）；
 - [x] DAG stage 并发执行（`jobs > 1` 时同 stage Analyzer 并行）；
 - [x] Python entry point 插件发现（组 `soinsight.analyzers`）；
 - [x] Markdown、HTML 报告渲染器；
 - [x] SARIF 2.1.0 报告渲染器；
+- [x] Text/Markdown/HTML 报告展示导出函数签名清单；
 - [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
@@ -54,15 +60,50 @@
 - [x] `scan --module` 展开；
 - [x] YAML Schema、托管/外部配置、活动配置；
 - [x] `config create/list/show/validate/use/current/clear/set/unset`；
-- [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并。
+- [x] YAML 模块/功能点选择、排除、Runtime/输出/能力参数合并；
+- [x] ELF 解析：Header/PHDR/Section/Symbol、ELF32 与 ELF64、截断与越界降级；
+- [x] demangler：ABI 示例向量、真实 libstdc++/libc++/NDK 符号、畸形输入不回退；
+- [x] demangler 与 `cpp_demangle` 参考实现交叉校验（dev 依赖，缺失时跳过）；
+- [x] demangler 对真实共享库的全量比对（`scripts/categorise_real_sos.py`）；
+- [x] JNI 解码：普通/重载/转义/默认包；
+- [x] `basic.symbols`：导出函数、去重、stripped、选项、截断、非 ELF、JSON 可序列化。
 
-当前自动化测试：`72 passed`。
+当前自动化测试：`319 passed`（含 `cpp_demangle` 交叉校验；无该 dev 依赖时相应用例跳过）。
+
+### 真实共享库验证
+
+用 `scripts/categorise_real_sos.py` 从 manylinux wheel 中取出真实 C++ 共享库（libproj、libtiff、libcurl、libsqlite3、libnghttp2，共 5 个）逐符号比对：
+
+| 指标 | 数量 |
+|---|---|
+| 导出函数总数 | 2943 |
+| C 符号（正确保持原样） | 1048 |
+| C++ 符号成功 demangle | 1895 |
+| 无法解码 | 0 |
+| 与参考实现逐字节一致 | 1458 |
+| 仅 special-name 显示格式不同（thunk/vtable 包装） | 437 |
+| 类型/结构差异 | 0 |
+
+该比对发现并修复了三类问题：重复的模板前缀候选导致后续替换索引整体偏移、`GTt`（TM clone）与构造函数模板（显式模板参数、抑制返回类型、前缀用类名）缺失、以及名字里含 `::` 的模板参数被错误切分。Python 扩展模块不适用此验证——它们以 hidden visibility 编译，只导出 `PyInit_*`。
+
+### 导出枚举完备性审计
+
+用 `scripts/audit_export_coverage.py` 以 pyelftools 独立读取 `.dynsym` 作为基准，逐库核对枚举结果：
+
+| 指标 | 数量 |
+|---|---|
+| 基准导出函数（pyelftools） | 2943 |
+| `basic.symbols` 报告 | 2943 |
+| 遗漏 | 0 |
+| 多报 | 0 |
+
+边界情况单独用合成 ELF 覆盖（`test_analyzer_covers_every_export_table_entry`）：`STT_GNU_IFUNC`、`STB_WEAK`、`SHN_ABS`、`SHN_COMMON`、导入符号均已正确归类；**无类型（`STT_NOTYPE`）的全局导出**会被单独计入 `exported_unclassified` 并始终出现在 `unclassified_symbols` 中——它属于导出表且可被调用，但没有证据表明它是函数，因此不猜类型也不静默丢弃。`.dynsym` 中 `HIDDEN` 可见性符号按导出处理（记录中带 `visibility` 字段，用户可自行过滤）。
 
 ## 3. 已有外壳但未实现
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`security.hardening` 之外的 Analyzer/Rule/Provider |
+| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`basic.symbols`/`security.hardening` 之外的 Analyzer/Rule/Provider |
 | `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file`、内置 Profile（`quick`/`security`） | 无 |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
@@ -106,9 +147,9 @@ soinsight scan libfoo.so --module basic,security --format json
 
 ### Phase 1B：V1 能力迁移
 
-- `basic.symbols`；
+- `basic.symbols`（✅ 已完成：导出符号 + C++ demangle + JNI 解码）；
 - `advanced.strings`；
-- `security.dangerous-api`；
+- `security.dangerous-api`（依赖 `basic.symbols`，可在其之上实现）；
 - `security.risk`；
 - V1 URL/Secret/Base64/JNI 规则迁移。
 
@@ -159,6 +200,7 @@ soinsight scan libfoo.so --module basic,security --format json
 
 - V2 已具备 42 项真实分析能力；
 - V2 已替代 V1；
+- `basic.symbols` 能恢复 stripped 二进制的参数名或 DWARF 类型（ mangled name 与 JNI 名之外的类型信息不存在）；
 - 动态分析会安全执行目标；
 - AI 输出具备事实保证；
 - 报告已支持完整 Schema。

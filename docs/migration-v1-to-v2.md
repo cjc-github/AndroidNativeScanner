@@ -8,17 +8,19 @@ V1 在 V2 达到真实能力验收前继续可用。
 
 ## 2. 领域映射
 
-| V1 能力 | V2 产品能力 | 推荐实现 |
-|---|---|---|
-| 文件属性/哈希 | `basic.file` | Analyzer |
-| ELF Header | `basic.elf` | Analyzer |
-| 导入导出/JNI 符号 | `basic.symbols` | Analyzer + 可选 Rule |
-| 字符串提取 | `advanced.strings` | Analyzer |
-| URL/Base64/敏感字符串 | `advanced.strings` 事实 + `security.*` Rule | Analyzer + Rule |
-| 危险函数 | `security.dangerous-api` | Analyzer/Rule，依赖 symbols/callgraph |
-| 基础风险汇总 | `security.risk` | 聚合 Analyzer/Rule |
-| 目录批量扫描 | `automation.workflow` | Workflow/批处理编排 |
-| 文本报告 | `automation.report` + Renderer | 报告编排与展示分离 |
+| V1 能力 | V2 产品能力 | 推荐实现 | 状态 |
+|---|---|---|---|
+| 文件属性/哈希 | `basic.file` | Analyzer | 已迁移 |
+| ELF Header | `basic.elf` | Analyzer | 已迁移 |
+| 导入导出/JNI 符号 | `basic.symbols` | Analyzer + 可选 Rule | 已迁移 |
+| 字符串提取 | `advanced.strings` | Analyzer | 待迁移 |
+| URL/Base64/敏感字符串 | `advanced.strings` 事实 + `security.*` Rule | Analyzer + Rule | 待迁移 |
+| 危险函数 | `security.dangerous-api` | Analyzer/Rule，依赖 symbols/callgraph | 待迁移 |
+| 基础风险汇总 | `security.risk` | 聚合 Analyzer/Rule | 待迁移 |
+| 目录批量扫描 | `automation.workflow` | Workflow/批处理编排 | 待迁移 |
+| 文本报告 | `automation.report` + Renderer | 报告编排与展示分离 | 待迁移 |
+
+`basic.symbols` 相比 V1 `SymbolAnalyzer` 的差异：V1 只做 `nm -D` 导出名列举加 RCE 关键词匹配；V2 直接解析符号表（不依赖外部 binutils），并把 V1 的 URL/Secret/Base64/JNI 关键词思路留给后续 `security.*` Rule，事实层只保留可证明的符号与签名信息。
 
 ## 3. 迁移步骤
 
@@ -46,10 +48,20 @@ basic.file
 
 它验证基础分析、安全分析和统一输出的跨域闭环。
 
+### 第一条符号链路（✅ 已完成）
+
+```text
+basic.file
+  → basic.elf
+  → basic.symbols
+  → 签名清单
+  → Text/JSON/Markdown/HTML Renderer
+```
+
 ### 第二批：迁移 V1 事实
 
 ```text
-basic.symbols
+basic.symbols        （✅ 已迁移）
 advanced.strings
 security.dangerous-api
 security.risk

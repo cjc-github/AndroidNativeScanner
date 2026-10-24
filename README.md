@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-08-10，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf` Analyzer 已实现；安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-08-18，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols` Analyzer 已实现；安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
@@ -46,8 +46,9 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（basic.file/basic.elf/security.hardening 已实现；其余为能力外壳）
+# 领域命令（basic.file/basic.elf/basic.symbols/security.hardening 已实现；其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
+PYTHONPATH=src python3 -m soinsight basic symbols libfoo.so
 PYTHONPATH=src python3 -m soinsight security hardening README.md
 
 # 创建并使用可复用 YAML 分析配置
@@ -75,7 +76,6 @@ soinsight modules list
 python -m pip install -e '.[dev]'
 python -m pytest -q
 ```
-
 构建可安装 CLI Wheel：
 
 ```bash
@@ -112,6 +112,7 @@ AndroidNativeScanner/
 │       ├── analyzers/            # 具体 Analyzer 注册位置
 │       ├── renderers/            # Text/JSON/Markdown/HTML 输出
 │       ├── infrastructure/       # 配置、工具、存储、插件边界
+│       │   └── elf/              # 纯 Python ELF 解析 + C++ demangle + JNI 解码
 │       └── compatibility/        # V1 兼容适配预留
 ├── tests/                        # V2 单元与集成测试
 ├── scripts/build_cli.sh          # Wheel 构建与入口校验
@@ -136,7 +137,7 @@ V2 已具备：
 - Text/JSON/Markdown/HTML Renderer、ToolRunner、ArtifactStore 基础边界；
 - Python 包安装和 Wheel 构建脚本。
 
-V2 已实现 `basic.file`，尚未具备其他具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
+V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`，其中 `basic.symbols` 会枚举导出函数并恢复签名：`.dynsym`/`.symtab` 符号事实、Itanium C++ mangled name 解出的参数类型、JNI native 方法名解出的 Java 包名/类名/方法名与参数类型。demangler 已在 5 个真实 C++ 共享库（2943 个导出函数）上与参考实现全量比对：1895 个 C++ 符号全部解出，0 个无法解码、0 个类型差异。V2 尚未具备其他具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
 
 ## 开发原则
 

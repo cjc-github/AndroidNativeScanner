@@ -32,6 +32,7 @@ V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要�
 ┌───────────────────────────▼──────────────────────────────────┐
 │ Infrastructure / Adapters                                   │
 │ ToolRunner │ ArtifactStore │ PluginLoader │ Config │ Provider  │
+│ ELF Parser │ C++ Demangler │ JNI Decoder                     │
 └───────────────────────────┬──────────────────────────────────┘
                             │
 ┌───────────────────────────▼──────────────────────────────────┐
@@ -85,6 +86,14 @@ V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要�
 
 隔离 YAML 配置仓库、subprocess、文件缓存、外部插件和序列化等易变化细节。`infrastructure/config` 当前提供类型化 Schema、原子写入、托管目录和活动配置指针。
 
+`infrastructure/elf` 是二进制解析边界：
+
+- `parser.py`：Header/ProgramHeader/SectionHeader/Symbol 表解码，ELF32 与 ELF64，全部读取做边界检查；声明了但越界的表按“未知”降级，不视为错误；
+- `demangle.py`：Itanium C++ ABI 符号 demangler，覆盖真实 ELF 导出常见的子集（嵌套名、模板与替换、操作符、构造析构、local name、vtable/typeinfo/guard/thunk、TM clone），无法解释的名字原样返回而不猜测。替换编号遵循参考 mangler：名称类候选去重（`find_substitution` 先行），类型类候选不去重（解析出的模板参数会再次登记）；
+- `jni.py`：JNI native 方法名解码，转义感知的组件切分。
+
+该层不依赖 `readelf`/`nm`/`objdump` 等外部工具，也不执行被分析文件。验证方式见[项目状态](project-status.md)的“真实共享库验证”。
+
 ### Renderer Layer
 
 位置：`src/soinsight/renderers/`
@@ -118,6 +127,17 @@ soinsight security dangerous-api libfoo.so
   → RuleEngine 形成 Finding
   → ResultAggregator 生成 ScanResult
   → Renderer 输出 text/json
+```
+
+已实现的符号链路：
+
+```text
+soinsight basic symbols libfoo.so
+  → ModuleCatalog 解析 basic.symbols
+  → DependencyPlanner 补全 basic.file → basic.elf
+  → infrastructure/elf 解析 .dynsym/.symtab
+  → demangle / decode_jni_symbol 恢复签名
+  → Renderer 输出 text/json/markdown/html
 ```
 
 组合扫描：

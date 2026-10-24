@@ -189,6 +189,27 @@ min_length = int(options.get("min_length", 4))
 
 能力实现应定义默认值、类型、范围和未知键策略；不要让 Renderer 或 CLI 解释某个 Analyzer 的业务参数。YAML 结构见 [配置指南](configuration.md)。
 
+## 8a. 复用二进制解析基础设施
+
+需要 ELF 事实的能力应使用 `soinsight.infrastructure.elf`，不要自行拼 `struct` 或调用 `readelf`/`nm`：
+
+```python
+from soinsight.infrastructure.elf import decode_jni_symbol, demangle, parse_elf
+
+elf = parse_elf(target.real_path)          # ElfFormatError 表示不是可解析 ELF
+for symbol in elf.symbols_from(".dynsym"):
+    if symbol.is_exported and symbol.is_function:
+        decoded = demangle(symbol.name)    # 永不抛异常；失败时 kind == "undecoded"
+        jni = decode_jni_symbol(symbol.name)  # 非 JNI 名返回 None
+```
+
+约定：
+
+- 解析器对越界/截断的表按“未知”降级（返回空），只有魔法、类和入口大小非法才抛 `ElfFormatError`；
+- `demangle()` 与 `decode_jni_symbol()` 永不抛异常，无法解释时原样返回，不做类型猜测；
+- demangler 输出与 GNU `c++filt` 对齐（模板闭合前的空格规则、special-name 用自己的可读写法）；改 demangler 行为时同步更新 `tests/unit/test_demangler.py` 向量与 `tests/unit/test_demangler_oracle.py` 语料；
+- 跨模块只通过 `AnalysisContext` 消费 `basic.symbols` 等上游结果。
+
 ## 9. Renderer
 
 ```python

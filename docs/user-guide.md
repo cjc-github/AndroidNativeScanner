@@ -1,6 +1,6 @@
 # SOInsight V2 使用手册
 
-> 本文档对应 2026-08-10 的仓库实现。V2 已搭建六大产品模块和 CLI 框架，并实现首个真实 `basic.file` Analyzer；其余能力保持 `partial` 或 `planned`。
+> 本文档对应 2026-08-18 的仓库实现。V2 已搭建六大产品模块和 CLI 框架，并实现 `basic.file`、`basic.elf`、`basic.symbols` 真实 Analyzer；其余能力保持 `partial` 或 `planned`。
 
 ## 1. 查看模块
 
@@ -17,6 +17,7 @@ soinsight modules list --format json
 ```bash
 soinsight basic file libfoo.so
 soinsight basic elf libfoo.so --format json
+soinsight basic symbols libfoo.so
 soinsight advanced strings libfoo.so
 soinsight security hardening libfoo.so
 soinsight dynamic trace libfoo.so
@@ -24,7 +25,73 @@ soinsight ai function-name libfoo.so
 soinsight automation fuzz-target libfoo.so
 ```
 
-当前命令会进入统一 Runtime。已注册的能力（如 `basic.file`、`basic.elf`、`security.hardening`）执行真实分析；未注册的能力（如 `basic.symbols`、`security.dangerous-api`）结构化返回 `ANALYSIS_PLAN_ERROR`。
+当前命令会进入统一 Runtime。已注册的能力（`basic.file`、`basic.elf`、`basic.symbols`、`security.hardening`）执行真实分析；未注册的能力（如 `basic.dwarf`、`security.dangerous-api`）结构化返回 `ANALYSIS_PLAN_ERROR`。
+
+### 2.1 导出函数签名（`basic symbols`）
+
+```bash
+soinsight basic symbols libfoo.so
+soinsight basic symbols libfoo.so --format json
+soinsight basic symbols libfoo.so --format markdown -o signatures.md
+```
+
+`basic.symbols` 枚举共享对象导出的函数，并恢复二进制本身保留的签名信息：
+
+| 来源 | 可恢复信息 |
+|---|---|
+| `.dynsym` / `.symtab` | 符号名、bind、可见性、地址、大小、导入/导出 |
+| Itanium C++ mangled name | 命名空间、类、方法名、参数类型（模板函数含返回类型） |
+| JNI native 方法名 | Java 包名、类名、方法名、重载方法的参数类型 |
+
+枚举范围与 `readelf --dyn-syms` / `nm -D --defined-only` 一致：`.dynsym` 中已定义、`GLOBAL`/`WEAK` 绑定、类型为 `STT_FUNC`/`STT_GNU_IFUNC` 的符号。已用 pyelftools 独立读取 `.dynsym` 作基准核对过 5 个真实共享库的 2943 个导出函数，0 遗漏、0 多报。
+
+三类符号单独归类，不混入函数列表：
+
+- **导出数据符号**（`STT_OBJECT`）：需 `include_data_symbols: true` 才列出；
+- **导入符号**（`SHN_UNDEF`）：需 `include_imports: true` 才列出；
+- **无类型导出**（`STT_NOTYPE`，常见于未写 `.type` 的汇编代码）：**始终**计入 `counts.exported_unclassified` 并列入 `unclassified_symbols`——它属于导出表且可被调用，但没有证据表明它是函数，因此不猜类型也不静默丢弃。
+
+文本输出示例：
+
+```text
+Symbols:
+  Symbol tables        .dynsym
+  Exported functions   3
+  Demangled            2
+  JNI methods          1
+  Signatures:
+    com.example.Foo.nativeInit
+    foo::bar(int)
+    std::vector<int, std::allocator<int>>::push_back(int const&)
+```
+
+签名恢复的边界：
+
+- stripped 发布包只有 `.dynsym`，本地符号与 DWARF 参数名不可用；
+- C++ 函数的返回类型只在函数模板和类型转换操作符的 mangled name 中编码；构造函数模板虽编码了返回类型，但按参考 demangler 的约定不展示（构造函数返回 void）；
+- JNI 重载后缀只含参数类型，不含返回类型；
+- 无法解释的 mangled name 原样返回，不做猜测；
+- 模板参数（`T_`/`T0_`/…）按外层模板参数解析；解析结果本身也会成为替换候选，因此同一类型可能占据两个替换索引——这与参考 mangler 一致。
+
+输出格式与 GNU `c++filt` 对齐：模板实参列表闭合前加一个空格（`std::vector<int, std::allocator<int> >`），仅在最后一个实参本身以 `>` 结尾时才加，避免与 `>>` 移位运算符混淆。special-name（vtable/typeinfo/thunk/TM clone）使用本项目自己的可读写法，与 `c++filt` 的花括号形式不同。
+
+可通过 YAML `capability_options` 调整行为：
+
+```yaml
+schema_version: 1
+name: symbol-scan
+analysis:
+  capabilities: [basic.symbols]
+capability_options:
+  basic.symbols:
+    demangle: true              # 解释 C++ mangled name
+    jni_decode: true            # 解释 JNI native 方法名
+    include_data_symbols: false # 额外列出导出数据符号
+    include_imports: false      # 额外列出导入符号
+    max_functions: 10000        # 导出函数上限（1..100000）
+```
+
+输出中的 `counts` 各字段含义：`exported_functions`（函数）、`exported_data`（数据）、`exported_unclassified`（无类型导出，始终统计）、`imports`（导入）、`local`（本地符号）。
 
 ## 3. 综合扫描
 
@@ -60,7 +127,6 @@ Profile 用于保存跨域能力组合。默认 CLI 已内置：
 
 - `quick`：`basic.file`、`basic.elf`；
 - `security`：`security.hardening`（含其依赖链）。
-
 规划中的 Profile：
 
 - `deep`：基础和高级静态分析；
@@ -146,3 +212,6 @@ YAML 可以订制模块、模块内功能点、跨模块 capability、排除项�
 | `ANALYZER_EXCEPTION` | Analyzer 执行异常 |
 | `DEPENDENCY_FAILED` | 必需上游未成功 |
 | `RULE_EXCEPTION` | Rule 执行异常 |
+| `INVALID_ELF` | 目标不是可解析的 ELF 镜像 |
+| `NO_SYMBOL_TABLE` | 镜像没有动态或常规符号表（`basic.symbols` 降级） |
+| `SYMBOLS_TRUNCATED` | 导出函数数量超过 `max_functions`，列表被截断 |

@@ -53,8 +53,16 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["result"]["status"] == "success"
-    assert payload["result"]["requested_analyzers"] == ["basic.file", "basic.elf"]
-    assert payload["result"]["resolved_analyzers"] == ["basic.file", "basic.elf"]
+    assert payload["result"]["requested_analyzers"] == [
+        "basic.file",
+        "basic.elf",
+        "basic.symbols",
+    ]
+    assert payload["result"]["resolved_analyzers"] == [
+        "basic.file",
+        "basic.elf",
+        "basic.symbols",
+    ]
     assert payload["result"]["results"]["basic.file"]["data"]["format"] == "elf"
     assert payload["result"]["results"]["basic.elf"]["data"]["type"] == "DYN"
 
@@ -187,7 +195,7 @@ def test_cli_shows_module_capabilities_with_status():
         "  COMMAND     ID                NAME             STATUS",
         "  file        basic.file        文件分析         implemented",
         "  elf         basic.elf         ELF 解析         implemented",
-        "  symbols     basic.symbols     Symbol 解析      planned",
+        "  symbols     basic.symbols     Symbol 解析      implemented",
         "  dwarf       basic.dwarf       DWARF 解析       planned",
         "  types       basic.types       类型恢复         planned",
         "  cpp         basic.cpp         C++ 恢复         planned",
@@ -226,6 +234,7 @@ def test_cli_lists_plugins_as_table():
         "ID                 VERSION KIND      DEFAULT NAME",
         "basic.elf          1.0.0   collector yes     ELF Header Analyzer",
         "basic.file         1.0.0   collector yes     File Analyzer",
+        "basic.symbols      1.0.0   collector yes     Symbol Analyzer",
         "security.hardening 1.0.0   collector yes     Hardening Analyzer",
     ]
 
@@ -305,12 +314,15 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   3\n" in output
+    assert "  Registered analyzers   4\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
     assert "  strings               " in output
-    assert "\nStatus:\n  ok\n" in output
+    # External binutils are optional: the built-in analyzers parse ELF
+    # directly, so the status line depends only on the host toolchain.
+    assert "\nStatus:\n  " in output
+    assert output.splitlines()[-1] in ("  ok", "  Install binutils: sudo apt-get install binutils")
 
 
 @dataclass
@@ -337,22 +349,77 @@ def _test_registry():
     return registry
 
 
+def test_cli_runs_builtin_symbol_analyzer_with_signatures(tmp_path, elf64_with_symbols):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(["basic", "symbols", str(target), "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    result = payload["result"]
+    assert exit_code == 0
+    assert result["requested_analyzers"] == ["basic.symbols"]
+    assert result["resolved_analyzers"] == ["basic.file", "basic.elf", "basic.symbols"]
+
+    symbols = result["results"]["basic.symbols"]["data"]
+    assert symbols["counts"]["exported_functions"] == 5
+    assert symbols["demangled_count"] == 3
+    assert symbols["jni_count"] == 2
+    assert [record["signature"] for record in symbols["functions"]] == [
+        "com.example.Foo.nativeInit",
+        "com.example.Foo.nativeInit(int, java.lang.String)",
+        "foo::bar(int)",
+        "std::vector<int, std::allocator<int> >::push_back(int const&)",
+        "android::IBinder::~IBinder()",
+    ]
+
+
+def test_cli_symbol_analysis_renders_human_text(tmp_path, elf64_with_symbols):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(["basic", "symbols", str(target)], stdout=stdout)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "\nSymbols:\n" in output
+    assert "  Exported functions   5\n" in output
+    assert "  Signatures:\n" in output
+    assert "    foo::bar(int)\n" in output
+    assert "    com.example.Foo.nativeInit(int, java.lang.String)\n" in output
+
+
+def test_cli_symbol_analysis_skips_non_elf_target(tmp_path):
+    target = tmp_path / "plain.txt"
+    target.write_bytes(b"not an elf file")
+    stdout = StringIO()
+
+    exit_code = main(["basic", "symbols", str(target), "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 5
+    assert payload["result"]["results"]["basic.elf"]["status"] == "failed"
+    assert payload["result"]["results"]["basic.symbols"]["status"] == "skipped"
+
+
 def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target = tmp_path / "sample.so"
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "symbols", str(target)], stdout=stdout)
+    exit_code = main(["basic", "dwarf", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.symbols",
+        "  basic.dwarf",
         "",
         "Reason:",
-        "  Analyzer not found: basic.symbols",
+        "  Analyzer not found: basic.dwarf",
         "",
         "Try:",
         "  soinsight modules show basic",
@@ -367,12 +434,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "symbols", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["basic", "dwarf", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.symbols" in payload["diagnostics"][0]["message"]
+    assert "basic.dwarf" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -565,7 +632,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "symbols", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["basic", "dwarf", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()

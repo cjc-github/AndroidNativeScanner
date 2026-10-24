@@ -98,10 +98,13 @@ soinsight scan libfoo.so --module basic,security --format json
 soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
 soinsight scan libfoo.so --profile security --format sarif -o result.sarif
 soinsight basic elf libfoo.so --format json
+soinsight basic symbols libfoo.so
 soinsight security hardening libfoo.so --format markdown
 ```
 
-当前内置 `basic.file`、`basic.elf`、`security.hardening` Analyzer 和 `quick`/`security` Profile。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
+当前内置 `basic.file`、`basic.elf`、`basic.symbols`、`security.hardening` Analyzer 和 `quick`/`security` Profile。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
+
+`basic symbols` 的输出在 Text/Markdown/HTML 下包含 `Symbols` 段（符号表、导出函数数、demangle 数、JNI 方法数与签名清单）；JSON 下为 `results["basic.symbols"].data`，包含 `symbol_tables`、`stripped`、`counts`、`demangled_count`、`jni_count`、`functions` 与 `unclassified_symbols`。`functions[].signature` 是最佳可读签名，`demangled`/`jni` 为结构化明细。枚举范围与 `nm -D --defined-only` 一致；无类型（`STT_NOTYPE`）的导出单独归入 `unclassified_symbols`，不猜定为函数。
 
 ## 5. `modules`
 

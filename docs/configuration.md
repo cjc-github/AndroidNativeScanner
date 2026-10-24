@@ -38,6 +38,12 @@ output:
   path: result.json
 
 capability_options:
+  basic.symbols:
+    demangle: true
+    jni_decode: true
+    include_data_symbols: false
+    include_imports: false
+    max_functions: 10000
   advanced.strings:
     min_length: 6
   security.risk:
@@ -45,6 +51,16 @@ capability_options:
 ```
 
 `schema_version` 当前必须为 `1`。
+
+`capability_options` 的键是 namespaced 能力 ID，值由该能力自己定义默认值、类型和范围。`basic.symbols` 支持的选项：
+
+| 选项 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `demangle` | bool | `true` | 解释 Itanium C++ mangled name 并提取参数类型 |
+| `jni_decode` | bool | `true` | 解释 JNI native 方法名并提取 Java 包名/类名/方法名与参数类型 |
+| `include_data_symbols` | bool | `false` | 在 `data_symbols` 中额外列出导出数据符号 |
+| `include_imports` | bool | `false` | 在 `imports` 中额外列出导入符号 |
+| `max_functions` | int | `10000` | 导出函数清单上限，范围 `1..100000`，超出截断并产生 `SYMBOLS_TRUNCATED` 诊断 |
 
 ## 2. 选择模块和功能点
 

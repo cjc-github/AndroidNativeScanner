@@ -103,8 +103,8 @@ Description:
 Capabilities:
   COMMAND     ID                NAME             STATUS
   file        basic.file        文件分析          implemented
-  elf         basic.elf         ELF 解析          planned
-  symbols     basic.symbols     Symbol 解析      planned
+  elf         basic.elf         ELF 解析          implemented
+  symbols     basic.symbols     Symbol 解析      implemented
 ```
 
 capability 状态定义：
@@ -191,9 +191,21 @@ File facts:
   Magic       2320534f496e7369
   Name        README.md
 
+Symbols:
+  Symbol tables        .dynsym
+  Exported functions   3
+  Demangled            2
+  JNI methods          1
+  Signatures:
+    com.example.Foo.nativeInit
+    foo::bar(int)
+    std::vector<int, std::allocator<int>>::push_back(int const&)
+
 Findings:
   none
 ```
+
+`Symbols` 段只在 `basic.symbols` 参与运行时出现；签名清单在文本下最多展示 40 条，其余以 `... and N more` 汇总。Markdown 与 HTML 使用同一数据的不同排版。
 
 JSON 输出继续保持当前结构化 `ApplicationResponse` / `ScanResult` / `AnalysisResult` 模型。
 
@@ -207,10 +219,10 @@ JSON 输出继续保持当前结构化 `ApplicationResponse` / `ScanResult` / `A
 Error: capability is not implemented
 
 Capability:
-  basic.elf
+  basic.dwarf
 
 Reason:
-  Analyzer not found: basic.elf
+  Analyzer not found: basic.dwarf
 
 Try:
   soinsight modules show basic

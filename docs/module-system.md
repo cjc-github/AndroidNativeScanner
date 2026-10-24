@@ -19,18 +19,20 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 
 ### 2.1 基础分析
 
-| 命令 | 稳定能力 ID | 能力 |
-|---|---|---|
-| `basic file` | `basic.file` | 文件分析 |
-| `basic elf` | `basic.elf` | ELF 解析 |
-| `basic symbols` | `basic.symbols` | Symbol 解析 |
-| `basic dwarf` | `basic.dwarf` | DWARF 解析 |
-| `basic types` | `basic.types` | 类型恢复 |
-| `basic cpp` | `basic.cpp` | C++ 恢复 |
-| `basic disasm` | `basic.disasm` | 反汇编 |
-| `basic cfg` | `basic.cfg` | CFG 恢复 |
-| `basic callgraph` | `basic.callgraph` | Call Graph 恢复 |
-| `basic dataflow` | `basic.dataflow` | Data Flow 分析 |
+| 命令 | 稳定能力 ID | 能力 | 状态 |
+|---|---|---|---|
+| `basic file` | `basic.file` | 文件分析 | 已实现 |
+| `basic elf` | `basic.elf` | ELF 解析 | 已实现 |
+| `basic symbols` | `basic.symbols` | Symbol 解析 | 已实现 |
+| `basic dwarf` | `basic.dwarf` | DWARF 解析 | 外壳 |
+| `basic types` | `basic.types` | 类型恢复 | 外壳 |
+| `basic cpp` | `basic.cpp` | C++ 恢复 | 外壳 |
+| `basic disasm` | `basic.disasm` | 反汇编 | 外壳 |
+| `basic cfg` | `basic.cfg` | CFG 恢复 | 外壳 |
+| `basic callgraph` | `basic.callgraph` | Call Graph 恢复 | 外壳 |
+| `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 外壳 |
+
+`basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
 
 ### 2.2 高级分析
 

@@ -146,8 +146,8 @@ PYTHONPATH=src python3 -m soinsight --help
 
 ### `basic elf` 对非 ELF 目标报 `INVALID_ELF`
 
-`basic.elf` Analyzer 已注册；对非 ELF 文件（如 README.md）会返回 `INVALID_ELF` 诊断和整体 `partial` 状态，这是预期行为。`basic.symbols` 等能力仍为 planned，调用会返回 `ANALYSIS_PLAN_ERROR`。
+`basic.elf` Analyzer 已注册；对非 ELF 文件（如 README.md）会返回 `INVALID_ELF` 诊断和整体 `partial` 状态，这是预期行为。`basic.symbols` 依赖 `basic.elf`，此时会以 `DEPENDENCY_FAILED` 被跳过；对真正的 ELF 文件则输出导出函数与签名。
 
 ### 为什么 `modules` 比 `plugins` 多？
 
-`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已包含 42 项能力定义，后者当前仅注册了 `basic.file`，其余 Analyzer 待实现后注册。
+`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已包含 42 项能力定义，后者当前注册了 `basic.file`、`basic.elf`、`basic.symbols`、`security.hardening`，其余 Analyzer 待实现后注册。
