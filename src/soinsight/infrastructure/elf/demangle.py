@@ -93,7 +93,10 @@ _BUILTIN_TYPES_LONG = {
     "Du": "char8_t",
     "Da": "auto",
     "Dc": "decltype(auto)",
-    "DF": "_Float16",
+    # Half-precision floating point. "Dh" is the spelling the NDK's libc++
+    # emits; "DF" is the Itanium ABI code. Both name the same type.
+    "Dh": "half",
+    "DF": "half",
 }
 
 # Standard abbreviations. Never numbered, never substitution candidates.
@@ -146,6 +149,9 @@ _OPERATORS = {
     "ge": ">=",
     "ss": ".*",
     "sr": "->*",
+    "pp": "++",
+    "mm": "--",
+    "pt": "->",
     "cl": "()",
     "ix": "[]",
 }
@@ -160,8 +166,11 @@ _BINARY_EXPRESSION_OPERATORS = {
     "pl": "+", "mi": "-", "ml": "*", "dv": "/", "rm": "%",
     "an": "&", "or": "|", "eo": "^", "ls": "<<", "rs": ">>",
     "eq": "==", "ne": "!=", "lt": "<", "gt": ">", "le": "<=", "ge": ">=",
-    "ss": ".*", "sr": "->*",
+    "ss": ".*", "aS": "=", "aa": "&&", "oo": "||",
 }
+# "sr" is deliberately absent: inside an <expression> it starts an
+# <unresolved-name> (Type::member), not the ->* operator, and is handled
+# separately in _parse_expression.
 
 _CTOR_DTOR = {
     "C1": KIND_CONSTRUCTOR,
@@ -650,10 +659,20 @@ class _Demangler:
                 index = self._seq_id()
                 return f"{{unnamed type#{index}}}", KIND_DATA, False, False
             if self._peek(2) == "Ul":
+                # <unnamed-type-name> ::= Ul <lambda-sig> _ [disc]
+                # <lambda-sig>       ::= <parameter-list> (the template-param
+                #                      form is rare and omitted here)
                 self._advance(2)
-                inner = self._parse_type()
+                parameters: list[str] = []
+                while not self._eof() and self._peek() != "E":
+                    parameters.append(self._parse_type())
+                self._expect("E")
                 self._expect("_")
-                return f"{{lambda({inner})#1}}", KIND_DATA, False, False
+                index = ""
+                if self._peek().isdigit():
+                    index = str(self._number())
+                inner = ", ".join(parameters)
+                return f"{{lambda({inner})#{index or 1}}}", KIND_DATA, False, False
             if self._peek(2) == "Ue":
                 self._advance(2)
                 underlying = self._parse_type()
@@ -666,7 +685,9 @@ class _Demangler:
             return two, _CTOR_DTOR[two], False, False
         if two == "cv":
             self._advance(2)
-            return f"operator {self._parse_type()}", KIND_OPERATOR, True, False
+            # A conversion operator has no written return type: the target
+            # type IS the "return", so it must not gain a "void" prefix.
+            return f"operator {self._parse_type()}", KIND_OPERATOR, False, False
         if two == "li":
             self._advance(2)
             return f'operator""{self._source_name()}', KIND_OPERATOR, False, False
@@ -820,6 +841,11 @@ class _Demangler:
                 self._add_type_candidate(result)
                 return result
             return text
+        # D-prefixed builtin types (char16_t, char32_t, nullptr_t, ...) must be
+        # matched before the decltype/extended dispatch, otherwise every "D"
+        # type is treated as an unsupported D-form.
+        if self._peek(2) in _BUILTIN_TYPES_LONG:
+            return _BUILTIN_TYPES_LONG[self._advance(2)]
         if head == "D":
             return self._parse_decltype_or_extended()
         if head == "U":
@@ -832,8 +858,6 @@ class _Demangler:
             self._advance()
             self._source_name()
             return self._parse_type()
-        if self._peek(2) in _BUILTIN_TYPES_LONG:
-            return _BUILTIN_TYPES_LONG[self._advance(2)]
         if head in _BUILTIN_TYPES:
             self._advance()
             return _BUILTIN_TYPES[head]
@@ -911,12 +935,19 @@ class _Demangler:
             self._expect("E")
             return f"{callee}({', '.join(args)})"
         if two == "sr":
+            # Unresolved name: <type> [E] <unqualified-name> [<template-args>],
+            # e.g. a dependent member reference like QMetaTypeId2<T>::Defined.
+            # The E is optional: the older mangling omitted it.
             self._advance(2)
-            self._parse_type()
-            entity = self._parse_name_component()[0]
+            scope = self._parse_type()
+            self._match("E")
             if self._peek() == "I":
-                entity += self._parse_template_args()
-            return entity
+                # <unscoped-template-name>: a substitution standing in for the
+                # member's own name, instantiated with these arguments.
+                name = f"{self._parse_substitution()}{self._parse_template_args()}"
+            else:
+                name = self._parse_name_component()[0]
+            return f"{scope}::{name}"
         if two == "st":
             self._advance(2)
             return f"sizeof({self._parse_type()})"
@@ -932,7 +963,16 @@ class _Demangler:
         if head == "L":
             self._advance()
             type_name = self._parse_type()
-            if type_name in _INTEGER_LITERAL_TYPES:
+            if type_name == "bool":
+                # The ABI encodes booleans as 0/1; spell them as the source
+                # did so template arguments read as conditions, not numbers.
+                negative = self._match("n")
+                value = self._number()
+                if not negative and value in (0, 1):
+                    literal = "true" if value else "false"
+                else:
+                    literal = str(-value if negative else value)
+            elif type_name in _INTEGER_LITERAL_TYPES:
                 negative = self._match("n")
                 value = self._number()
                 literal = str(-value if negative else value)
@@ -953,6 +993,21 @@ class _Demangler:
     # -- special names --------------------------------------------------
     def _parse_special_name(self) -> DemangledSymbol:
         """``<special-name>`` for vtable, typeinfo, guard and thunk symbols."""
+        # "TC" (construction vtable) and "TT" (VTT) both start with T, so the
+        # two-letter code is matched before any single-letter consumption.
+        if self._peek(2) == "TC":
+            # <special-name> ::= TC <type> <offset-number> _ <type>
+            self._advance(2)
+            base = self._parse_type()
+            self._number()
+            self._expect("_")
+            derived = self._parse_type()
+            return DemangledSymbol(
+                display=f"construction vtable for {base}-in-{derived}",
+                kind=KIND_SPECIAL,
+                qualified_name=base,
+                short_name="construction vtable",
+            )
         if self._peek() == "T":
             self._advance()
         head = self._peek(1)

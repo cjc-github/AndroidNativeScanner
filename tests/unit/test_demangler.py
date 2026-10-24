@@ -132,6 +132,60 @@ VECTORS = [
     # Transactional-memory clone.
     ("_ZGTtNSt11logic_errorD1Ev",
      "transaction clone for std::logic_error::~logic_error()", "special"),
+    # --- D-prefixed builtin types --------------------------------------------
+    # These are matched before the decltype dispatch, so "Ds" never reaches the
+    # D-form parser that only understands Dt/DT/Dp/Dv.
+    ("_Z1fDs", "f(char16_t)", "function"),
+    ("_Z1fDi", "f(char32_t)", "function"),
+    ("_Z1fDu", "f(char8_t)", "function"),
+    ("_Z1fDn", "f(decltype(nullptr))", "function"),
+    ("_ZSt6vectorIDsSaIDsEE3fooEv",
+     "foo std::vector<char16_t, std::allocator<char16_t> >()", "method"),
+    ("_ZN9QXmlUtils6isCharEDi", "QXmlUtils::isChar(char32_t)", "method"),
+    # Half precision: "Dh" is the NDK libc++ spelling, "DF" the ABI code.
+    ("_Z1fDh", "f(half)", "function"),
+    ("_Z1fDF", "f(half)", "function"),
+    # --- increment/decrement/arrow operators ---------------------------------
+    ("_ZN19QSequentialIterable14const_iteratorppEv",
+     "QSequentialIterable::const_iterator::operator++()", "operator"),
+    ("_ZN19QSequentialIterable14const_iteratormmEi",
+     "QSequentialIterable::const_iterator::operator--(int)", "operator"),
+    ("_ZN22QAndroidJniEnvironmentptEv",
+     "QAndroidJniEnvironment::operator->()", "operator"),
+    # --- conversion operators carry no written return type -------------------
+    ("_ZNK22QAndroidJniEnvironmentcvP7_JNIEnvEv",
+     "QAndroidJniEnvironment::operator _JNIEnv*() const", "operator"),
+    ("_ZNK7QPixmapcv8QVariantEv", "QPixmap::operator QVariant() const", "operator"),
+    # --- construction vtables and typeinfo on D-types ------------------------
+    ("_ZTCNSt6__ndk114basic_iostreamIcNS_11char_traitsIcEEEE0_NS_13basic_istreamIcS2_EE",
+     "construction vtable for std::__ndk1::basic_iostream<char, "
+     "std::__ndk1::char_traits<char> >-in-std::__ndk1::basic_istream<char, "
+     "std::__ndk1::char_traits<char> >", "special"),
+    ("_ZTIDh", "typeinfo for half", "special"),
+    ("_ZTIPDh", "typeinfo for half*", "special"),
+    # --- expressions inside template arguments -------------------------------
+    # "sr" starts an unresolved name (Type::member), not the ->* operator.
+    ("_Z1fIXsr12QMetaTypeId2IS_EE7DefinedEEvv",
+     "void f<QMetaTypeId2<f>::Defined>()", "method"),
+    # A bool literal is spelled as the source wrote it, not as 0/1. These name
+    # a template instantiation with no parameter list, so they classify as data
+    # (the same rule that makes "Stack<int, int>::level" data).
+    ("_Z1fILb1EEEvv", "f<true>", "data"),
+    ("_Z1fILb0EEEvv", "f<false>", "data"),
+    ("_ZNKSt6__ndk115__codecvt_utf16IDsLb1EE13do_max_lengthEv",
+     "std::__ndk1::__codecvt_utf16<char16_t, true>::do_max_length() const",
+     "method"),
+    # Logical operators and nested unresolved names, as Qt's qRegisterMetaType
+    # emits for its MetaTypeDefinedHelper trait.
+    ("_Z17qRegisterMetaTypeI7QStringEiPKcPT_N9QtPrivate21MetaTypeDefinedHelperIS2_Xaasr12QMetaTypeId2IS2_EE7Definedntsr12QMetaTypeId2IS2_EE9IsBuiltInEE11DefinedTypeE",
+     "int qRegisterMetaType<QString>(char const*, QString*, "
+     "QtPrivate::MetaTypeDefinedHelper<char const*, "
+     "(QMetaTypeId2<char const*>::Defined && !(QMetaTypeId2<char const*>::IsBuiltIn))"
+     ">::DefinedType)", "function"),
+    # --- lambdas take a parameter list, not a single type --------------------
+    ("_ZZZNK18QFileDialogPrivate8rootPathEvENKUlvE_clEvE15qstring_literal",
+     "QFileDialogPrivate::rootPath() const::{lambda(void)#1}::operator()()::"
+     "qstring_literal", "data"),
 ]
 
 
