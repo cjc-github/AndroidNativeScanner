@@ -127,18 +127,23 @@ def test_analyzer_handles_stripped_image(tmp_path, elf64_stripped_symbols):
     assert result.data["counts"]["exported_functions"] == 5
 
 
-def test_analyzer_optionally_includes_data_and_imports(tmp_path, elf64_with_symbols):
+def test_analyzer_optionally_includes_data_symbols(tmp_path, elf64_with_symbols):
     sample = tmp_path / "libsample.so"
     sample.write_bytes(elf64_with_symbols)
-    options = {
-        "capability_options": {
-            "basic.symbols": {"include_data_symbols": True, "include_imports": True}
-        }
-    }
+    options = {"capability_options": {"basic.symbols": {"include_data_symbols": True}}}
 
     result = _analyze(sample, **options)
 
     assert [record["name"] for record in result.data["data_symbols"]] == ["g_counter"]
+
+
+def test_analyzer_always_reports_imports(tmp_path, elf64_with_symbols):
+    """Imports are always present: downstream analyzers must not be gated."""
+    sample = tmp_path / "libsample.so"
+    sample.write_bytes(elf64_with_symbols)
+
+    result = _analyze(sample)
+
     assert [record["name"] for record in result.data["imports"]] == ["printf"]
 
 
@@ -297,4 +302,4 @@ def test_analyzer_reports_untyped_exports_even_without_options(tmp_path):
     assert result.data["counts"]["exported_functions"] == 1
     assert result.data["counts"]["exported_unclassified"] == 1
     assert "data_symbols" not in result.data
-    assert "imports" not in result.data
+    assert "imports" in result.data

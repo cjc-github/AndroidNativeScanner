@@ -4,17 +4,19 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import signal
 import sys
+from threading import Lock
 from typing import Any, Sequence, TextIO
 
 import yaml
 
 from ..analyzers import register_builtin_analyzers
 from ..application import AnalysisRequest, AnalysisService, ApplicationResponse
-from ..core.analyzer import AnalyzerRegistry
+from ..core.analyzer import AnalyzerRegistry, CancellationToken
 from ..core.models import Diagnostic, DiagnosticLevel
 from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
-from ..core.runtime import AnalysisRuntime
+from ..core.runtime import AnalysisRuntime, ProgressEvent, ProgressObserver
 from ..infrastructure.config import AnalysisConfig, ConfigLoader, YamlConfigStore
 from ..infrastructure.plugins import PluginLoader
 from ..modules import ModuleCatalog, create_builtin_module_catalog
@@ -446,6 +448,75 @@ def _yaml_value(config: AnalysisConfig | None, section: str, key: str) -> Any:
     return values.get(key)
 
 
+class _CliProgressObserver(ProgressObserver):
+    """Report analyzer progress on stderr so stdout stays pipeable.
+
+    Serial output is the common case; with ``jobs > 1`` the lock keeps lines
+    from interleaving.
+    """
+
+    def __init__(self, stream: TextIO, enabled: bool) -> None:
+        self._stream = stream
+        self._enabled = enabled
+        self._lock = Lock()
+
+    def on_analyzer_start(self, event: ProgressEvent) -> None:
+        if not self._enabled:
+            return
+        with self._lock:
+            self._stream.write(f"  running {event.analyzer_id}\n")
+            self._stream.flush()
+
+    def on_analyzer_finish(self, event: ProgressEvent) -> None:
+        if not self._enabled:
+            return
+        suffix = f" ({event.message})" if event.message else ""
+        with self._lock:
+            self._stream.write(
+                f"  {event.analyzer_id} {event.status}{suffix} "
+                f"{event.duration_ms} ms\n"
+            )
+            self._stream.flush()
+
+
+class _CancellationScope:
+    """Turn SIGINT into a cooperative cancellation of the remaining analyzers.
+
+    The analyzer already running cannot be interrupted (Python cannot kill a
+    thread), so the first signal cancels the rest of the plan and the run
+    returns a normal result with CANCELLED entries. A second signal restores
+    the default handler so an impatient user can still abort immediately.
+    """
+
+    def __init__(self) -> None:
+        self.token = CancellationToken()
+        self._previous: Any = None
+        self._installed = False
+
+    def __enter__(self) -> "_CancellationScope":
+        try:
+            self._previous = signal.signal(signal.SIGINT, self._handle)
+        except (ValueError, OSError):
+            # Not the main thread, or the platform forbids it: run without
+            # cooperative cancellation rather than failing.
+            return self
+        self._installed = True
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        if self._installed:
+            signal.signal(signal.SIGINT, self._previous)
+
+    def _handle(self, signum: int, frame: Any) -> None:
+        self.token.cancel()
+        sys.stderr.write("\nInterrupted; finishing the current analyzer and cancelling the rest.\n")
+        sys.stderr.flush()
+        try:
+            signal.signal(signal.SIGINT, self._previous)
+        except (ValueError, OSError):
+            pass
+
+
 def _handle_analysis(
     args: argparse.Namespace,
     registry: AnalyzerRegistry,
@@ -522,14 +593,18 @@ def _handle_analysis(
     effective_profile = getattr(args, "profile", None)
     if not effective_profile and analysis_config:
         effective_profile = analysis_config.analysis.profile
-    response = service.execute(
-        AnalysisRequest(
-            target=args.target,
-            analyzer_ids=analyzer_ids,
-            profile=effective_profile,
-        ),
-        runtime_config,
-    )
+    observer = _CliProgressObserver(sys.stderr, enabled=not runtime_config.quiet)
+    with _CancellationScope() as scope:
+        response = service.execute(
+            AnalysisRequest(
+                target=args.target,
+                analyzer_ids=analyzer_ids,
+                profile=effective_profile,
+            ),
+            runtime_config,
+            observer=observer,
+            cancellation=scope.token,
+        )
     if runtime_config.quiet and output_format == "text" and response.exit_code == 0:
         return response.exit_code
     return _render_response(response, output_format, output, renderers, stdout)

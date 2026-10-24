@@ -92,7 +92,18 @@ V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要�
 - `demangle.py`：Itanium C++ ABI 符号 demangler，覆盖真实 ELF 导出常见的子集（嵌套名、模板与替换、操作符、构造析构、local name、vtable/typeinfo/guard/thunk、TM clone），无法解释的名字原样返回而不猜测。替换编号遵循参考 mangler：名称类候选去重（`find_substitution` 先行），类型类候选不去重（解析出的模板参数会再次登记）；
 - `jni.py`：JNI native 方法名解码，转义感知的组件切分。
 
+`infrastructure/dwarf` 解析调试信息：
+
+- `parser.py`：`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头，支持 DWARF 2-5（含 DWARF64 与 DWARF5 的 `unit_type` 布局差异），提取 `DW_TAG_subprogram` 的形式参数、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；
+- 未知 form、越界引用、缺失字符串表都降级为 `None` 而不是猜测；`.debug_info` 畸形时记 `DWARF_UNREADABLE` 警告，不影响其余分析。
+
 该层不依赖 `readelf`/`nm`/`objdump` 等外部工具，也不执行被分析文件。验证方式见[项目状态](project-status.md)的“真实共享库验证”。
+
+运行时控制位于 `core/runtime`：
+
+- `scheduler.py`：每个 Analyzer 在守护线程中执行并受看门狗约束，超时记 `ANALYZER_TIMEOUT`；Python 无法终止线程，因此用 daemon 线程以保证 Ctrl+C 仍能退出，被放弃线程对共享 context 的写入是尽力而为；
+- `progress.py`：`ProgressObserver` 在 run/stage/analyzer 边界发事件，供 CLI 进度行或未来前端日志流使用；观察者抛异常不会影响分析结果；
+- `runtime.py`：接受外部 `CancellationToken`，使前端（或 CLI 的 SIGINT）能在 Analyzer 之间协作式取消。
 
 ### Renderer Layer
 

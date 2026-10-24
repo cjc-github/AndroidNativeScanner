@@ -1,7 +1,8 @@
 """Application facade used by CLI and future frontends."""
 
+from ..core.analyzer import CancellationToken
 from ..core.models import AnalysisStatus, Diagnostic, DiagnosticLevel
-from ..core.runtime import AnalysisRuntime, PlanningError
+from ..core.runtime import AnalysisRuntime, PlanningError, ProgressObserver
 from ..infrastructure.config import RuntimeConfig
 from .requests import AnalysisRequest
 from .responses import ApplicationResponse
@@ -29,6 +30,8 @@ class AnalysisService:
         self,
         request: AnalysisRequest,
         config: RuntimeConfig,
+        observer: ProgressObserver | None = None,
+        cancellation: CancellationToken | None = None,
     ) -> ApplicationResponse:
         try:
             target = self.target_resolver.resolve(request.target)
@@ -37,6 +40,8 @@ class AnalysisService:
                 analyzer_ids=request.analyzer_ids,
                 config=config,
                 profile=request.profile,
+                observer=observer,
+                cancellation=cancellation,
             )
             if not request.analyzer_ids:
                 warning = Diagnostic(

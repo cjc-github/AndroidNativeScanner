@@ -66,9 +66,12 @@
 - [x] demangler 与 `cpp_demangle` 参考实现交叉校验（dev 依赖，缺失时跳过）；
 - [x] demangler 对真实共享库的全量比对（`scripts/categorise_real_sos.py`）；
 - [x] JNI 解码：普通/重载/转义/默认包；
-- [x] `basic.symbols`：导出函数、去重、stripped、选项、截断、非 ELF、JSON 可序列化。
+- [x] `basic.symbols`：导出函数、去重、stripped、选项、截断、非 ELF、JSON 可序列化；
+- [x] `security.dangerous-api`：精确匹配、FORTIFY 归一化、无类型导出单独归类、选项与严重度阈值；
+- [x] 运行时控制：Analyzer 超时看门狗、外部取消令牌、进度观察者（含缓存命中）、异常观察者不影响运行；
+- [x] `basic.dwarf`：参数名/参数类型/返回类型/声明位置、限定名还原、行号表头文件名、截断与畸形降级。
 
-当前自动化测试：`319 passed`（含 `cpp_demangle` 交叉校验；无该 dev 依赖时相应用例跳过）。
+当前自动化测试：`374 passed`（含 `cpp_demangle` 交叉校验；无该 dev 依赖时相应用例跳过）。
 
 ### 真实共享库验证
 
@@ -103,7 +106,7 @@
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`basic.symbols`/`security.hardening` 之外的 Analyzer/Rule/Provider |
+| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 之外的 Analyzer/Rule/Provider |
 | `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file`、内置 Profile（`quick`/`security`） | 无 |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
@@ -148,10 +151,17 @@ soinsight scan libfoo.so --module basic,security --format json
 ### Phase 1B：V1 能力迁移
 
 - `basic.symbols`（✅ 已完成：导出符号 + C++ demangle + JNI 解码）；
+- `basic.dwarf`（✅ 已完成：参数名、参数类型、返回类型、声明位置；与 `basic.symbols` 在渲染层联合）；
 - `advanced.strings`；
-- `security.dangerous-api`（依赖 `basic.symbols`，可在其之上实现）；
+- `security.dangerous-api`（✅ 已完成：依赖 `basic.symbols`，按符号名精确匹配）；
 - `security.risk`；
 - V1 URL/Secret/Base64/JNI 规则迁移。
+
+### 运行时控制（Phase 2 提前落地）
+
+- [x] Analyzer 超时看门狗：`timeout_seconds` 此前只在 CLI/YAML 中透传，Runtime 从未读取；现在每个 Analyzer 在守护线程中执行，超时记 `ANALYZER_TIMEOUT` 并放弃该线程（Python 无法杀线程，因此用 daemon 线程，保证 Ctrl+C 仍能退出）；
+- [x] 取消令牌：`CancellationToken` 已存在但无人设置；现在 `AnalysisRuntime.execute`/`AnalysisService.execute` 接受外部令牌，CLI 的 SIGINT 会取消后续 Analyzer，二次信号恢复默认行为以便立即中止；
+- [x] 进度观察者：`ProgressObserver` 在 run/stage/analyzer 边界发事件，缓存命中也会报进度，观察者抛异常不会影响分析（这正是 Web UI 日志流需要的地基）。
 
 ### Phase 2：共享基础设施
 

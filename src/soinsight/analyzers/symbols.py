@@ -38,7 +38,6 @@ _DEFAULT_OPTIONS = {
     "demangle": True,
     "jni_decode": True,
     "include_data_symbols": False,
-    "include_imports": False,
     "max_functions": 10000,
 }
 
@@ -106,8 +105,7 @@ class BasicSymbolsAnalyzer(Analyzer):
                 if symbol.name and symbol.name not in seen_imports:
                     seen_imports.add(symbol.name)
                     import_count += 1
-                    if options["include_imports"]:
-                        imports.append(_import_record(symbol))
+                    imports.append(_import_record(symbol))
                 continue
             if symbol.bind == "LOCAL":
                 local_count += 1
@@ -164,14 +162,15 @@ class BasicSymbolsAnalyzer(Analyzer):
             "demangled_count": demangled_count,
             "jni_count": jni_count,
             "functions": exported_functions,
-            # Always reported: these are part of the export table, so dropping
-            # them silently would understate what the library exposes.
+            # Always reported: imports and untyped exports are facts about
+            # what the library can reach, so gating them behind an option
+            # would silently weaken downstream analyzers such as
+            # security.dangerous-api.
+            "imports": imports,
             "unclassified_symbols": unclassified,
         }
         if options["include_data_symbols"]:
             data["data_symbols"] = exported_data
-        if options["include_imports"]:
-            data["imports"] = imports
 
         return AnalysisResult(
             analyzer_id=ANALYZER_ID,
@@ -187,7 +186,7 @@ def _resolve_options(context) -> dict:
     extra = getattr(getattr(context, "config", None), "extra", None) or {}
     declared = extra.get("capability_options", {}).get(ANALYZER_ID, {})
     resolved = dict(_DEFAULT_OPTIONS)
-    for key in ("demangle", "jni_decode", "include_data_symbols", "include_imports"):
+    for key in ("demangle", "jni_decode", "include_data_symbols"):
         if key in declared:
             resolved[key] = bool(declared[key])
     if "max_functions" in declared:

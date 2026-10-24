@@ -14,6 +14,18 @@ def _format_bytes(size: int) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
+def _dwarf_signatures(result) -> dict[str, str]:
+    """Index DWARF signatures by mangled name, when debug info was parsed."""
+    dwarf_result = result.results.get("basic.dwarf")
+    if dwarf_result is None or not dwarf_result.data.get("has_debug_info"):
+        return {}
+    return {
+        record["linkage_name"]: record["signature"]
+        for record in dwarf_result.data.get("functions", [])
+        if record.get("linkage_name")
+    }
+
+
 def _render_symbols(result) -> list[str]:
     """Render the ``basic.symbols`` facts as a compact signature list."""
     symbol_result = result.results.get("basic.symbols")
@@ -21,6 +33,8 @@ def _render_symbols(result) -> list[str]:
         return []
     data = symbol_result.data
     counts = data.get("counts", {})
+    dwarf = _dwarf_signatures(result)
+    enriched = sum(1 for record in data.get("functions", []) if record["name"] in dwarf)
     lines = [
         "",
         "Symbols:",
@@ -29,6 +43,8 @@ def _render_symbols(result) -> list[str]:
         f"  Demangled            {data.get('demangled_count', 0)}",
         f"  JNI methods          {data.get('jni_count', 0)}",
     ]
+    if dwarf:
+        lines.append(f"  With parameter names {enriched}")
     if counts.get("exported_unclassified"):
         lines.append(
             f"  Untyped exports      {counts['exported_unclassified']}"
@@ -39,7 +55,10 @@ def _render_symbols(result) -> list[str]:
     if functions:
         lines.append("  Signatures:")
         for record in functions[:_TEXT_SIGNATURE_LIMIT]:
-            lines.append(f"    {record.get('signature', record.get('name', ''))}")
+            # Prefer the DWARF signature: it carries parameter names, which
+            # the dynamic symbol table cannot express.
+            signature = dwarf.get(record["name"], record.get("signature", ""))
+            lines.append(f"    {signature or record.get('name', '')}")
         remaining = len(functions) - _TEXT_SIGNATURE_LIMIT
         if remaining > 0:
             lines.append(f"    ... and {remaining} more")
@@ -85,8 +104,11 @@ class TextRenderer(Renderer):
             lines.extend(_render_symbols(result))
             lines.extend(["", "Findings:"])
             if result.findings:
+                lines[-1] = f"Findings: {len(result.findings)}"
                 for finding in result.findings:
-                    lines.append(f"  - {finding.title}")
+                    lines.append(
+                        f"  [{finding.severity.value}] {finding.title}"
+                    )
             else:
                 lines.append("  none")
             diagnostics = result.diagnostics

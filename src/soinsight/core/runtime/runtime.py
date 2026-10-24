@@ -3,12 +3,20 @@
 from time import perf_counter
 from uuid import uuid4
 
-from ..analyzer import AnalysisContext, AnalyzerRegistry
+from ..analyzer import AnalysisContext, AnalyzerRegistry, CancellationToken
 from ..models import AnalysisStatus, AnalysisTarget, ScanResult
 from ..rules import RuleEngine
 from .aggregator import ResultAggregator
 from .cache import RuntimeCache
 from .planner import DependencyPlanner
+from .progress import (
+    KIND_ANALYZER_FINISH,
+    KIND_RUN_FINISH,
+    KIND_RUN_START,
+    ProgressEvent,
+    ProgressObserver,
+    emit,
+)
 from .scheduler import DAGScheduler
 
 
@@ -33,14 +41,25 @@ class AnalysisRuntime:
         analyzer_ids: tuple[str, ...] | list[str],
         config: object,
         profile: str | None = None,
+        observer: ProgressObserver | None = None,
+        cancellation: CancellationToken | None = None,
     ) -> ScanResult:
         plan = self.planner.build(analyzer_ids, self.registry)
         context = AnalysisContext(
             run_id=str(uuid4()),
             target=target,
             config=config,
+            cancellation=cancellation or CancellationToken(),
         )
         started = perf_counter()
+        emit(
+            observer,
+            ProgressEvent(
+                kind=KIND_RUN_START,
+                total_analyzers=len(plan.resolved),
+                completed_analyzers=0,
+            ),
+        )
         cache = RuntimeCache(config) if getattr(config, "cache_enabled", False) else None
         if cache:
             for analyzer_id in plan.resolved:
@@ -48,11 +67,41 @@ class AnalysisRuntime:
                 cached = cache.get(target, analyzer_id, analyzer.metadata.version)
                 if cached is not None:
                     context.add_result(cached)
-        self.scheduler.run(plan, self.registry, context, getattr(config, "jobs", 1))
+                    # A cache hit skips the scheduler, so report it here or the
+                    # run would look silent for the analyzers it reused.
+                    emit(
+                        observer,
+                        ProgressEvent(
+                            kind=KIND_ANALYZER_FINISH,
+                            analyzer_id=analyzer_id,
+                            total_analyzers=len(plan.resolved),
+                            completed_analyzers=len(context.results),
+                            status=cached.status.value,
+                            duration_ms=cached.duration_ms,
+                            message="cache hit",
+                        ),
+                    )
+        self.scheduler.run(
+            plan,
+            self.registry,
+            context,
+            getattr(config, "jobs", 1),
+            observer,
+            getattr(config, "timeout_seconds", None),
+        )
         if cache:
             for result in context.results.values():
                 if result.status == AnalysisStatus.SUCCESS and not result.cache_hit:
                     cache.put(target, result)
         self.rule_engine.evaluate(context)
         duration_ms = int((perf_counter() - started) * 1000)
+        emit(
+            observer,
+            ProgressEvent(
+                kind=KIND_RUN_FINISH,
+                total_analyzers=len(plan.resolved),
+                completed_analyzers=len(context.results),
+                duration_ms=duration_ms,
+            ),
+        )
         return self.aggregator.aggregate(context, plan, duration_ms, profile)

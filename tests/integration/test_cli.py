@@ -57,10 +57,12 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.file",
         "basic.elf",
         "basic.symbols",
+        "basic.dwarf",
     ]
     assert payload["result"]["resolved_analyzers"] == [
         "basic.file",
         "basic.elf",
+        "basic.dwarf",
         "basic.symbols",
     ]
     assert payload["result"]["results"]["basic.file"]["data"]["format"] == "elf"
@@ -196,7 +198,7 @@ def test_cli_shows_module_capabilities_with_status():
         "  file        basic.file        文件分析         implemented",
         "  elf         basic.elf         ELF 解析         implemented",
         "  symbols     basic.symbols     Symbol 解析      implemented",
-        "  dwarf       basic.dwarf       DWARF 解析       planned",
+        "  dwarf       basic.dwarf       DWARF 解析       implemented",
         "  types       basic.types       类型恢复         planned",
         "  cpp         basic.cpp         C++ 恢复         planned",
         "  disasm      basic.disasm      反汇编           planned",
@@ -231,11 +233,13 @@ def test_cli_lists_plugins_as_table():
 
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
-        "ID                 VERSION KIND      DEFAULT NAME",
-        "basic.elf          1.0.0   collector yes     ELF Header Analyzer",
-        "basic.file         1.0.0   collector yes     File Analyzer",
-        "basic.symbols      1.0.0   collector yes     Symbol Analyzer",
-        "security.hardening 1.0.0   collector yes     Hardening Analyzer",
+        "ID                     VERSION KIND      DEFAULT NAME",
+        "basic.dwarf            1.0.0   collector yes     DWARF Analyzer",
+        "basic.elf              1.0.0   collector yes     ELF Header Analyzer",
+        "basic.file             1.0.0   collector yes     File Analyzer",
+        "basic.symbols          1.0.0   collector yes     Symbol Analyzer",
+        "security.dangerous-api 1.0.0   detector  yes     Dangerous API Detection",
+        "security.hardening     1.0.0   collector yes     Hardening Analyzer",
     ]
 
 
@@ -314,7 +318,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   4\n" in output
+    assert "  Registered analyzers   6\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -404,22 +408,191 @@ def test_cli_symbol_analysis_skips_non_elf_target(tmp_path):
     assert payload["result"]["results"]["basic.symbols"]["status"] == "skipped"
 
 
+def test_cli_runs_dangerous_api_chain_and_reports_findings(tmp_path, elf64_with_symbols):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(
+        ["security", "dangerous-api", str(target), "--format", "json"], stdout=stdout
+    )
+
+    payload = json.loads(stdout.getvalue())
+    result = payload["result"]
+    assert exit_code == 0
+    assert result["requested_analyzers"] == ["security.dangerous-api"]
+    assert result["resolved_analyzers"] == [
+        "basic.file",
+        "basic.elf",
+        "basic.symbols",
+        "security.dangerous-api",
+    ]
+    analysis = result["results"]["security.dangerous-api"]
+    assert analysis["status"] == "success"
+    # The fixture exports no dangerous API and imports none either.
+    assert analysis["data"]["finding_count"] == 0
+    assert result["findings"] == []
+
+
+def test_cli_dangerous_api_reports_findings_as_text(tmp_path):
+    """A library importing system() must surface a critical finding."""
+    from tests.conftest import build_elf64_with_symbols
+
+    symbols = [
+        ("", 0, 3, 0xFFF1, 0, 0),
+        ("system", 1, 0, 0, 0, 0),          # imported, untyped
+        ("_ZN3foo3barEi", 1, 2, 1, 0x1000, 0x20),
+    ]
+    target = tmp_path / "libdanger.so"
+    target.write_bytes(build_elf64_with_symbols(symbols, with_symtab=False))
+    stdout = StringIO()
+
+    exit_code = main(["security", "dangerous-api", str(target)], stdout=stdout)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "security.dangerous-api  success" in output
+    assert "Dangerous API imported: system" in output
+
+
+def test_cli_dangerous_api_skips_when_symbols_unavailable(tmp_path):
+    """A non-ELF target skips the whole chain instead of failing loudly."""
+    target = tmp_path / "plain.txt"
+    target.write_bytes(b"not an elf file")
+    stdout = StringIO()
+
+    exit_code = main(
+        ["security", "dangerous-api", str(target), "--format", "json"], stdout=stdout
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 5
+    assert payload["result"]["results"]["basic.elf"]["status"] == "failed"
+    assert payload["result"]["results"]["security.dangerous-api"]["status"] == "skipped"
+
+
+def test_cli_writes_progress_to_stderr_not_stdout(tmp_path, elf64_with_symbols, capsys):
+    """Progress is diagnostic output; stdout must stay pipeable."""
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(
+        ["basic", "symbols", str(target), "--no-cache", "--format", "json"],
+        stdout=stdout,
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    # stdout holds only the rendered JSON document.
+    assert json.loads(stdout.getvalue())["result"]["status"] == "success"
+    assert "running basic.file" in captured.err
+    assert "basic.file success" in captured.err
+    assert "running basic.file" not in stdout.getvalue()
+
+
+def test_cli_reports_progress_for_cached_analyzers(tmp_path, elf64_with_symbols, capsys):
+    """A cache hit skips the scheduler, so it must still be reported."""
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+    cache_dir = tmp_path / "cache"
+    arguments = [
+        "basic", "symbols", str(target), "--cache-dir", str(cache_dir),
+        "--format", "json",
+    ]
+
+    assert main(arguments, stdout=stdout) == 0
+    capsys.readouterr()
+    assert main(arguments, stdout=stdout) == 0
+
+    captured = capsys.readouterr()
+    assert "basic.file success (cache hit)" in captured.err
+    assert "running basic.file" not in captured.err
+
+
+def test_cli_quiet_suppresses_progress(tmp_path, elf64_with_symbols, capsys):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(
+        ["basic", "symbols", str(target), "--quiet", "--format", "json"], stdout=stdout
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "running basic.file" not in captured.err
+    assert json.loads(stdout.getvalue())["result"]["status"] == "success"
+
+
+def test_cli_dwarf_enriches_symbol_signatures_with_parameter_names(tmp_path):
+    """DWARF supplies what the dynamic symbol table cannot: parameter names."""
+    from tests.conftest import build_dwarf_sections, build_elf64_with_symbols
+
+    symbols = [
+        ("", 0, 3, 0xFFF1, 0, 0),
+        ("add", 1, 2, 1, 0x1000, 0x40),
+        ("_ZN7MyClass7processEPKci", 1, 2, 1, 0x1100, 0x60),
+    ]
+    target = tmp_path / "libjoined.so"
+    target.write_bytes(
+        build_elf64_with_symbols(
+            symbols, with_symtab=False, extra_sections=build_dwarf_sections()
+        )
+    )
+    stdout = StringIO()
+
+    exit_code = main(
+        [
+            "scan", str(target), "--no-cache",
+            "--enable", "basic.file,basic.elf,basic.symbols,basic.dwarf",
+        ],
+        stdout=stdout,
+    )
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "  With parameter names 2" in output
+    assert "int add(int a, int b)" in output
+    assert "int MyClass::process(char const* buffer, unsigned int length)" in output
+
+
+def test_cli_dwarf_analysis_reports_missing_debug_information(
+    tmp_path, elf64_with_symbols
+):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(
+        ["basic", "dwarf", str(target), "--no-cache", "--format", "json"], stdout=stdout
+    )
+
+    payload = json.loads(stdout.getvalue())
+    analysis = payload["result"]["results"]["basic.dwarf"]
+    assert exit_code == 0
+    assert analysis["status"] == "success"
+    assert analysis["data"]["has_debug_info"] is False
+    assert analysis["data"]["functions"] == []
+
+
 def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target = tmp_path / "sample.so"
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dwarf", str(target)], stdout=stdout)
+    exit_code = main(["basic", "types", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.dwarf",
+        "  basic.types",
         "",
         "Reason:",
-        "  Analyzer not found: basic.dwarf",
+        "  Analyzer not found: basic.types",
         "",
         "Try:",
         "  soinsight modules show basic",
@@ -434,12 +607,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dwarf", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["basic", "types", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.dwarf" in payload["diagnostics"][0]["message"]
+    assert "basic.types" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -632,7 +805,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dwarf", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["basic", "types", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()

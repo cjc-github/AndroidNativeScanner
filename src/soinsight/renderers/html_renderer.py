@@ -41,6 +41,8 @@ def _render_symbols(result) -> str:
         return ""
     data = symbol_result.data
     counts = data.get("counts", {})
+    dwarf = _dwarf_signatures(result)
+    enriched = sum(1 for record in data.get("functions", []) if record["name"] in dwarf)
     parts = [
         "<h2>Symbols</h2>",
         "<ul>",
@@ -50,6 +52,8 @@ def _render_symbols(result) -> str:
         f"<li>Demangled: {data.get('demangled_count', 0)}</li>",
         f"<li>JNI methods: {data.get('jni_count', 0)}</li>",
     ]
+    if dwarf:
+        parts.append(f"<li>With parameter names: {enriched}</li>")
     if data.get("stripped"):
         parts.append("<li>Regular symbols: stripped (<code>.symtab</code> absent)</li>")
     parts.append("</ul>")
@@ -57,10 +61,26 @@ def _render_symbols(result) -> str:
     if functions:
         parts.append("<h3>Exported function signatures</h3><ul>")
         for record in functions[:_HTML_SIGNATURE_LIMIT]:
-            signature = escape(record.get("signature", record.get("name", "")))
-            parts.append(f"<li><code>{signature}</code></li>")
+            # Prefer the DWARF signature: it carries parameter names, which
+            # the dynamic symbol table cannot express.
+            signature = dwarf.get(record["name"], record.get("signature", ""))
+            parts.append(
+                f"<li><code>{escape(signature or record.get('name', ''))}</code></li>"
+            )
         remaining = len(functions) - _HTML_SIGNATURE_LIMIT
         if remaining > 0:
             parts.append(f"<li>... and {remaining} more</li>")
         parts.append("</ul>")
     return "".join(parts)
+
+
+def _dwarf_signatures(result) -> dict[str, str]:
+    """Index DWARF signatures by mangled name, when debug info was parsed."""
+    dwarf_result = result.results.get("basic.dwarf")
+    if dwarf_result is None or not dwarf_result.data.get("has_debug_info"):
+        return {}
+    return {
+        record["linkage_name"]: record["signature"]
+        for record in dwarf_result.data.get("functions", [])
+        if record.get("linkage_name")
+    }

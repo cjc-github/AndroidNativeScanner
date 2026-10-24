@@ -86,6 +86,8 @@ with zipfile.ZipFile(wheel) as archive:
         "soinsight/infrastructure/elf/parser.py",
         "soinsight/infrastructure/elf/demangle.py",
         "soinsight/infrastructure/elf/jni.py",
+        "soinsight/infrastructure/dwarf/__init__.py",
+        "soinsight/infrastructure/dwarf/parser.py",
         "soinsight/modules/__init__.py",
         "soinsight/modules/basic/__init__.py",
         "soinsight/modules/advanced/__init__.py",
