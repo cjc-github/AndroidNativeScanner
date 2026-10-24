@@ -24,7 +24,7 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic file` | `basic.file` | 文件分析 | 已实现 |
 | `basic elf` | `basic.elf` | ELF 解析 | 已实现 |
 | `basic symbols` | `basic.symbols` | Symbol 解析 | 已实现 |
-| `basic dwarf` | `basic.dwarf` | DWARF 解析 | 外壳 |
+| `basic dwarf` | `basic.dwarf` | DWARF 解析 | 已实现 |
 | `basic types` | `basic.types` | 类型恢复 | 外壳 |
 | `basic cpp` | `basic.cpp` | C++ 恢复 | 外壳 |
 | `basic disasm` | `basic.disasm` | 反汇编 | 外壳 |
@@ -33,6 +33,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 外壳 |
 
 `basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
+
+`basic.dwarf` 解析 DWARF 2-5 调试信息（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头），提取 `DW_TAG_subprogram` 的参数名、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名。其依赖链为 `basic.file → basic.elf → basic.dwarf`；调试信息缺失记为事实（`has_debug_info: false`），畸形记 `DWARF_UNREADABLE` 警告，不影响其余分析。渲染层会把 DWARF 参数名按 mangled name 联合回 `basic.symbols` 的签名。
 
 ### 2.2 高级分析
 
@@ -49,12 +51,12 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 
 ### 2.3 安全分析
 
-| 命令 | 稳定能力 ID | 能力 |
-|---|---|---|
-| `security hardening` | `security.hardening` | 安全保护检测 |
-| `security dangerous-api` | `security.dangerous-api` | 危险 API 检测 |
-| `security vulnerability` | `security.vulnerability` | 漏洞模式识别 |
-| `security risk` | `security.risk` | 风险评分/评估 |
+| 命令 | 稳定能力 ID | 能力 | 状态 |
+|---|---|---|---|
+| `security hardening` | `security.hardening` | 安全保护检测 | 已实现 |
+| `security dangerous-api` | `security.dangerous-api` | 危险 API 检测 | 已实现 |
+| `security vulnerability` | `security.vulnerability` | 漏洞模式识别 | 外壳 |
+| `security risk` | `security.risk` | 风险评分/评估 | 外壳 |
 
 ### 2.4 动态分析
 
@@ -112,7 +114,7 @@ Result Model / Renderer / Artifact Store / Plugin Loader / Tool Runner
 
 ```text
 security.dangerous-api
-  requires: basic.symbols, basic.disasm, basic.callgraph
+  requires: basic.symbols
 
 ai.vulnerability-explanation
   consumes: security.vulnerability / security.risk findings
@@ -120,6 +122,8 @@ ai.vulnerability-explanation
 automation.harness
   consumes: basic.types, advanced.protocol, dynamic.coverage
 ```
+
+`security.dangerous-api` 当前只依赖 `basic.symbols`：它按符号名精确匹配导入/导出的危险 API。FORTIFY 变体（`__strcpy_chk`）和前导下划线先归一化再匹配；`basic.disasm`/`basic.callgraph` 实现后可作为可选依赖提供调用点证据，当前不阻断匹配。
 
 约束：
 
@@ -140,7 +144,8 @@ automation.harness
 - `modules list/show`；
 - `scan --module basic,security` 对单目标兼容能力进行展开；
 - 单目标能力到 Runtime 的路由；
-- 开发期旧扁平命令隐藏兼容别名。
+- 开发期旧扁平命令隐藏兼容别名；
+- 6 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`。
 
 未实现：
 

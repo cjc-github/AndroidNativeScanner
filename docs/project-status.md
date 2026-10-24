@@ -1,12 +1,12 @@
 # SOInsight V2 项目状态与路线图
 
-**状态日期：2026-08-18**
+**状态日期：2026-10-24**
 
 ## 1. 当前里程碑
 
-> Phase 1B（首项）— 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols` 真实 Analyzer、第一条跨域链路（`basic.file → basic.elf → security.hardening`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时基础设施仍在建设中。
+> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`security.hardening` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -26,7 +26,7 @@
 - [x] 独立 `src/soinsight/` 包和 console script；
 - [x] Target/Result/Finding/Diagnostic；
 - [x] Analyzer/Rule/Profile/Renderer SDK 和 Registry；
-- [x] 依赖 DAG、循环检测和串行 Scheduler；
+- [x] 依赖 DAG、循环检测和 DAG stage Scheduler；
 - [x] 异常隔离、依赖跳过和结果聚合；
 - [x] Text/JSON Renderer；
 - [x] ToolRunner、ArtifactStore 和 PluginLoader 边界；
@@ -38,15 +38,20 @@
 - [x] Itanium C++ ABI 符号 demangler（嵌套名、模板与替换、操作符、构造析构、local name、vtable/typeinfo/thunk）；
 - [x] JNI  native 方法名解码器（包名/类名/方法名 + 重载参数类型）；
 - [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding）；
+- [x] 内置 `basic.dwarf` Analyzer（DWARF 2-5 参数名/参数类型/返回类型/声明位置 + 限定名还原）；
+- [x] 纯 Python DWARF 解析基础设施 `infrastructure/dwarf`（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str`/`.debug_line`，无外部工具依赖）；
+- [x] 内置 `security.dangerous-api` Analyzer（符号名精确匹配 + FORTIFY 归一化 + 严重度阈值）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
 - [x] 第二条真实跨域链路：`basic.file → basic.elf → basic.symbols`；
+- [x] 第三条真实跨域链路：`basic.file → basic.elf → basic.dwarf`（渲染层与 `basic.symbols` 联合）；
 - [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
 - [x] Runtime 文件缓存（按目标 sha256 + analyzer 版本命中/写入）；
 - [x] DAG stage 并发执行（`jobs > 1` 时同 stage Analyzer 并行）；
+- [x] Analyzer 超时看门狗、外部取消令牌和进度观察者；
 - [x] Python entry point 插件发现（组 `soinsight.analyzers`）；
 - [x] Markdown、HTML 报告渲染器；
 - [x] SARIF 2.1.0 报告渲染器；
-- [x] Text/Markdown/HTML 报告展示导出函数签名清单；
+- [x] Text/Markdown/HTML 报告展示导出函数签名清单（含 DWARF 参数名联合）；
 - [x] CLI 输出规范 P0/P1/P2：状态列、分组 help、doctor、quiet、TTY 颜色、窄终端布局和 JSON schema 文档。
 
 ### 测试
@@ -152,8 +157,8 @@ soinsight scan libfoo.so --module basic,security --format json
 
 - `basic.symbols`（✅ 已完成：导出符号 + C++ demangle + JNI 解码）；
 - `basic.dwarf`（✅ 已完成：参数名、参数类型、返回类型、声明位置；与 `basic.symbols` 在渲染层联合）；
-- `advanced.strings`；
 - `security.dangerous-api`（✅ 已完成：依赖 `basic.symbols`，按符号名精确匹配）；
+- `advanced.strings`；
 - `security.risk`；
 - V1 URL/Secret/Base64/JNI 规则迁移。
 
@@ -162,6 +167,7 @@ soinsight scan libfoo.so --module basic,security --format json
 - [x] Analyzer 超时看门狗：`timeout_seconds` 此前只在 CLI/YAML 中透传，Runtime 从未读取；现在每个 Analyzer 在守护线程中执行，超时记 `ANALYZER_TIMEOUT` 并放弃该线程（Python 无法杀线程，因此用 daemon 线程，保证 Ctrl+C 仍能退出）；
 - [x] 取消令牌：`CancellationToken` 已存在但无人设置；现在 `AnalysisRuntime.execute`/`AnalysisService.execute` 接受外部令牌，CLI 的 SIGINT 会取消后续 Analyzer，二次信号恢复默认行为以便立即中止；
 - [x] 进度观察者：`ProgressObserver` 在 run/stage/analyzer 边界发事件，缓存命中也会报进度，观察者抛异常不会影响分析（这正是 Web UI 日志流需要的地基）。
+- [x] CLI 接入：进度写在 stderr（`running basic.elf` / `basic.elf success 3 ms`），stdout 只保留可管道结果，`--quiet` 同时关闭进度行。
 
 ### Phase 2：共享基础设施
 
@@ -220,7 +226,7 @@ soinsight scan libfoo.so --module basic,security --format json
 公开测试版本至少需要：
 
 - 第一条跨域真实链路（✅ 已完成）；
-- File/ELF/Symbols/Strings/Hardening/Dangerous API；
+- File/ELF/Symbols/Dwarf/Hardening/Dangerous API（✅ 已实现，Strings 待迁移）；
 - 内置 Profile（✅ 已完成）；
 - CLI 与文档一致；
 - JSON Schema；

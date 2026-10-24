@@ -15,12 +15,15 @@ V1 在 V2 达到真实能力验收前继续可用。
 | 导入导出/JNI 符号 | `basic.symbols` | Analyzer + 可选 Rule | 已迁移 |
 | 字符串提取 | `advanced.strings` | Analyzer | 待迁移 |
 | URL/Base64/敏感字符串 | `advanced.strings` 事实 + `security.*` Rule | Analyzer + Rule | 待迁移 |
-| 危险函数 | `security.dangerous-api` | Analyzer/Rule，依赖 symbols/callgraph | 待迁移 |
+| 危险函数 | `security.dangerous-api` | Analyzer，依赖 `basic.symbols` | 已迁移 |
 | 基础风险汇总 | `security.risk` | 聚合 Analyzer/Rule | 待迁移 |
 | 目录批量扫描 | `automation.workflow` | Workflow/批处理编排 | 待迁移 |
 | 文本报告 | `automation.report` + Renderer | 报告编排与展示分离 | 待迁移 |
+| 调试信息/参数名 | `basic.dwarf` | Analyzer，依赖 `basic.elf` | 已迁移 |
 
 `basic.symbols` 相比 V1 `SymbolAnalyzer` 的差异：V1 只做 `nm -D` 导出名列举加 RCE 关键词匹配；V2 直接解析符号表（不依赖外部 binutils），并把 V1 的 URL/Secret/Base64/JNI 关键词思路留给后续 `security.*` Rule，事实层只保留可证明的符号与签名信息。
+
+`security.dangerous-api` 相比 V1 的 RCE 关键词匹配：V1 是子串匹配，会把 `memcpy`、`printf` 这类常见原语全部报出；V2 按符号名精确匹配一张数据化规则表，FORTIFY 变体与前导下划线先归一化，导入/导出分开记录，且明确区分“能力可达”与“已被调用”。
 
 ## 3. 迁移步骤
 
@@ -58,19 +61,30 @@ basic.file
   → Text/JSON/Markdown/HTML Renderer
 ```
 
+### 调试信息链路（✅ 已完成）
+
+```text
+basic.file
+  → basic.elf
+  → basic.dwarf
+  → 参数名/参数类型/返回类型/声明位置
+  → 渲染层与 basic.symbols 联合
+```
+
 ### 第二批：迁移 V1 事实
 
 ```text
 basic.symbols        （✅ 已迁移）
+basic.dwarf          （✅ 已迁移）
+security.dangerous-api（✅ 已迁移）
 advanced.strings
-security.dangerous-api
 security.risk
 ```
 
 ### 第三批：加深基础分析
 
 ```text
-basic.dwarf → basic.types/basic.cpp
+basic.types / basic.cpp
 basic.disasm → basic.cfg/basic.callgraph/basic.dataflow
 ```
 

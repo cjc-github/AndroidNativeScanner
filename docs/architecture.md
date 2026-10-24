@@ -133,9 +133,9 @@ soinsight security dangerous-api libfoo.so
   → ModuleCatalog 解析 security.dangerous-api
   → CLI 构造 AnalysisRequest
   → TargetResolver 校验目标并计算 SHA-256
-  → DependencyPlanner 补全 basic.symbols/basic.disasm/...（实现后）
-  → Scheduler 按 DAG 执行 Analyzer
-  → RuleEngine 形成 Finding
+  → DependencyPlanner 补全 basic.file → basic.elf → basic.symbols
+  → Scheduler 按 DAG 执行 Analyzer（看门狗 + 进度事件 + 取消令牌）
+  → SecurityDangerousApiAnalyzer 从 AnalysisContext 读取 basic.symbols 事实并生成 Finding
   → ResultAggregator 生成 ScanResult
   → Renderer 输出 text/json
 ```
@@ -149,6 +149,16 @@ soinsight basic symbols libfoo.so
   → infrastructure/elf 解析 .dynsym/.symtab
   → demangle / decode_jni_symbol 恢复签名
   → Renderer 输出 text/json/markdown/html
+```
+
+已实现的调试信息链路：
+
+```text
+soinsight basic dwarf libfoo.so
+  → DependencyPlanner 补全 basic.file → basic.elf
+  → infrastructure/dwarf 解析 .debug_info/.debug_line
+  → 参数名/参数类型/返回类型/声明位置 + 父 DIE 链限定名
+  → 与 basic.symbols 在渲染层按 mangled name 联合
 ```
 
 组合扫描：
@@ -167,9 +177,11 @@ AnalyzerMetadata(
     id="security.dangerous-api",
     name="Dangerous API Detection",
     version="1.0.0",
-    requires=("basic.symbols", "basic.disasm", "basic.callgraph"),
+    requires=("basic.symbols",),
 )
 ```
+
+`basic.dwarf` 依赖 `basic.elf`；`security.dangerous-api` 依赖 `basic.symbols`。`basic.disasm`/`basic.callgraph` 尚未实现，不进入当前依赖链。
 
 Planner 负责：
 
@@ -202,20 +214,20 @@ pending, running, success, partial, skipped,
 timeout, failed, cancelled, cached
 ```
 
-当前串行 Scheduler 主要产生 `success`、`failed`、`skipped`、`cancelled`。单个 Analyzer 异常被转换为诊断；无关 DAG 分支可以继续运行。
+Scheduler 产生 `success`、`failed`、`skipped`、`timeout`、`cancelled`、`cached`。单个 Analyzer 异常被转换为诊断；无关 DAG 分支可以继续运行。看门狗超时后线程被放弃（Python 无法终止线程），其结果按尽力而为处理。
 
 ## 8. 扩展点
 
 | 扩展点 | 用途 | 当前状态 |
 |---|---|---|
 | Module Catalog | 产品模块与能力发现 | 已实现六大模块 |
-| Analyzer | 提取/转换事实 | SDK 可用，具体能力待实现 |
+| Analyzer | 提取/转换事实 | SDK 可用；6 个内置 Analyzer（file/elf/symbols/dwarf/hardening/dangerous-api） |
 | Rule | 从事实形成 Finding | SDK 和 Runtime 可用 |
-| Profile | 组合能力 | Registry 可用，尚无内置 Profile |
-| Renderer | 输出格式 | Text/JSON 已实现 |
-| Scheduler | 任务执行 | 串行实现可用 |
+| Profile | 组合能力 | Registry 可用，内置 `quick`/`security` |
+| Renderer | 输出格式 | Text/JSON/Markdown/HTML/SARIF 已实现 |
+| Scheduler | 任务执行 | DAG stage 并发、看门狗、取消与进度可用 |
 | Artifact Store | 中间结果缓存 | 文件实现存在，未接 Runtime |
-| Plugin Loader | 外部扩展发现 | 占位 |
+| Plugin Loader | 外部扩展发现 | entry point 组 `soinsight.analyzers` 自动发现 |
 | Provider Adapter | AI/动态/反编译等外部能力 | 待设计 |
 
 ## 9. 包依赖约束
@@ -239,12 +251,12 @@ core 不依赖 cli/modules/具体 analyzer
 
 ## 10. 当前差距
 
-1. 为能力目录接入真实 Analyzer 和跨域依赖；
+1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 6/42 项能力已接入）；
 2. 支持双目标、多样本、结果集等复杂输入模型；
-3. 内置 quick/security/deep/ci Profile；
+3. 内置 deep/ci Profile（`quick`/`security` 已实现）；
 4. Artifact Store 接入 Runtime；
-5. 并发 Scheduler 与资源预算；
-6. 外部插件发现与 API 兼容策略；
-7. JSON Schema、Markdown/HTML/SARIF；
+5. Scheduler 资源预算（stage 并发、看门狗与取消已实现）；
+6. 外部插件 API 兼容策略；
+7. JSON Schema、Golden 回归；
 8. 动态分析沙箱和 AI Provider 治理；
 9. V1 Compatibility Adapter。

@@ -60,7 +60,7 @@ soinsight automation binary-diff OLD NEW
 soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TARGET [OPTIONS]
 ```
 
-单目标命令已经接入 Runtime，但具体 Analyzer 尚未实现，因此目前通常返回 `ANALYSIS_PLAN_ERROR` 和退出码 3。`binary-diff` 是双目标保留外壳，目前直接返回退出码 3。
+单目标命令已经接入 Runtime；已注册的能力（`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`）执行真实分析，其余能力因 Analyzer 尚未注册，通常返回 `ANALYSIS_PLAN_ERROR` 和退出码 3。`binary-diff` 是双目标保留外壳，目前直接返回退出码 3。
 
 ## 3. Runtime 通用参数
 
@@ -72,8 +72,8 @@ soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TA
 | `--format {text,json,markdown,html,sarif}` | YAML/`text` | 输出格式 |
 | `-o, --output PATH` | stdout | 输出文件，`-` 表示 stdout |
 | `-j, --jobs N` | `1` | 并行度；`>1` 时同 stage 内 Analyzer 并发执行 |
-| `--timeout SECONDS` | `60` | 超时配置 |
-| `-q, --quiet` | false | 静默模式；成功分析不输出正文，失败仍输出错误摘要 |
+| `--timeout SECONDS` | `60` | 单个 Analyzer 的超时上限；与 Analyzer 自身的 `timeout_seconds` 取较紧者。超时记 `ANALYZER_TIMEOUT` 并放弃该 Analyzer，不会中断整轮分析 |
+| `-q, --quiet` | false | 静默模式；成功分析不输出正文（含 stderr 进度行），失败仍输出错误摘要 |
 | `-v, --verbose` | false | 详细配置入口 |
 | `--no-color` | false | 禁用颜色配置入口 |
 | `--no-cache` | false | 禁用缓存（默认开启）；命中结果按目标 sha256 复用 |
@@ -99,16 +99,18 @@ soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
 soinsight scan libfoo.so --profile security --format sarif -o result.sarif
 soinsight basic elf libfoo.so --format json
 soinsight basic symbols libfoo.so
+soinsight basic dwarf libfoo.so --format json
 soinsight security hardening libfoo.so --format markdown
+soinsight security dangerous-api libfoo.so
 ```
 
-当前内置 `basic.file`、`basic.elf`、`basic.symbols`、`security.hardening` Analyzer 和 `quick`/`security` Profile。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
+当前内置 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api` Analyzer 和 `quick`/`security` Profile。无选择时会使用默认启用 Analyzer；选择尚未实现的能力时会因能力 Analyzer 尚未注册而产生 `ANALYSIS_PLAN_ERROR`。
 
 `basic symbols` 的输出在 Text/Markdown/HTML 下包含 `Symbols` 段（符号表、导出函数数、demangle 数、JNI 方法数与签名清单）；JSON 下为 `results["basic.symbols"].data`，包含 `symbol_tables`、`stripped`、`counts`、`demangled_count`、`jni_count`、`functions`、`imports` 与 `unclassified_symbols`。`functions[].signature` 是最佳可读签名，`demangled`/`jni` 为结构化明细。枚举范围与 `nm -D --defined-only` 一致；无类型（`STT_NOTYPE`）的导出单独归入 `unclassified_symbols`，不猜定为函数。
 
 当同一轮分析同时启用了 `basic.dwarf`，Text/Markdown/HTML 会用 DWARF 的参数名覆盖对应签名（按 mangled name 匹配），并额外显示 `With parameter names` 计数。
 
-`basic dwarf` 的输出在 JSON 下为 `results["basic.dwarf"].data`，包含 `has_debug_info`、`version`、`units`、`functions`、`truncated`；`functions[]` 每项有 `name`（含类/命名空间限定）、`linkage_name`、`signature`、`return_type`、`parameters`（`name` + `type`）、`decl_file`、`decl_line`、`low_pc`、`unit_name`。
+`basic dwarf` 的输出在 JSON 下为 `results["basic.dwarf"].data`，包含 `has_debug_info`、`version`、`units`、`functions`、`truncated`；`functions[]` 每项有 `name`（含类/命名空间限定）、`linkage_name`、`signature`、`return_type`、`parameters`（`name` + `type`）、`decl_file`、`decl_line`、`low_pc`、`unit_name`。没有调试信息时附带 `note` 字段说明是 stripped 构建，而不是错误。
 
 `security dangerous-api` 产出 Finding，JSON 下另有 `results["security.dangerous-api"].data` 的 `matched_apis`、`finding_count`、`counts_by_severity`；Text 输出的 `Findings` 段带严重度前缀。
 

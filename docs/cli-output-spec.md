@@ -105,6 +105,7 @@ Capabilities:
   file        basic.file        文件分析          implemented
   elf         basic.elf         ELF 解析          implemented
   symbols     basic.symbols     Symbol 解析      implemented
+  dwarf       basic.dwarf       DWARF 解析        implemented
 ```
 
 capability 状态定义：
@@ -219,10 +220,10 @@ JSON 输出继续保持当前结构化 `ApplicationResponse` / `ScanResult` / `A
 Error: capability is not implemented
 
 Capability:
-  basic.dwarf
+  basic.types
 
 Reason:
-  Analyzer not found: basic.dwarf
+  Analyzer not found: basic.types
 
 Try:
   soinsight modules show basic
@@ -244,7 +245,7 @@ Exit code: 3
 
 ### P0：避免误导用户
 
-优先实现：
+已实现：
 
 1. `modules list` 增加 `STATUS`；
 2. `modules show` 增加模块状态和 capability 状态；
@@ -253,7 +254,7 @@ Exit code: 3
 
 ### P1：提升可读性
 
-后续实现：
+已实现：
 
 1. 主 help 分组；
 2. `doctor` 分组；
@@ -267,6 +268,7 @@ Exit code: 3
 2. `quiet` 模式；
 3. 终端宽度适配；
 4. 输出 schema 文档化（见 [CLI 输出 Schema](cli-output-schema.md)）。
+5. stderr 进度行（`running` / `success N ms`），stdout 只保留可管道结果。
 
 ## 12. 测试要求
 

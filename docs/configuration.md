@@ -62,6 +62,20 @@ capability_options:
 | `include_imports` | bool | `false` | 在 `imports` 中额外列出导入符号 |
 | `max_functions` | int | `10000` | 导出函数清单上限，范围 `1..100000`，超出截断并产生 `SYMBOLS_TRUNCATED` 诊断 |
 
+`basic.dwarf` 支持的选项：
+
+| 选项 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `max_functions` | int | `10000` | 调试信息函数清单上限，范围 `1..100000`，超出截断并置 `truncated: true` |
+
+`security.dangerous-api` 支持的选项：
+
+| 选项 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `include_imports` | bool | `true` | 检测导入的危险 API |
+| `include_exports` | bool | `true` | 检测导出的危险 API |
+| `min_severity` | string | `info` | 严重度阈值，`low`/`medium`/`high`/`critical` |
+
 ## 2. 选择模块和功能点
 
 `analysis.modules` 的键是六大产品模块：`basic`、`advanced`、`security`、`dynamic`、`ai`、`automation`。值是该模块内的 capability 命令名，而不是完整 ID：

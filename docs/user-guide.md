@@ -1,6 +1,6 @@
 # SOInsight V2 使用手册
 
-> 本文档对应 2026-08-18 的仓库实现。V2 已搭建六大产品模块和 CLI 框架，并实现 `basic.file`、`basic.elf`、`basic.symbols` 真实 Analyzer；其余能力保持 `partial` 或 `planned`。
+> 本文档对应 2026-10-24 的仓库实现。V2 已搭建六大产品模块和 CLI 框架，并实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api` 真实 Analyzer；其余能力保持 `partial` 或 `planned`。
 
 ## 1. 查看模块
 
@@ -18,14 +18,16 @@ soinsight modules list --format json
 soinsight basic file libfoo.so
 soinsight basic elf libfoo.so --format json
 soinsight basic symbols libfoo.so
+soinsight basic dwarf libfoo.so --format json
 soinsight advanced strings libfoo.so
 soinsight security hardening libfoo.so
+soinsight security dangerous-api libfoo.so
 soinsight dynamic trace libfoo.so
 soinsight ai function-name libfoo.so
 soinsight automation fuzz-target libfoo.so
 ```
 
-当前命令会进入统一 Runtime。已注册的能力（`basic.file`、`basic.elf`、`basic.symbols`、`security.hardening`）执行真实分析；未注册的能力（如 `basic.dwarf`、`security.dangerous-api`）结构化返回 `ANALYSIS_PLAN_ERROR`。
+当前命令会进入统一 Runtime。已注册的能力（`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`）执行真实分析；未注册的能力（如 `advanced.strings`、`basic.types`、`security.vulnerability`）结构化返回 `ANALYSIS_PLAN_ERROR`。
 
 ### 2.1 导出函数签名（`basic symbols`）
 
@@ -235,7 +237,7 @@ soinsight modules list   # 产品“准备提供什么”
 soinsight plugins list   # 当前进程“实际加载了什么 Analyzer”
 ```
 
-在当前阶段，模块数量为 6、能力数量为 42，而 Analyzer 数量为 1（`basic.file`）。这不是冲突：外部产品框架已建立，具体实现仍在迁移中。
+在当前阶段，模块数量为 6、能力数量为 42，而 Analyzer 数量为 6（`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`）。这不是冲突：外部产品框架已建立，其余具体实现仍在迁移中。
 
 ## 9. 报告、缓存和 YAML 配置
 

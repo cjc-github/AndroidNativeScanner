@@ -100,7 +100,7 @@ soinsight scan README.md --format json
 预期：
 
 - `modules list` 显示六个产品模块及其实现状态；
-- `plugins list` 当前至少显示内置 `basic.file` Analyzer；
+- `plugins list` 当前显示 6 个内置 Analyzer（`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`）；
 - `doctor` 以健康检查格式显示 `Product modules        6`；
 - 默认 `scan README.md --format json` 会执行默认启用的 `basic.file` Analyzer。
 
@@ -116,7 +116,7 @@ soinsight config current
 soinsight scan README.md --format json
 ```
 
-`basic.file` 已实现会正常执行；若 YAML 选择了尚未注册的 `basic.elf`，会返回 `ANALYSIS_PLAN_ERROR`。诊断中列出的 Analyzer 应来自 YAML，这说明选择链路已生效。完整说明见 [YAML 配置指南](configuration.md)。
+`basic.file` 已实现会正常执行；若 YAML 选择了尚未注册的 `basic.types` 等能力，会返回 `ANALYSIS_PLAN_ERROR`。诊断中列出的 Analyzer 应来自 YAML，这说明选择链路已生效。完整说明见 [YAML 配置指南](configuration.md)。
 
 ## 8. 运行 V1
 
@@ -146,8 +146,8 @@ PYTHONPATH=src python3 -m soinsight --help
 
 ### `basic elf` 对非 ELF 目标报 `INVALID_ELF`
 
-`basic.elf` Analyzer 已注册；对非 ELF 文件（如 README.md）会返回 `INVALID_ELF` 诊断和整体 `partial` 状态，这是预期行为。`basic.symbols` 依赖 `basic.elf`，此时会以 `DEPENDENCY_FAILED` 被跳过；对真正的 ELF 文件则输出导出函数与签名。
+`basic.elf` Analyzer 已注册；对非 ELF 文件（如 README.md）会返回 `INVALID_ELF` 诊断和整体 `partial` 状态，这是预期行为。`basic.symbols`、`basic.dwarf` 依赖 `basic.elf`，此时会以 `DEPENDENCY_FAILED` 被跳过；对真正的 ELF 文件则输出导出函数、签名和调试信息。
 
 ### 为什么 `modules` 比 `plugins` 多？
 
-`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已包含 42 项能力定义，后者当前注册了 `basic.file`、`basic.elf`、`basic.symbols`、`security.hardening`，其余 Analyzer 待实现后注册。
+`modules` 是产品能力目录，`plugins` 是技术实现注册表。前者已包含 42 项能力定义，后者当前注册了 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`，其余 Analyzer 待实现后注册。

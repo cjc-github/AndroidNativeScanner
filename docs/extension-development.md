@@ -68,23 +68,19 @@ class DangerousApiAnalyzer(Analyzer):
         id="security.dangerous-api",
         name="Dangerous API Detection",
         version="1.0.0",
-        requires=(
-            "basic.symbols",
-            "basic.disasm",
-            "basic.callgraph",
-        ),
+        requires=("basic.symbols",),
     )
 
     def analyze(self, target, context):
         symbols = context.require("basic.symbols")
-        disasm = context.require("basic.disasm")
-        callgraph = context.require("basic.callgraph")
         ...
 ```
 
 只能通过 Context 消费依赖结果，禁止直接实例化或调用其他 Analyzer。
 
 `optional_requires` 已存在于元数据，但当前 Planner 尚未自动调度可选依赖；真正必需的结果必须放在 `requires`。
+
+内置 `basic.dwarf` 是跨基础设施依赖的例子：它 `requires=("basic.elf",)`，由 `infrastructure/dwarf` 解析调试信息，输出与 `basic.symbols` 在渲染层联合，而不是去调用 symbols 的实现。
 
 ## 5. 注册内置 Analyzer
 

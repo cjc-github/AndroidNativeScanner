@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-08-18，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols` Analyzer 已实现；安全/动态/AI 等其他 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-10-24，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api` Analyzer 已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
@@ -46,10 +46,12 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（basic.file/basic.elf/basic.symbols/security.hardening 已实现；其余为能力外壳）
+# 领域命令（basic.file/basic.elf/basic.symbols/basic.dwarf/security.hardening/security.dangerous-api 已实现；其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 PYTHONPATH=src python3 -m soinsight basic symbols libfoo.so
+PYTHONPATH=src python3 -m soinsight basic dwarf libfoo.so --format json
 PYTHONPATH=src python3 -m soinsight security hardening README.md
+PYTHONPATH=src python3 -m soinsight security dangerous-api libfoo.so
 
 # 创建并使用可复用 YAML 分析配置
 PYTHONPATH=src python3 -m soinsight config create quick-security
@@ -110,9 +112,10 @@ AndroidNativeScanner/
 │       ├── application/          # 应用服务层
 │       ├── core/                 # Analyzer/Rule/Planner/Runtime 等共享机制
 │       ├── analyzers/            # 具体 Analyzer 注册位置
-│       ├── renderers/            # Text/JSON/Markdown/HTML 输出
+│       ├── renderers/            # Text/JSON/Markdown/HTML/SARIF 输出
 │       ├── infrastructure/       # 配置、工具、存储、插件边界
-│       │   └── elf/              # 纯 Python ELF 解析 + C++ demangle + JNI 解码
+│       │   ├── elf/              # 纯 Python ELF 解析 + C++ demangle + JNI 解码
+│       │   └── dwarf/            # 纯 Python DWARF 调试信息解析
 │       └── compatibility/        # V1 兼容适配预留
 ├── tests/                        # V2 单元与集成测试
 ├── scripts/build_cli.sh          # Wheel 构建与入口校验
@@ -132,12 +135,19 @@ V2 已具备：
 - YAML 配置 Schema、创建/查看/校验/激活/set/unset 管理及活动配置；
 - YAML 模块/功能点选择、排除、runtime/output 和 capability options 合并；
 - Analyzer/Rule/Profile/Renderer 扩展接口；
-- Analyzer 依赖 DAG、串行 Scheduler 和失败隔离；
+- Analyzer 依赖 DAG、stage 并发 Scheduler（`jobs > 1`）和失败隔离；
+- Analyzer 超时看门狗、外部取消令牌和进度观察者；
 - Target/Result/Finding/Diagnostic 统一模型；
-- Text/JSON/Markdown/HTML Renderer、ToolRunner、ArtifactStore 基础边界；
+- Text/JSON/Markdown/HTML/SARIF Renderer、ToolRunner、ArtifactStore 基础边界；
 - Python 包安装和 Wheel 构建脚本。
 
-V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`，其中 `basic.symbols` 会枚举导出函数并恢复签名：`.dynsym`/`.symtab` 符号事实、Itanium C++ mangled name 解出的参数类型、JNI native 方法名解出的 Java 包名/类名/方法名与参数类型。demangler 已在 5 个真实 C++ 共享库（2943 个导出函数）上与参考实现全量比对：1895 个 C++ 符号全部解出，0 个无法解码、0 个类型差异。V2 尚未具备其他具体业务 Analyzer、真实缓存、并发调度、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
+V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`：
+
+- `basic.symbols` 枚举导出函数并恢复签名：`.dynsym`/`.symtab` 符号事实、Itanium C++ mangled name 解出的参数类型、JNI native 方法名解出的 Java 包名/类名/方法名与参数类型。demangler 已在 5 个真实 C++ 共享库（2943 个导出函数）上与参考实现全量比对：1895 个 C++ 符号全部解出，0 个无法解码、0 个类型差异；
+- `basic.dwarf` 解析 DWARF 调试信息，补回参数名、参数类型、返回类型和声明位置，并在渲染层与 `basic.symbols` 按 mangled name 联合；
+- `security.dangerous-api` 按符号名精确匹配导入/导出的危险 API（FORTIFY 变体与前导下划线先归一化）。
+
+V2 尚未具备其他具体业务 Analyzer、真实缓存、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
 
 ## 开发原则
 
