@@ -602,6 +602,11 @@ class _Demangler:
             short = parts[-1]
             kind = component_kind
             has_return_type = component_returns
+            if component_kind == KIND_OPERATOR and parts[-1].startswith("operator "):
+                # A conversion operator is the last component of a nested name:
+                # its target type may itself start with a substitution ("S"),
+                # which must not be read as another <prefix> level.
+                break
 
         # Rebuild from components: a name whose template arguments contain
         # "::" (for example a constructor template) would otherwise be split

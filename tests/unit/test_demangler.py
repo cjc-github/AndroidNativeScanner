@@ -153,6 +153,11 @@ VECTORS = [
     ("_ZN22QAndroidJniEnvironmentptEv",
      "QAndroidJniEnvironment::operator->()", "operator"),
     # --- conversion operators carry no written return type -------------------
+    # A conversion operator ends the nested name, so a target type that starts
+    # with a substitution ("Rs" = std::string&) is not read as another prefix.
+    ("_ZN1ScvRSs", "S::operator std::string&", "operator"),
+    ("_ZN1ScvRi", "S::operator int&", "operator"),
+    ("_ZN1ScvPKc", "S::operator char const*", "operator"),
     ("_ZNK22QAndroidJniEnvironmentcvP7_JNIEnvEv",
      "QAndroidJniEnvironment::operator _JNIEnv*() const", "operator"),
     ("_ZNK7QPixmapcv8QVariantEv", "QPixmap::operator QVariant() const", "operator"),
