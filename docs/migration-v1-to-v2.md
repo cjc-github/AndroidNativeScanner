@@ -106,15 +106,28 @@ basic.disasm → basic.cfg/basic.callgraph/basic.dataflow
 
 ## 6. 完成定义
 
-单项迁移完成需同时满足：
+单项迁移完成需同时满足以下 10 项：
 
-- [ ] 产品能力归属和 ID 明确；
-- [ ] 真实 Analyzer 已注册；
-- [ ] 输入/输出字段文档化；
-- [ ] 依赖进入 DAG；
-- [ ] 错误和超时结构化；
-- [ ] 风险判断与事实采集合理分离；
-- [ ] 领域命令和组合扫描可用；
-- [ ] Text/JSON 测试通过；
-- [ ] V1 对照结果可解释；
-- [ ] 文档与项目状态更新。
+1. 产品能力归属和 ID 明确；
+2. 真实 Analyzer 已注册；
+3. 输入/输出字段文档化；
+4. 依赖进入 DAG；
+5. 错误和超时结构化；
+6. 风险判断与事实采集合理分离；
+7. 领域命令和组合扫描可用；
+8. Text/JSON 测试通过；
+9. V1 对照结果可解释；
+10. 文档与项目状态更新。
+
+### 已迁移能力核对（2026-10-25）
+
+| 能力 | 完成定义 | 说明 |
+|---|---|---|
+| `basic.file` | 已满足 | 文件属性、SHA-256、Magic 与格式识别；内置 Profile `quick` 成员 |
+| `basic.elf` | 已满足 | 纯 Python ELF 头/PHDR/段表，不依赖 binutils |
+| `basic.symbols` | 已满足 | demangler 与参考实现全量比对 0 差异，pyelftools 审计 0 遗漏 0 多报（第 9 项以独立基准满足，强于 V1 对照） |
+| `basic.dwarf` | 已满足 | 依赖 `basic.elf`，渲染层与 `basic.symbols` 联合 |
+| `security.hardening` | 已满足 | 基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding；第一条跨域链路终点 |
+| `security.dangerous-api` | 已满足 | 依赖 `basic.symbols`，精确匹配 + FORTIFY 归一化；V1 子串匹配的结构化替代 |
+
+尚未迁移的能力（`advanced.strings`、`security.risk`、URL/Secret/Base64/JNI 规则等）以上述 10 项作为验收清单，迁移完成时在表中补行。

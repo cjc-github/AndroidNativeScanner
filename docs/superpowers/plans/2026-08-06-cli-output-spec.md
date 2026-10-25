@@ -1,6 +1,8 @@
 # CLI Output Specification Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **✅ 已完成（2026-10-25 核对归档）**：本计划全部任务已落地并经代码核对——`_display_width`/`_pad_display`/`_capability_status`/`_module_status`/`_render_main_help`/`_handle_plugins`/`_handle_doctor`/错误渲染 helper 在 `src/soinsight/cli/main.py`，`_format_bytes` 在 `src/soinsight/renderers/text_renderer.py`；集成测试见 `tests/integration/test_cli.py`，当前全量测试 `405 passed, 9 skipped`（完整 dev 环境）。以下复选框按已完成勾选，保留原文作为执行记录。
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Implement SOInsight CLI text output improvements defined in `docs/cli-output-spec.md` for P0 and P1 while preserving JSON compatibility.
 
@@ -44,7 +46,7 @@
   - `_capability_status(capability_id: str, registry: AnalyzerRegistry) -> str`
   - `_module_status(module, registry: AnalyzerRegistry) -> str`
 
-- [ ] **Step 1: Write failing tests for status helper behavior through CLI output**
+- [x] **Step 1: Write failing tests for status helper behavior through CLI output**
 
 Add this test after the existing modules tests in `tests/integration/test_cli.py`:
 
@@ -66,7 +68,7 @@ def test_cli_lists_product_modules_with_status_column():
     ]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -76,7 +78,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_lists_p
 
 Expected: FAIL because current output has no header and no `STATUS` column.
 
-- [ ] **Step 3: Implement status helpers**
+- [x] **Step 3: Implement status helpers**
 
 In `src/soinsight/cli/main.py`, keep the existing `_display_width()` and `_pad_display()` helpers if already present. Add or update these functions near `_module_payload()`:
 
@@ -95,7 +97,7 @@ def _module_status(module, registry: AnalyzerRegistry) -> str:
     return "partial"
 ```
 
-- [ ] **Step 4: Thread registry into modules handler**
+- [x] **Step 4: Thread registry into modules handler**
 
 Change `_handle_modules` signature from:
 
@@ -126,7 +128,7 @@ to:
 return _handle_modules(args, module_catalog, analyzer_registry, output_stream)
 ```
 
-- [ ] **Step 5: Run test to verify it still fails for output only**
+- [x] **Step 5: Run test to verify it still fails for output only**
 
 Run:
 
@@ -148,7 +150,7 @@ Expected: FAIL because `_handle_modules` output has not yet been changed.
 - Consumes: `_pad_display`, `_module_status`, `_capability_status` from Task 1.
 - Produces: Text output matching `docs/cli-output-spec.md` sections 5 and 6.
 
-- [ ] **Step 1: Add failing test for `modules show basic` status output**
+- [x] **Step 1: Add failing test for `modules show basic` status output**
 
 Add this test after `test_cli_lists_product_modules_with_status_column`:
 
@@ -182,7 +184,7 @@ def test_cli_shows_module_capabilities_with_status():
     ]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run:
 
@@ -194,7 +196,7 @@ PYTHONPATH=src python3 -m pytest \
 
 Expected: both tests FAIL until text output is implemented.
 
-- [ ] **Step 3: Implement `modules list` text output**
+- [x] **Step 3: Implement `modules list` text output**
 
 In `_handle_modules`, replace the current text loop for `args.action != "show"` with:
 
@@ -210,7 +212,7 @@ In `_handle_modules`, replace the current text loop for `args.action != "show"` 
         return 0
 ```
 
-- [ ] **Step 4: Implement `modules show` text output**
+- [x] **Step 4: Implement `modules show` text output**
 
 In `_handle_modules`, add the `show` branch before returning:
 
@@ -234,7 +236,7 @@ In `_handle_modules`, add the `show` branch before returning:
     return 0
 ```
 
-- [ ] **Step 5: Verify module text tests pass**
+- [x] **Step 5: Verify module text tests pass**
 
 Run:
 
@@ -246,7 +248,7 @@ PYTHONPATH=src python3 -m pytest \
 
 Expected: PASS.
 
-- [ ] **Step 6: Verify modules JSON compatibility**
+- [x] **Step 6: Verify modules JSON compatibility**
 
 Add or keep a JSON-specific test:
 
@@ -277,7 +279,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_lists_p
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 1 and 2**
+- [x] **Step 7: Commit Task 1 and 2**
 
 ```bash
 git add src/soinsight/cli/main.py tests/integration/test_cli.py docs/cli-output-spec.md
@@ -296,7 +298,7 @@ git commit -m "feat: show module implementation status"
 - Consumes: `AnalyzerRegistry.list()`, `AnalyzerMetadata.kind`, `AnalyzerMetadata.default_enabled`.
 - Produces: Text table for registered analyzers and helpful empty-state text.
 
-- [ ] **Step 1: Add failing test for populated plugins table**
+- [x] **Step 1: Add failing test for populated plugins table**
 
 Add this test near existing plugins tests or after module tests:
 
@@ -313,7 +315,7 @@ def test_cli_lists_plugins_as_table():
     ]
 ```
 
-- [ ] **Step 2: Add failing test for empty plugins hint**
+- [x] **Step 2: Add failing test for empty plugins hint**
 
 ```python
 def test_cli_lists_empty_plugins_with_catalog_hint():
@@ -331,7 +333,7 @@ def test_cli_lists_empty_plugins_with_catalog_hint():
     ]
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run:
 
@@ -343,7 +345,7 @@ PYTHONPATH=src python3 -m pytest \
 
 Expected: FAIL because current output is tab-separated and empty-state copy differs.
 
-- [ ] **Step 4: Implement plugin table output**
+- [x] **Step 4: Implement plugin table output**
 
 In `_handle_plugins`, replace the text branch with:
 
@@ -363,7 +365,7 @@ In `_handle_plugins`, replace the text branch with:
         stdout.write("Use `soinsight modules list` to inspect the catalog.\n")
 ```
 
-- [ ] **Step 5: Verify plugin tests pass**
+- [x] **Step 5: Verify plugin tests pass**
 
 Run:
 
@@ -375,7 +377,7 @@ PYTHONPATH=src python3 -m pytest \
 
 Expected: PASS.
 
-- [ ] **Step 6: Verify plugins JSON compatibility**
+- [x] **Step 6: Verify plugins JSON compatibility**
 
 Run:
 
@@ -385,7 +387,7 @@ PYTHONPATH=src python3 -m soinsight plugins list --format json
 
 Expected: JSON object list still includes `id`, `version`, `kind`, and `requires`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/soinsight/cli/main.py tests/integration/test_cli.py
@@ -404,7 +406,7 @@ git commit -m "feat: format plugins output as table"
 - Consumes: `_selection_error(...)`, `ApplicationResponse`, `Diagnostic`.
 - Produces: Text error output with title, reason, suggestions, and exit code while leaving JSON error output structured.
 
-- [ ] **Step 1: Add failing test for unimplemented capability error**
+- [x] **Step 1: Add failing test for unimplemented capability error**
 
 Replace or update the existing `test_cli_reports_unregistered_analyzer` with:
 
@@ -434,7 +436,7 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     ]
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -444,7 +446,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_reports
 
 Expected: FAIL because current text renderer prints `Diagnostics:`.
 
-- [ ] **Step 3: Add error rendering helper**
+- [x] **Step 3: Add error rendering helper**
 
 In `src/soinsight/cli/main.py`, add:
 
@@ -474,7 +476,7 @@ def _render_text_error(response: ApplicationResponse) -> str | None:
     return None
 ```
 
-- [ ] **Step 4: Use error helper in `_render_response` for text only**
+- [x] **Step 4: Use error helper in `_render_response` for text only**
 
 Change `_render_response` to:
 
@@ -496,7 +498,7 @@ def _render_response(
     return response.exit_code
 ```
 
-- [ ] **Step 5: Verify error test passes**
+- [x] **Step 5: Verify error test passes**
 
 Run:
 
@@ -506,7 +508,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_reports
 
 Expected: PASS.
 
-- [ ] **Step 6: Verify JSON errors remain JSON**
+- [x] **Step 6: Verify JSON errors remain JSON**
 
 Add this test:
 
@@ -532,7 +534,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_reports
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/soinsight/cli/main.py tests/integration/test_cli.py
@@ -551,7 +553,7 @@ git commit -m "feat: add actionable CLI error output"
 - Consumes: `__version__`, `ModuleCatalog`.
 - Produces: `_render_main_help(catalog: ModuleCatalog) -> str`.
 
-- [ ] **Step 1: Add failing test for grouped help**
+- [x] **Step 1: Add failing test for grouped help**
 
 Update `test_main_help_hides_development_compatibility_aliases` to:
 
@@ -575,7 +577,7 @@ def test_main_help_groups_commands_and_hides_development_aliases():
     assert "\n  diff" not in help_text
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -585,7 +587,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_main_help_g
 
 Expected: FAIL because current help is argparse default.
 
-- [ ] **Step 3: Implement `_render_main_help`**
+- [x] **Step 3: Implement `_render_main_help`**
 
 Add near `build_parser`:
 
@@ -620,7 +622,7 @@ def _render_main_help() -> str:
     )
 ```
 
-- [ ] **Step 4: Use custom help when no command is provided**
+- [x] **Step 4: Use custom help when no command is provided**
 
 In `main()`, change:
 
@@ -638,7 +640,7 @@ if not args.command:
     return 0
 ```
 
-- [ ] **Step 5: Verify help test passes**
+- [x] **Step 5: Verify help test passes**
 
 Run:
 
@@ -648,7 +650,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_main_help_g
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/soinsight/cli/main.py tests/integration/test_cli.py
@@ -667,7 +669,7 @@ git commit -m "feat: group main CLI help output"
 - Consumes: `shutil.which`, `sys.version`, `sys.executable`, `AnalyzerRegistry.list()`, `ModuleCatalog.list()`.
 - Produces: Grouped `doctor` text output.
 
-- [ ] **Step 1: Add failing test for grouped doctor output**
+- [x] **Step 1: Add failing test for grouped doctor output**
 
 Add:
 
@@ -694,7 +696,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "\nStatus:\n  ok\n" in output
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -704,7 +706,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_doctor_
 
 Expected: FAIL because current doctor is flat.
 
-- [ ] **Step 3: Implement grouped doctor output**
+- [x] **Step 3: Implement grouped doctor output**
 
 In `_handle_doctor`, replace the text branch with:
 
@@ -736,7 +738,7 @@ In `_handle_doctor`, replace the text branch with:
             stdout.write("  Install binutils: sudo apt-get install binutils\n")
 ```
 
-- [ ] **Step 4: Verify doctor test passes**
+- [x] **Step 4: Verify doctor test passes**
 
 Run:
 
@@ -746,7 +748,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_doctor_
 
 Expected: PASS.
 
-- [ ] **Step 5: Verify doctor JSON compatibility**
+- [x] **Step 5: Verify doctor JSON compatibility**
 
 Run:
 
@@ -756,7 +758,7 @@ PYTHONPATH=src python3 -m soinsight doctor --format json
 
 Expected: JSON still includes `soinsight_version`, `python_version`, `python_executable`, `product_modules`, `registered_analyzers`, and `legacy_tools`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/soinsight/cli/main.py tests/integration/test_cli.py
@@ -775,7 +777,7 @@ git commit -m "feat: format doctor as health check"
 - Consumes: `ApplicationResponse.result`, `ScanResult.results`, `AnalysisResult.data`.
 - Produces: Grouped text scan output with `Target`, `Analysis`, optional `File facts`, `Findings`, and `Diagnostics` sections.
 
-- [ ] **Step 1: Add failing test for `basic file` text output**
+- [x] **Step 1: Add failing test for `basic file` text output**
 
 Add:
 
@@ -802,7 +804,7 @@ def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
     assert "\nFindings:\n  none\n" in output
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 
@@ -812,7 +814,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_renders
 
 Expected: FAIL because current renderer shows framework summary only.
 
-- [ ] **Step 3: Implement byte formatting helper**
+- [x] **Step 3: Implement byte formatting helper**
 
 In `src/soinsight/renderers/text_renderer.py`, add above `TextRenderer`:
 
@@ -825,7 +827,7 @@ def _format_bytes(size: int) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 ```
 
-- [ ] **Step 4: Implement grouped scan result rendering**
+- [x] **Step 4: Implement grouped scan result rendering**
 
 Replace the `if response.result is not None:` block in `TextRenderer.render()` with:
 
@@ -872,7 +874,7 @@ Replace the `if response.result is not None:` block in `TextRenderer.render()` w
 
 Keep the existing diagnostics block below it so diagnostics still render after scan output.
 
-- [ ] **Step 5: Verify renderer test passes**
+- [x] **Step 5: Verify renderer test passes**
 
 Run:
 
@@ -882,7 +884,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_renders
 
 Expected: PASS.
 
-- [ ] **Step 6: Verify JSON scan output compatibility**
+- [x] **Step 6: Verify JSON scan output compatibility**
 
 Run:
 
@@ -892,7 +894,7 @@ PYTHONPATH=src python3 -m pytest tests/integration/test_cli.py::test_cli_runs_re
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/soinsight/renderers/text_renderer.py tests/integration/test_cli.py
@@ -911,7 +913,7 @@ git commit -m "feat: render analysis results for humans"
 - Consumes: all tasks above.
 - Produces: verified CLI output implementation aligned with `docs/cli-output-spec.md`.
 
-- [ ] **Step 1: Run representative CLI commands**
+- [x] **Step 1: Run representative CLI commands**
 
 Run:
 
@@ -935,7 +937,7 @@ Expected:
 - Basic file text output has `Target`, `Analysis`, `File facts`, and `Findings` sections.
 - Basic elf failure has actionable text error and exit code 3.
 
-- [ ] **Step 2: Run full test suite**
+- [x] **Step 2: Run full test suite**
 
 Run:
 
@@ -945,7 +947,7 @@ PYTHONPATH=src python3 -m pytest -q
 
 Expected: all tests pass.
 
-- [ ] **Step 3: Check docs for contradictions**
+- [x] **Step 3: Check docs for contradictions**
 
 Run:
 
@@ -955,7 +957,7 @@ rg -n "No analyzers registered|modules list|doctor|ANALYSIS_PLAN_ERROR|10 capabi
 
 Update `docs/cli-reference.md` only if the text says current output lacks statuses or says there are no built-in analyzers.
 
-- [ ] **Step 4: Commit documentation corrections if any**
+- [x] **Step 4: Commit documentation corrections if any**
 
 If docs changed:
 
@@ -966,7 +968,7 @@ git commit -m "docs: align CLI reference with output spec"
 
 If docs did not change, do not create an empty commit.
 
-- [ ] **Step 5: Report final evidence**
+- [x] **Step 5: Report final evidence**
 
 Include:
 
