@@ -57,6 +57,9 @@ rm -rf build src/soinsight.egg-info
 rm -f "${DIST_DIR}"/soinsight-*.whl
 
 echo "==> Building SOInsight CLI wheel"
+# Python 3.12+ venvs no longer bundle setuptools/wheel; --no-build-isolation
+# needs them in the ambient environment, so make sure they are present first.
+"${PYTHON_BIN}" -m pip install -q -U setuptools wheel
 "${PYTHON_BIN}" -m pip wheel \
     . \
     --no-deps \
