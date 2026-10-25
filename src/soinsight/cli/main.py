@@ -1,4 +1,4 @@
-"""SOInsight V2 domain-oriented command-line framework."""
+﻿"""SOInsight V2 domain-oriented command-line framework."""
 
 import argparse
 import json
@@ -734,11 +734,33 @@ def _handle_modules(
     stdout.write(f"  {module.description}\n")
     stdout.write("\n")
     stdout.write("Capabilities:\n")
-    stdout.write("  COMMAND     ID                NAME             STATUS\n")
+    # Column widths come from the data, so a long command name such as
+    # "dangerous-api" widens the column instead of pushing the row out of
+    # alignment with the header. Two spaces of gutter keep adjacent columns
+    # apart even when a value exactly fills its column.
+    gutter = 2
+    command_width = gutter + max(
+        [_display_width("COMMAND")]
+        + [_display_width(capability.command) for capability in module.capabilities]
+    )
+    id_width = gutter + max(
+        [_display_width("ID")]
+        + [_display_width(capability.id) for capability in module.capabilities]
+    )
+    name_width = gutter + max(
+        [_display_width("NAME")]
+        + [_display_width(capability.name) for capability in module.capabilities]
+    )
+    stdout.write(
+        f"  {_pad_display('COMMAND', command_width)}"
+        f"{_pad_display('ID', id_width)}"
+        f"{_pad_display('NAME', name_width)}"
+        "STATUS\n"
+    )
     for capability in module.capabilities:
-        command = _pad_display(capability.command, 12)
-        capability_id = _pad_display(capability.id, 18)
-        name = _pad_display(capability.name, 17)
+        command = _pad_display(capability.command, command_width)
+        capability_id = _pad_display(capability.id, id_width)
+        name = _pad_display(capability.name, name_width)
         status = _capability_status(capability.id, registry)
         stdout.write(f"  {command}{capability_id}{name}{status}\n")
     return 0

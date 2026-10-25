@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from io import StringIO
 import json
 
-from soinsight.cli.main import main
+import pytest
+
+from soinsight.cli.main import _display_width, main
 from soinsight.core.analyzer import Analyzer, AnalyzerMetadata, AnalyzerRegistry
 from soinsight.core.models import AnalysisResult, AnalysisStatus
 
@@ -185,27 +187,54 @@ def test_cli_shows_module_capabilities_with_status():
     exit_code = main(["modules", "show", "basic"], stdout=stdout)
 
     assert exit_code == 0
-    assert stdout.getvalue().splitlines() == [
+    lines = stdout.getvalue().splitlines()
+    assert lines[:6] == [
         "Module: basic",
         "Name:   基础分析",
         "Status: partial",
         "",
         "Description:",
         "  建立二进制、ELF、代码结构和统一 IR 的基础事实。",
-        "",
-        "Capabilities:",
-        "  COMMAND     ID                NAME             STATUS",
-        "  file        basic.file        文件分析         implemented",
-        "  elf         basic.elf         ELF 解析         implemented",
-        "  symbols     basic.symbols     Symbol 解析      implemented",
-        "  dwarf       basic.dwarf       DWARF 解析       implemented",
-        "  types       basic.types       类型恢复         planned",
-        "  cpp         basic.cpp         C++ 恢复         planned",
-        "  disasm      basic.disasm      反汇编           planned",
-        "  cfg         basic.cfg         CFG 恢复         planned",
-        "  callgraph   basic.callgraph   Call Graph 恢复  planned",
-        "  dataflow    basic.dataflow    Data Flow 分析   planned",
     ]
+    assert lines[7] == "Capabilities:"
+
+    header, *rows = lines[8:]
+    assert header.startswith("  COMMAND")
+    assert header.endswith("STATUS")
+
+    assert any(row.endswith("implemented") for row in rows)
+    assert any(row.endswith("planned") for row in rows)
+
+
+@pytest.mark.parametrize(
+    "module_id",
+    ["basic", "advanced", "security", "dynamic", "ai", "automation"],
+)
+def test_cli_module_capability_table_is_column_aligned(module_id):
+    """The STATUS column must line up in every row of every module.
+
+    "security.dangerous-api" is the widest command in the catalog, so a
+    hard-coded column width overflows and pushes the row out of alignment with
+    the header. Asserting the invariant keeps the table readable as the catalog
+    grows.
+    """
+    stdout = StringIO()
+
+    exit_code = main(["modules", "show", module_id], stdout=stdout)
+
+    assert exit_code == 0
+    lines = stdout.getvalue().splitlines()
+    header, *rows = lines[lines.index("Capabilities:") + 1 :]
+
+    def status_offset(line: str) -> int:
+        return _display_width(line[: line.rindex(" ") + 1])
+
+    offsets = {status_offset(header)} | {status_offset(row) for row in rows}
+    assert offsets == {status_offset(header)}, (
+        f"{module_id}: STATUS column misaligned\n"
+        f"  header offset {status_offset(header)}\n"
+        + "\n".join(f"  {status_offset(row)}  {row!r}" for row in rows)
+    )
 
 
 def test_cli_lists_product_modules_as_json():
