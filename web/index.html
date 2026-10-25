@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOInsight Web 控制台</title>
+<style>
+  :root {
+    --bg: #f4f7f8;
+    --surface: #ffffff;
+    --surface-2: #f8fafb;
+    --border: #dfe7ea;
+    --border-strong: #c8d4da;
+    --text: #16232b;
+    --muted: #5b7080;
+    --accent: #0f766e;
+    --accent-strong: #115e59;
+    --accent-soft: #e7f4f2;
+    --accent-border: #bfe3de;
+    --ok: #15803d; --ok-bg: #e9f7ee; --ok-border: #bfe4cd;
+    --warn: #92600a; --warn-bg: #fdf6e3; --warn-border: #eee0b8;
+    --fail: #b91c1c; --fail-bg: #fbeaea; --fail-border: #eecaca;
+    --info: #4a5b6a; --info-bg: #eef2f5; --info-border: #d8e0e6;
+    --sev-critical: #8b1a1a; --sev-critical-bg: #fbeaea; --sev-critical-border: #e6c3c3;
+    --sev-high: #b4440e; --sev-high-bg: #fdf0e7; --sev-high-border: #f0d4bd;
+    --sev-medium: #92600a; --sev-medium-bg: #fdf6e3; --sev-medium-border: #eee0b8;
+    --sev-low: #1e50a8; --sev-low-bg: #eaf1fb; --sev-low-border: #c9d9f0;
+    --sev-info: #4a5b6a; --sev-info-bg: #eef2f5; --sev-info-border: #d8e0e6;
+    --mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(22, 35, 43, .05), 0 1px 8px rgba(22, 35, 43, .04);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  code, pre, .mono { font-family: var(--mono); }
+  a { color: var(--accent); }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 22px;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .brand svg { display: block; }
+  .brand .sub { font-weight: 400; font-size: 12.5px; color: var(--muted); margin-left: 2px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 2px 10px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-strong);
+    border: 1px solid var(--accent-border); white-space: nowrap;
+  }
+  .health { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #c3ccd2; flex: none; }
+  .dot.ok { background: #22a35b; box-shadow: 0 0 0 3px rgba(34,163,91,.15); }
+  .dot.bad { background: #d23c3c; box-shadow: 0 0 0 3px rgba(210,60,60,.15); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 22px 20px 60px; }
+
+  /* ---------- offline banner ---------- */
+  #banner {
+    display: none;
+    background: var(--warn-bg); border: 1px solid var(--warn-border);
+    border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px;
+  }
+  #banner.show { display: block; }
+  #banner h3 { margin: 0 0 6px; font-size: 14.5px; color: var(--warn); }
+  #banner p { margin: 4px 0; font-size: 13.5px; }
+  #banner pre {
+    margin: 8px 0 0; padding: 10px 12px; background: #fff; border: 1px solid var(--warn-border);
+    border-radius: 8px; font-size: 12.5px; overflow-x: auto;
+  }
+  #banner .actions { margin-top: 10px; display: flex; gap: 8px; }
+
+  /* ---------- buttons ---------- */
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    padding: 7px 14px; transition: background .12s, border-color .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-strong); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+    padding: 9px 22px; font-size: 15px;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-strong); color: #fff; }
+  button.small { padding: 4px 10px; font-size: 12.5px; border-radius: 7px; }
+
+  /* ---------- panels ---------- */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px; font-size: 15.5px; display: flex; align-items: center; gap: 9px;
+  }
+  .step {
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ---------- dropzone ---------- */
+  #dropzone {
+    border: 2px dashed var(--border-strong); border-radius: var(--radius);
+    padding: 26px 16px; text-align: center; color: var(--muted);
+    cursor: pointer; transition: border-color .15s, background .15s;
+    font-size: 13.5px;
+  }
+  #dropzone:hover, #dropzone.drag { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+  #dropzone .big { font-size: 15px; font-weight: 600; display: block; margin-bottom: 4px; }
+  .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 14px 0; }
+  .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row > select, .row > input {
+    flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 7px 10px;
+    border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; color: var(--text);
+  }
+  .row > input:focus, .row > select:focus { outline: 2px solid var(--accent-border); border-color: var(--accent); }
+  #target-chip {
+    display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+    background: var(--accent-soft); border: 1px solid var(--accent-border);
+    font-size: 13.5px; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #target-chip.show { display: flex; }
+  #target-chip .name { font-weight: 600; font-family: var(--mono); font-size: 13px; word-break: break-all; }
+  #target-chip .meta { color: var(--muted); font-size: 12.5px; }
+  #target-chip .clear { margin-left: auto; }
+
+  /* ---------- capability cards ---------- */
+  #capability-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 560px) { #capability-grid { grid-template-columns: 1fr; } }
+  .cap-card {
+    border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
+    cursor: pointer; background: var(--surface-2); transition: border-color .12s, background .12s;
+  }
+  .cap-card:hover { border-color: var(--accent-border); }
+  .cap-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .cap-card .t { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+  .cap-card .t .cmd { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+  .cap-card .d { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+  .cap-card.scan .t { color: var(--accent-strong); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  /* ---------- run bar ---------- */
+  .run-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin: 18px 0 14px; padding: 13px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  #run-status { font-size: 13px; color: var(--muted); }
+  #elapsed { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .spinner {
+    width: 15px; height: 15px; border: 2px solid var(--accent-border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite; display: none; flex: none;
+    vertical-align: -3px; margin-right: 7px;
+  }
+  .spinner.on { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- error box ---------- */
+  #error-box {
+    display: none; background: var(--fail-bg); border: 1px solid var(--fail-border);
+    color: var(--fail); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px;
+    font-size: 13.5px; white-space: pre-wrap; word-break: break-all;
+  }
+  #error-box.show { display: block; }
+
+  /* ---------- results ---------- */
+  #empty-state {
+    background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    padding: 42px 20px; text-align: center; color: var(--muted); font-size: 13.5px;
+  }
+  .result-meta {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 14px; margin-bottom: 14px; font-size: 12.5px; color: var(--muted);
+    box-shadow: var(--shadow);
+  }
+  .result-meta .cmd {
+    font-family: var(--mono); font-size: 12px; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 6px; max-width: 100%; overflow-x: auto; white-space: nowrap;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+    padding: 2px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap;
+  }
+  .chip.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); }
+  .chip.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-border); }
+  .chip.fail { color: var(--fail); background: var(--fail-bg); border-color: var(--fail-border); }
+  .chip.info { color: var(--info); background: var(--info-bg); border-color: var(--info-border); }
+  .chip.mono { font-family: var(--mono); font-weight: 500; }
+
+  .analyzer-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden;
+  }
+  .analyzer-card > header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 16px; background: var(--surface-2); border-bottom: 1px solid var(--border);
+  }
+  .analyzer-card > header .id { font-family: var(--mono); font-weight: 700; font-size: 13.5px; }
+  .analyzer-card > header .v { font-size: 11.5px; color: var(--muted); }
+  .analyzer-card > header .dur { margin-left: auto; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .analyzer-card .body { padding: 14px 16px; }
+
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 18px; }
+  .kv .k { font-size: 12px; color: var(--muted); }
+  .kv .v { font-size: 13.5px; font-weight: 600; word-break: break-all; }
+  .kv .v.mono { font-family: var(--mono); font-weight: 500; font-size: 12.5px; }
+  .kv .v.small { font-size: 12px; font-weight: 500; }
+
+  .fact-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  .counts { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .count-box {
+    border: 1px solid var(--border); border-radius: 9px; padding: 8px 14px;
+    background: var(--surface-2); min-width: 86px;
+  }
+  .count-box .n { font-size: 19px; font-weight: 700; font-family: var(--mono); }
+  .count-box .l { font-size: 11.5px; color: var(--muted); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 9px; }
+  table.data { border-collapse: collapse; width: 100%; font-size: 12.8px; }
+  table.data th {
+    text-align: left; padding: 7px 10px; background: var(--surface-2);
+    border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+  table.data td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover td { background: var(--accent-soft); }
+  table.data td.mono { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  table.data td.wrap { word-break: break-all; }
+  .sym-name { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .lang {
+    display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 7px;
+    border-radius: 999px; border: 1px solid var(--border-strong); color: var(--muted);
+    background: var(--surface-2); text-transform: uppercase; letter-spacing: .03em;
+  }
+  .lang.c { color: #1e50a8; border-color: #c9d9f0; background: #eaf1fb; }
+  .lang.cpp { color: #7c2d91; border-color: #dfc6ea; background: #f5eaf9; }
+  .lang.jni { color: #0f766e; border-color: var(--accent-border); background: var(--accent-soft); }
+  .sym-tools { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+  .sym-tools input, .sym-tools select {
+    font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--border-strong);
+    border-radius: 8px; background: #fff; color: var(--text);
+  }
+  .sym-tools input { flex: 1; min-width: 180px; }
+  .sym-tools .count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .finding {
+    border: 1px solid var(--border); border-left-width: 4px; border-radius: 9px;
+    padding: 11px 14px; margin-bottom: 10px; background: var(--surface);
+  }
+  .finding.sev-critical { border-left-color: var(--sev-critical); }
+  .finding.sev-high { border-left-color: var(--sev-high); }
+  .finding.sev-medium { border-left-color: var(--sev-medium); }
+  .finding.sev-low { border-left-color: var(--sev-low); }
+  .finding.sev-info { border-left-color: var(--sev-info); }
+  .finding .head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 5px; }
+  .finding .title { font-weight: 650; font-size: 13.8px; }
+  .finding .rule { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .finding .msg { font-size: 13px; color: #33454f; }
+  .finding .evidence { margin-top: 8px; font-size: 12.3px; }
+  .finding .evidence table { border-collapse: collapse; }
+  .finding .evidence td { padding: 2px 12px 2px 0; vertical-align: top; }
+  .finding .evidence td:first-child { color: var(--muted); white-space: nowrap; }
+  .finding .evidence td.mono { font-family: var(--mono); font-size: 12px; }
+  .finding .fix {
+    margin-top: 8px; font-size: 12.8px; padding: 7px 11px; border-radius: 7px;
+    background: var(--ok-bg); border: 1px solid var(--ok-border); color: #14532d;
+  }
+  .finding .fix b { font-weight: 700; }
+  .sev-badge {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px;
+    border-radius: 999px; border: 1px solid; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .sev-badge.critical { color: var(--sev-critical); background: var(--sev-critical-bg); border-color: var(--sev-critical-border); }
+  .sev-badge.high { color: var(--sev-high); background: var(--sev-high-bg); border-color: var(--sev-high-border); }
+  .sev-badge.medium { color: var(--sev-medium); background: var(--sev-medium-bg); border-color: var(--sev-medium-border); }
+  .sev-badge.low { color: var(--sev-low); background: var(--sev-low-bg); border-color: var(--sev-low-border); }
+  .sev-badge.info { color: var(--sev-info); background: var(--sev-info-bg); border-color: var(--sev-info-border); }
+
+  .diag {
+    display: flex; gap: 9px; align-items: baseline; font-size: 12.8px;
+    padding: 7px 11px; border-radius: 8px; margin-bottom: 6px; background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .diag .code { font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+  .diag.warning .code { color: var(--warn); }
+  .diag.error .code { color: var(--fail); }
+  .diag.info .code { color: var(--info); }
+
+  .section-title {
+    font-size: 14px; font-weight: 700; margin: 20px 0 10px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .section-title .n { font-family: var(--mono); font-size: 12px; color: var(--muted); font-weight: 500; }
+
+  details.raw { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  details.raw > summary {
+    cursor: pointer; padding: 11px 16px; font-weight: 650; font-size: 13.5px;
+    user-select: none; list-style: none; display: flex; align-items: center; gap: 9px;
+  }
+  details.raw > summary::-webkit-details-marker { display: none; }
+  details.raw > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+  details.raw[open] > summary::before { transform: rotate(90deg); }
+  details.raw > summary .actions { margin-left: auto; display: flex; gap: 7px; }
+  details.raw pre {
+    margin: 0; padding: 14px 16px; border-top: 1px solid var(--border);
+    font-size: 12px; line-height: 1.55; overflow-x: auto; max-height: 520px; overflow-y: auto;
+    background: var(--surface-2);
+  }
+
+  .note {
+    font-size: 12.8px; color: var(--muted); background: var(--surface-2);
+    border: 1px dashed var(--border-strong); border-radius: 8px; padding: 9px 13px; margin-top: 10px;
+  }
+
+  /* ---------- about ---------- */
+  #about { margin-top: 44px; }
+  #about h2 { font-size: 18px; margin: 0 0 4px; }
+  #about .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+  .metric-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
+  @media (max-width: 900px) { .metric-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 560px) { .metric-row { grid-template-columns: repeat(2, 1fr); } }
+  .metric {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+    padding: 12px; text-align: center; box-shadow: var(--shadow);
+  }
+  .metric .n { font-size: 21px; font-weight: 750; color: var(--accent-strong); font-family: var(--mono); }
+  .metric .l { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
+  .about-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; }
+  .about-panel h3 { margin: 0 0 10px; font-size: 14px; }
+  .chain {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 12px; margin-bottom: 9px;
+  }
+  .chain .node {
+    background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent-strong);
+    border-radius: 7px; padding: 2px 9px; white-space: nowrap;
+  }
+  .chain .arrow { color: var(--muted); }
+  .layer {
+    border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px; margin-bottom: 8px;
+    background: var(--surface-2); font-size: 12.8px;
+  }
+  .layer b { font-size: 13px; }
+  .layer .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .layer .tags span {
+    font-family: var(--mono); font-size: 11px; background: #fff;
+    border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; color: var(--muted);
+  }
+  .run-box pre {
+    margin: 0 0 8px; padding: 10px 13px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px; font-size: 12.3px; overflow-x: auto;
+  }
+  .run-box .last { margin-bottom: 0; }
+  ul.tight { margin: 8px 0 0; padding-left: 20px; font-size: 12.8px; color: #33454f; }
+  ul.tight li { margin-bottom: 4px; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 18px 22px; text-align: center;
+    color: var(--muted); font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="#0f766e" stroke-width="1.8"/>
+      <path d="M8 8v10M8 13h3.5a2.5 2.5 0 0 0 0-5H8v10" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14.5 18v-6.5h4.5M16 12.5h3" stroke="#115e59" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    SOInsight <span class="sub">Web 控制台 · ELF 静态分析</span>
+  </div>
+  <span class="badge" id="version-badge">加载中…</span>
+  <div class="health">
+    <span class="dot" id="health-dot"></span>
+    <span id="health-text">正在连接本地服务…</span>
+  </div>
+</header>
+
+<main>
+  <div id="banner">
+    <h3>页面还无法调用分析：未连接到本地分析服务</h3>
+    <p>浏览器里的 HTML 自己不能执行本机的 Python 分析。请先在<strong>项目目录</strong>启动本地服务，再刷新本页：</p>
+    <pre>Windows：双击 site\start-web.bat
+任意平台：python site/server.py          # 启动并自动打开浏览器
+指定端口：python site/server.py --port 9000</pre>
+    <p>服务只绑定 127.0.0.1，不会把本机文件暴露到局域网；分析由服务以子进程方式调用 <code>python -m soinsight</code> 完成。</p>
+    <div class="actions">
+      <button class="small" id="retry-health">重新检测连接</button>
+    </div>
+  </div>
+
+  <section class="workbench">
+    <div class="grid-2">
+      <div class="panel">
+        <h2><span class="step">1</span>选择目标文件</h2>
+        <div id="dropzone" title="点击选择 .so 文件">
+          <span class="big">拖拽 .so / ELF 到这里</span>
+          或点击选择文件（仅在本地内存与临时文件中处理，不会外传）
+        </div>
+        <input type="file" id="file-input" accept=".so,.elf,.o,.dylib,.bin" hidden>
+        <div class="or">或使用服务器上的文件</div>
+        <div class="row">
+          <select id="sample-select" aria-label="验证样本"><option value="">— 加载样本中… —</option></select>
+          <button class="small" id="use-sample">使用样本</button>
+        </div>
+        <div class="row">
+          <input id="path-input" placeholder="服务器绝对路径，如 E:\libs\libfoo.so" spellcheck="false">
+          <button class="small" id="use-path">使用路径</button>
+        </div>
+        <div id="target-chip">
+          <span class="name" id="chip-name"></span>
+          <span class="meta" id="chip-meta"></span>
+          <button class="small clear" id="chip-clear">移除</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="step">2</span>选择分析能力</h2>
+        <div id="capability-grid"></div>
+        <p class="hint">共 6 个已实现 Analyzer（另外 36 项能力在目录中预留、尚未实现，选择后会返回未实现提示）。依赖会自动补齐：如选 <code>basic.elf</code> 会连带执行 <code>basic.file</code>。</p>
+      </div>
+    </div>
+
+    <div class="run-bar">
+      <button class="primary" id="run-btn" disabled>
+        <span class="spinner" id="run-spinner"></span><span id="run-label">▶ 运行分析</span>
+      </button>
+      <span id="run-status">请选择目标文件和分析能力</span>
+      <span id="elapsed"></span>
+    </div>
+
+    <div id="error-box"></div>
+
+    <section id="results">
+      <div id="empty-state">分析结果将显示在这里。结果由本机 Python 实算，结构化 JSON 可复制、可下载。</div>
+      <div id="result-body" hidden>
+        <div class="result-meta" id="result-meta"></div>
+        <div id="analyzer-cards"></div>
+        <div id="findings-section"></div>
+        <div id="diagnostics-section"></div>
+        <details class="raw" id="raw-details">
+          <summary>
+            原始 JSON（soinsight.scan/v1）
+            <span class="actions">
+              <button class="small" id="copy-json">复制</button>
+              <button class="small" id="download-json">下载</button>
+            </span>
+          </summary>
+          <pre id="raw-json"></pre>
+        </details>
+      </div>
+    </section>
+  </section>
+
+  <section id="about">
+    <h2>关于 SOInsight</h2>
+    <p class="lead">模块化 ELF / Android Native 静态分析工具箱。V2 按产品能力域组织：basic（10 项）、advanced（8）、security（4）、dynamic（5）、ai（8）、automation（7），共 42 项能力。</p>
+
+    <div class="metric-row">
+      <div class="metric"><div class="n">6</div><div class="l">产品模块</div></div>
+      <div class="metric"><div class="n">42</div><div class="l">目录能力</div></div>
+      <div class="metric"><div class="n">6</div><div class="l">已实现 Analyzer</div></div>
+      <div class="metric"><div class="n">406</div><div class="l">测试通过</div></div>
+      <div class="metric"><div class="n">5</div><div class="l">输出格式</div></div>
+      <div class="metric"><div class="n">0</div><div class="l">外部解析依赖</div></div>
+    </div>
+
+    <div class="about-grid">
+      <div class="about-panel">
+        <h3>跨域分析链路（依赖由规划器自动补齐）</h3>
+        <div class="chain">
+          <span class="node">basic.file</span><span class="arrow">→</span>
+          <span class="node">basic.elf</span><span class="arrow">→</span>
+          <span class="node">security.hardening</span>
+        </div>
+        <div class="chain">
+          <span class="node">basic.file</span><span class="arrow">→</span>
+          <span class="node">basic.elf</span><span class="arrow">→</span>
+          <span class="node">basic.symbols</span><span class="arrow">→</span>
+          <span class="node">security.dangerous-api</span>
+        </div>
+        <div class="chain">
+          <span class="node">basic.file</span><span class="arrow">→</span>
+          <span class="node">basic.elf</span><span class="arrow">→</span>
+          <span class="node">basic.dwarf</span>
+        </div>
+        <h3 style="margin-top:14px">已验证事实</h3>
+        <ul class="tight">
+          <li>2943 个导出函数与 pyelftools 审计比对，0 遗漏</li>
+          <li>1895 个 C++ 符号 demangle 与参考实现 0 差异</li>
+          <li>21 个真实 Android x86 库样本（<code>in/</code>，本页"样本"即来源于此）</li>
+          <li>ELF / DWARF 解析为纯 Python 实现，不依赖 readelf / nm / objdump</li>
+        </ul>
+      </div>
+
+      <div class="about-panel">
+        <h3>两层架构</h3>
+        <div class="layer">
+          <b>产品层</b> — 42 项能力目录、Analyzer / Rule / Profile / Renderer
+          <div class="tags"><span>ModuleCatalog</span><span>AnalyzerRegistry</span><span>RuleEngine</span><span>RendererRegistry</span></div>
+        </div>
+        <div class="layer">
+          <b>技术层</b> — 依赖 DAG 规划、并发调度、运行时看门狗与缓存
+          <div class="tags"><span>DependencyPlanner</span><span>Scheduler</span><span>AnalysisRuntime</span><span>ArtifactStore</span></div>
+        </div>
+        <h3 style="margin-top:14px">Web 控制台如何工作</h3>
+        <div class="run-box">
+          <pre>python site/server.py        <span style="color:#5b7080"># 启动服务并自动打开浏览器</span></pre>
+          <pre class="last">soinsight basic elf TARGET --format json   <span style="color:#5b7080"># 页面每次运行等价于这条 CLI</span></pre>
+        </div>
+        <p class="hint" style="margin-top:8px">页面通过 <code>/api/analyze</code> 把目标交给本地服务，服务以子进程执行上面的 CLI 并回传 JSON；服务仅绑定 127.0.0.1，上传文件只写入系统临时目录、分析后即删。命令行用法见 <code>docs/quickstart.md</code>。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  SOInsight · Web 控制台由 site/server.py 提供本地分析服务 · 页面与命令行的结果完全一致（同一 Analyzer、同一 JSON Schema）
+</footer>
+
+<script>
+"use strict";
+
+/* ================= 工具 ================= */
+
+var SEV_LABEL = { critical: "严重", high: "高", medium: "中", low: "低", info: "提示" };
+var STATUS_LABEL = {
+  success: ["成功", "ok"], partial: ["部分完成", "warn"], failed: ["失败", "fail"],
+  skipped: ["跳过", "info"], cancelled: ["已取消", "warn"], timeout: ["超时", "fail"],
+  cached: ["缓存", "info"], pending: ["等待", "info"], running: ["进行中", "info"]
+};
+
+function esc(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function fmtBytes(n) {
+  if (typeof n !== "number" || !isFinite(n)) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KiB";
+  return (n / 1024 / 1024).toFixed(2) + " MiB";
+}
+
+function fmtMs(n) {
+  if (typeof n !== "number" || !isFinite(n)) return "—";
+  return n < 1000 ? n + " ms" : (n / 1000).toFixed(2) + " s";
+}
+
+function kv(rows) {
+  return '<div class="kv">' + rows.map(function (r) {
+    return '<div><div class="k">' + esc(r[0]) + '</div><div class="v' +
+      (r[2] ? " mono" : "") + (r[3] ? " small" : "") + '">' + esc(r[1] == null ? "—" : r[1]) + "</div></div>";
+  }).join("") + "</div>";
+}
+
+function statusChip(status) {
+  var entry = STATUS_LABEL[status] || [status, "info"];
+  return '<span class="chip ' + entry[1] + '">' + esc(entry[0]) + "</span>";
+}
+
+function sevRank(s) {
+  return { critical: 5, high: 4, medium: 3, low: 2, info: 1 }[s] || 0;
+}
+
+function copyText(text, btn) {
+  function fallback() {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* ignore */ }
+    ta.remove();
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(fallback);
+  } else {
+    fallback();
+  }
+  if (btn) {
+    var old = btn.textContent;
+    btn.textContent = "已复制";
+    setTimeout(function () { btn.textContent = old; }, 1200);
+  }
+}
+
+/* ================= 状态 ================= */
+
+var state = {
+  health: null,
+  samples: [],
+  target: null,
+  mode: "single",
+  capability: "basic.elf",
+  running: false,
+  response: null,
+  timer: null,
+  sym: { q: "", lang: "all", shown: 200 }
+};
+
+var PRESETS = [
+  { id: "basic.file", name: "文件属性", desc: "大小 / SHA-256 / magic / 格式判定" },
+  { id: "basic.elf", name: "ELF 头", desc: "类 / 端序 / 类型 / 机器 / 入口 / 段表 + RELRO、NX" },
+  { id: "basic.symbols", name: "符号表", desc: "导出函数、导入符号、C++ demangle、JNI 解码" },
+  { id: "basic.dwarf", name: "DWARF", desc: "调试信息函数与参数（stripped 时如实报告）" },
+  { id: "security.hardening", name: "加固检查", desc: "PIE / NX / RELRO 事实核查" },
+  { id: "security.dangerous-api", name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" }
+];
+var SCAN_PRESET = { id: "scan", name: "组合扫描", desc: "basic + security 全部已实现分析器" };
+
+/* ================= DOM ================= */
+
+function $(id) { return document.getElementById(id); }
+var dropzone = $("dropzone");
+var fileInput = $("file-input");
+var sampleSelect = $("sample-select");
+var pathInput = $("path-input");
+var targetChip = $("target-chip");
+var chipName = $("chip-name");
+var chipMeta = $("chip-meta");
+var capGrid = $("capability-grid");
+var runBtn = $("run-btn");
+var runSpinner = $("run-spinner");
+var runLabel = $("run-label");
+var runStatus = $("run-status");
+var elapsedEl = $("elapsed");
+var errorBox = $("error-box");
+var emptyState = $("empty-state");
+var resultBody = $("result-body");
+var resultMeta = $("result-meta");
+var analyzerCards = $("analyzer-cards");
+var findingsSection = $("findings-section");
+var diagnosticsSection = $("diagnostics-section");
+var rawJson = $("raw-json");
+
+/* ================= 初始化 ================= */
+
+function init() {
+  renderCapabilityGrid();
+  bindEvents();
+  checkHealth();
+}
+
+function bindEvents() {
+  dropzone.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () {
+    if (fileInput.files && fileInput.files[0]) setUploadTarget(fileInput.files[0]);
+    fileInput.value = "";
+  });
+  ["dragenter", "dragover"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.add("drag"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.remove("drag"); });
+  });
+  dropzone.addEventListener("drop", function (e) {
+    var file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) setUploadTarget(file);
+  });
+
+  $("use-sample").addEventListener("click", useSelectedSample);
+  $("use-path").addEventListener("click", useTypedPath);
+  pathInput.addEventListener("keydown", function (e) { if (e.key === "Enter") useTypedPath(); });
+  $("chip-clear").addEventListener("click", clearTarget);
+  runBtn.addEventListener("click", runAnalysis);
+  $("retry-health").addEventListener("click", checkHealth);
+  $("copy-json").addEventListener("click", function (e) {
+    copyText(JSON.stringify(state.response, null, 2), e.currentTarget);
+  });
+  $("download-json").addEventListener("click", downloadJson);
+
+  document.addEventListener("input", function (e) {
+    var role = e.target.dataset ? e.target.dataset.role : "";
+    if (role === "sym-q") { state.sym.q = e.target.value.trim().toLowerCase(); state.sym.shown = 200; rerenderSymbols(); }
+    if (role === "sym-lang") { state.sym.lang = e.target.value; state.sym.shown = 200; rerenderSymbols(); }
+  });
+  document.addEventListener("click", function (e) {
+    var role = e.target.dataset ? e.target.dataset.role : "";
+    if (role === "sym-more") { state.sym.shown += 400; rerenderSymbols(); }
+  });
+}
+
+function checkHealth() {
+  var dot = $("health-dot");
+  var text = $("health-text");
+  var banner = $("banner");
+  dot.className = "dot";
+  text.textContent = "正在连接本地服务…";
+  fetch("/api/health", { cache: "no-store" })
+    .then(function (resp) { return resp.json(); })
+    .then(function (data) {
+      if (!data.ok) throw new Error(data.catalog_error || "服务报告异常");
+      state.health = data;
+      dot.classList.add("ok");
+      text.textContent = "服务正常 · Python " + data.python;
+      $("version-badge").textContent = "v" + data.version + " · " + data.registered_analyzers.length + " Analyzer";
+      banner.classList.remove("show");
+      loadSamples();
+      updateRunButton();
+    })
+    .catch(function () {
+      state.health = null;
+      dot.classList.add("bad");
+      text.textContent = "未连接";
+      $("version-badge").textContent = "离线模式";
+      banner.classList.add("show");
+      updateRunButton();
+    });
+}
+
+function loadSamples() {
+  fetch("/api/samples", { cache: "no-store" })
+    .then(function (resp) { return resp.json(); })
+    .then(function (data) {
+      state.samples = data.samples || [];
+      sampleSelect.innerHTML = state.samples.length
+        ? '<option value="">— 选择 in/ 目录样本（' + state.samples.length + " 个）—</option>" +
+          state.samples.map(function (s, i) {
+            return '<option value="' + i + '">' + esc(s.name) + " · " + fmtBytes(s.size) + "</option>";
+          }).join("")
+        : '<option value="">（in/ 目录没有样本）</option>';
+    })
+    .catch(function () {
+      sampleSelect.innerHTML = '<option value="">（样本列表加载失败）</option>';
+    });
+}
+
+/* ================= 目标选择 ================= */
+
+function setUploadTarget(file) {
+  state.target = { kind: "upload", name: file.name, size: file.size, file: file };
+  renderTargetChip("上传文件");
+}
+
+function useSelectedSample() {
+  var index = sampleSelect.value;
+  if (index === "") return;
+  var sample = state.samples[Number(index)];
+  if (!sample) return;
+  state.target = { kind: "sample", name: sample.name, size: sample.size, path: sample.path };
+  renderTargetChip("验证样本");
+}
+
+function useTypedPath() {
+  var value = pathInput.value.trim();
+  if (!value) return;
+  var name = value.split(/[\\/]/).pop() || value;
+  state.target = { kind: "path", name: name, size: null, path: value };
+  renderTargetChip("服务器路径");
+}
+
+function clearTarget() {
+  state.target = null;
+  targetChip.classList.remove("show");
+  updateRunButton();
+}
+
+function renderTargetChip(sourceLabel) {
+  chipName.textContent = state.target.name;
+  chipMeta.textContent = sourceLabel +
+    (state.target.size != null ? " · " + fmtBytes(state.target.size) : " · 大小将在分析后显示");
+  targetChip.classList.add("show");
+  updateRunButton();
+}
+
+/* ================= 能力选择 ================= */
+
+function renderCapabilityGrid() {
+  var html = PRESETS.map(function (preset) {
+    return '<div class="cap-card" data-cap="' + preset.id + '" role="button" tabindex="0">' +
+      '<div class="t">' + esc(preset.name) + ' <span class="cmd">' + esc(preset.id) + "</span></div>" +
+      '<div class="d">' + esc(preset.desc) + "</div></div>";
+  }).join("") +
+  '<div class="cap-card scan" data-scan="1" role="button" tabindex="0">' +
+    '<div class="t">' + esc(SCAN_PRESET.name) + ' <span class="cmd">scan --module-available</span></div>' +
+    '<div class="d">' + esc(SCAN_PRESET.desc) + "</div></div>";
+  capGrid.innerHTML = html;
+  Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
+    var activate = function () {
+      if (card.dataset.scan) {
+        state.mode = "scan";
+      } else {
+        state.mode = "single";
+        state.capability = card.dataset.cap;
+      }
+      syncCapabilitySelection();
+      updateRunButton();
+    };
+    card.addEventListener("click", activate);
+    card.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
+    });
+  });
+  syncCapabilitySelection();
+}
+
+function syncCapabilitySelection() {
+  Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
+    var selected = card.dataset.scan
+      ? state.mode === "scan"
+      : (state.mode === "single" && card.dataset.cap === state.capability);
+    card.classList.toggle("selected", selected);
+  });
+}
+
+function updateRunButton() {
+  var ready = !!state.target && !!state.health && !state.running;
+  runBtn.disabled = !ready;
+  if (state.running) return;
+  if (!state.target) runStatus.textContent = "请选择目标文件和分析能力";
+  else if (!state.health) runStatus.textContent = "本地服务未连接，无法运行";
+  else if (state.mode === "scan") runStatus.textContent = "就绪：组合扫描 basic + security";
+  else runStatus.textContent = "就绪：" + state.capability;
+}
+
+/* ================= 运行分析 ================= */
+
+function runAnalysis() {
+  if (state.running || !state.target) return;
+  state.running = true;
+  runBtn.disabled = true;
+  runSpinner.classList.add("on");
+  runLabel.textContent = "分析中…";
+  errorBox.classList.remove("show");
+  var startedAt = performance.now();
+  state.timer = setInterval(function () {
+    elapsedEl.textContent = "已用 " + ((performance.now() - startedAt) / 1000).toFixed(1) + " s";
+  }, 100);
+
+  var params = new URLSearchParams();
+  params.set("mode", state.mode);
+  if (state.mode === "single") params.set("capability", state.capability);
+  else params.set("modules", "basic,security");
+
+  var headers = {};
+  var body;
+  if (state.target.kind === "upload") {
+    body = state.target.file;
+    headers["X-Filename"] = state.target.name;
+  } else {
+    params.set("path", state.target.path);
+  }
+
+  fetch("/api/analyze?" + params.toString(), { method: "POST", headers: headers, body: body })
+    .then(function (resp) {
+      return resp.json().catch(function () { return null; }).then(function (data) {
+        if (!data) throw new Error("服务返回无法解析的响应（HTTP " + resp.status + "）");
+        if (!data.ok && !data.payload) {
+          var detail = [data.error || ("HTTP " + resp.status)];
+          if (data.stderr_tail) detail.push("—— 子进程输出 ——\n" + data.stderr_tail.trim());
+          throw new Error(detail.join("\n"));
+        }
+        state.response = data;
+        renderResults(data);
+      });
+    })
+    .catch(function (err) {
+      showError(err && err.message ? err.message : String(err));
+    })
+    .then(function () {  // finally（无参 then 总会在其后执行）
+      clearInterval(state.timer);
+      state.running = false;
+      runSpinner.classList.remove("on");
+      runLabel.textContent = "▶ 运行分析";
+      elapsedEl.textContent = "";
+      updateRunButton();
+    });
+}
+
+function showError(message) {
+  errorBox.textContent = message;
+  errorBox.classList.add("show");
+}
+
+/* ================= 结果渲染 ================= */
+
+function renderResults(data) {
+  var scan = data.payload && data.payload.result;
+  if (!scan) {
+    showError("服务未返回分析结果。" + (data.error ? "\n" + data.error : ""));
+    return;
+  }
+  emptyState.hidden = true;
+  resultBody.hidden = false;
+
+  var exitOk = data.exit_code === 0;
+  var html =
+    '<span class="chip ' + (exitOk ? "ok" : "warn") + '">退出码 ' + esc(data.exit_code) + "</span>" +
+    '<span class="chip info">' + esc(fmtMs(data.duration_ms)) + "</span>" +
+    "<span>等价命令：</span>" +
+    '<code class="cmd">' + esc((data.command || []).join(" ")) + "</code>" +
+    '<button class="small" id="copy-cmd" style="margin-left:auto">复制命令</button>';
+  if (scan.target) {
+    var t = scan.target;
+    html += '<span style="width:100%"></span><span>目标：</span>' +
+      '<code class="cmd">' + esc(t.path || t.real_path || "") + "</code>";
+    if (t.sha256) {
+      html += '<span class="chip mono" id="copy-sha" title="点击复制 SHA-256">sha256 ' +
+        esc(String(t.sha256).slice(0, 16)) + "…</span>";
+    }
+  }
+  resultMeta.innerHTML = html;
+  var cmdBtn = $("copy-cmd");
+  if (cmdBtn) cmdBtn.addEventListener("click", function (e) { copyText((data.command || []).join(" "), e.currentTarget); });
+  var shaBtn = $("copy-sha");
+  if (shaBtn) shaBtn.addEventListener("click", function () { copyText(scan.target.sha256, shaBtn); });
+
+  var order = (scan.resolved_analyzers && scan.resolved_analyzers.length)
+    ? scan.resolved_analyzers
+    : Object.keys(scan.results || {});
+  analyzerCards.innerHTML = order
+    .filter(function (id) { return scan.results && scan.results[id]; })
+    .map(function (id) { return renderAnalyzerCard(id, scan.results[id]); })
+    .join("");
+
+  renderFindings(scan.findings || []);
+  renderDiagnostics(scan.diagnostics || []);
+  rawJson.textContent = JSON.stringify(data, null, 2);
+
+  if (scan.results && scan.results["basic.symbols"]) {
+    state.sym.q = "";
+    state.sym.lang = "all";
+    state.sym.shown = 200;
+    rerenderSymbols();
+  }
+}
+
+function renderAnalyzerCard(id, result) {
+  var data = result.data || {};
+  var bodyHtml;
+  if (id === "basic.file") bodyHtml = renderFileData(data);
+  else if (id === "basic.elf") bodyHtml = renderElfData(data);
+  else if (id === "basic.symbols") bodyHtml = renderSymbolsData(data);
+  else if (id === "basic.dwarf") bodyHtml = renderDwarfData(data);
+  else if (id === "security.dangerous-api") bodyHtml = renderDangerousApiData(data);
+  else if (id === "security.hardening") bodyHtml = '<div class="note">加固结论见下方「发现项」汇总。</div>';
+  else bodyHtml = renderGenericData(data);
+
+  var diags = (result.diagnostics || []).map(renderDiagnostic).join("");
+  var cache = result.cache_hit ? '<span class="chip info">缓存命中</span>' : "";
+
+  return '<div class="analyzer-card"><header>' +
+    '<span class="id">' + esc(id) + "</span>" +
+    '<span class="v">v' + esc(result.analyzer_version || "?") + "</span>" +
+    statusChip(result.status) + cache +
+    '<span class="dur">' + esc(fmtMs(result.duration_ms)) + "</span>" +
+    '</header><div class="body">' + bodyHtml +
+    (diags ? '<div style="margin-top:10px">' + diags + "</div>" : "") +
+    "</div></div>";
+}
+
+function renderFileData(d) {
+  return kv([
+    ["文件名", d.name, true],
+    ["大小", typeof d.size === "number" ? fmtBytes(d.size) : d.size],
+    ["格式", d.format],
+    ["magic", d.magic, true],
+    ["SHA-256", d.sha256, true, true]
+  ]);
+}
+
+function renderElfData(d) {
+  var relro = d.has_gnu_relro
+    ? '<span class="chip ok">GNU RELRO 已开启</span>'
+    : '<span class="chip fail">GNU RELRO 缺失</span>';
+  var nx = d.executable_stack
+    ? '<span class="chip fail">栈可执行（NX 关闭）</span>'
+    : '<span class="chip ok">栈不可执行（NX 开启）</span>';
+  return kv([
+    ["ELF 类", d.elf_class], ["端序", d.endianness], ["类型", d.type],
+    ["机器", d.machine], ["入口点", d.entry_point, true],
+    ["程序头数量", d.program_header_count], ["节头数量", d.section_header_count]
+  ]) + '<div class="fact-row">' + relro + nx + "</div>";
+}
+
+function countBox(n, label) {
+  return '<div class="count-box"><div class="n">' + esc(n == null ? "—" : n) +
+    '</div><div class="l">' + esc(label) + "</div></div>";
+}
+
+function renderSymbolsData(d) {
+  var c = d.counts || {};
+  var langCount = {};
+  (d.functions || []).forEach(function (f) { langCount[f.language] = (langCount[f.language] || 0) + 1; });
+
+  var countsHtml = '<div class="counts">' +
+    countBox(c.exported_functions, "导出函数") +
+    countBox(c.imports, "导入符号") +
+    countBox(c.exported_data, "导出数据") +
+    countBox(c.exported_unclassified, "未分类导出") +
+    countBox(d.demangled_count, "已 demangle") +
+    countBox(d.jni_count, "JNI 方法") +
+    (d.stripped
+      ? '<div class="count-box"><div class="n" style="color:var(--warn)">已剥离</div><div class="l">.symtab 缺失</div></div>'
+      : "") +
+    "</div>";
+
+  var toolsHtml =
+    '<div class="sym-tools" data-for="basic.symbols">' +
+    '<input type="search" placeholder="搜索符号名 / 签名…" data-role="sym-q" aria-label="搜索符号">' +
+    '<select data-role="sym-lang" aria-label="语言筛选"><option value="all">全部语言</option>' +
+    Object.keys(langCount).sort().map(function (l) {
+      return '<option value="' + esc(l) + '">' + esc(l) + " (" + langCount[l] + ")</option>";
+    }).join("") +
+    "</select>" +
+    '<span class="count" data-role="sym-count"></span></div>' +
+    '<div class="table-wrap"><table class="data"><thead><tr>' +
+    "<th>符号</th><th>签名 / 语言</th><th>绑定</th><th>可见性</th><th>地址</th><th>大小</th><th>来源</th>" +
+    '</tr></thead><tbody data-role="sym-body"></tbody></table></div>' +
+    '<div style="margin-top:10px"><button class="small" data-role="sym-more" hidden>显示更多</button></div>';
+
+  return countsHtml + toolsHtml;
+}
+
+function renderDwarfData(d) {
+  if (!d.has_debug_info) {
+    return '<div class="note">' + esc(d.note || "没有调试信息（stripped 构建）。参数名来自 DWARF，缺失时其他分析器如实报告。") + "</div>";
+  }
+  var all = d.functions || [];
+  var rows = all.slice(0, 300).map(function (f) {
+    return "<tr>" +
+      '<td class="wrap mono">' + esc(f.name) + "</td>" +
+      '<td class="wrap">' + esc(f.return_type || "") + " " + esc(f.signature || "") + "</td>" +
+      '<td class="wrap small">' + esc((f.parameters || []).map(function (p) { return p.name + ": " + p.type; }).join("; ")) + "</td>" +
+      '<td class="mono">' + esc(f.decl_file ? f.decl_file + ":" + f.decl_line : "—") + "</td></tr>";
+  }).join("");
+  var more = all.length > 300
+    ? '<div class="note">仅显示前 300 个函数（共 ' + esc(all.length) + " 个），完整列表见原始 JSON。</div>"
+    : "";
+  return kv([
+    ["DWARF 版本", d.version],
+    ["编译单元数", (d.units || []).length],
+    ["函数数", all.length]
+  ]) + '<div class="table-wrap" style="margin-top:10px"><table class="data"><thead><tr>' +
+    "<th>函数</th><th>返回类型 / 签名</th><th>参数（名称: 类型）</th><th>声明位置</th>" +
+    '</tr></thead><tbody>' + (rows || '<tr><td colspan="4" style="color:var(--muted)">无函数记录</td></tr>') + "</tbody></table></div>" + more;
+}
+
+function renderDangerousApiData(d) {
+  var matched = (d.matched_apis || []).map(function (a) {
+    return '<span class="chip warn mono">' + esc(a) + "</span>";
+  }).join(" ");
+  var bySev = d.counts_by_severity || {};
+  var sevChips = Object.keys(bySev).sort(function (a, b) { return sevRank(b) - sevRank(a); }).map(function (s) {
+    return '<span class="sev-badge ' + esc(s) + '">' + esc(SEV_LABEL[s] || s) + " × " + esc(bySev[s]) + "</span>";
+  }).join(" ");
+  return '<div class="fact-row" style="margin-top:0">' +
+    '<span class="chip info">命中 ' + esc(d.finding_count) + " 项</span>" +
+    (sevChips || '<span class="chip ok">未发现危险 API</span>') +
+    "</div>" +
+    (matched ? '<div class="fact-row" style="margin-top:8px"><span style="font-size:12.5px;color:var(--muted)">命中 API：</span>' + matched + "</div>" : "");
+}
+
+function renderGenericData(d) {
+  var entries = Object.keys(d || {}).map(function (k) { return [k, d[k]]; });
+  if (!entries.length) return '<div class="note">该分析器没有返回数据字段。</div>';
+  return kv(entries.map(function (e) {
+    var complex = e[1] !== null && typeof e[1] === "object";
+    return [e[0], complex ? JSON.stringify(e[1]) : e[1], false, complex];
+  }));
+}
+
+function renderFindings(findings) {
+  if (!findings.length) {
+    findingsSection.innerHTML = '<div class="section-title">发现项 <span class="n">0</span></div>' +
+      '<div class="note">未发现 finding。当前规则覆盖加固基线与危险 API 两类事实。</div>';
+    return;
+  }
+  var sorted = findings.slice().sort(function (a, b) { return sevRank(b.severity) - sevRank(a.severity); });
+  var cards = sorted.map(function (f) {
+    var evidence = (f.evidence || []).map(function (ev) {
+      var rows = Object.keys(ev).map(function (k) {
+        var v = ev[k];
+        return "<tr><td>" + esc(k) + '</td><td class="mono">' +
+          esc(typeof v === "object" ? JSON.stringify(v) : v) + "</td></tr>";
+      }).join("");
+      return '<div class="evidence"><table>' + rows + "</table></div>";
+    }).join("");
+    return '<div class="finding sev-' + esc(f.severity) + '">' +
+      '<div class="head"><span class="sev-badge ' + esc(f.severity) + '">' +
+      esc(SEV_LABEL[f.severity] || f.severity) + "</span>" +
+      '<span class="title">' + esc(f.title) + "</span>" +
+      '<span class="rule">' + esc(f.rule_id) + " · 置信度 " + esc(f.confidence) + "</span></div>" +
+      '<div class="msg">' + esc(f.message) + "</div>" + evidence +
+      (f.remediation ? '<div class="fix"><b>修复建议：</b>' + esc(f.remediation) + "</div>" : "") +
+      "</div>";
+  }).join("");
+  findingsSection.innerHTML = '<div class="section-title">发现项 <span class="n">' + findings.length + "</span></div>" + cards;
+}
+
+function renderDiagnostic(d) {
+  return '<div class="diag ' + esc(d.level) + '"><span class="code">' + esc(d.code) + "</span>" +
+    "<span>" + esc(d.message) + "</span>" +
+    (d.analyzer_id
+      ? '<span style="color:var(--muted);font-family:var(--mono);font-size:11.5px">' + esc(d.analyzer_id) + "</span>"
+      : "") +
+    "</div>";
+}
+
+function renderDiagnostics(diags) {
+  if (!diags.length) {
+    diagnosticsSection.innerHTML = "";
+    return;
+  }
+  diagnosticsSection.innerHTML = '<div class="section-title">诊断信息 <span class="n">' + diags.length + "</span></div>" +
+    diags.map(renderDiagnostic).join("");
+}
+
+/* ---- 符号表交互 ---- */
+
+function rerenderSymbols() {
+  var symbolsCard = state.response && state.response.payload
+    ? state.response.payload.result.results["basic.symbols"]
+    : null;
+  if (!symbolsCard) return;
+  var d = symbolsCard.data || {};
+  var wrap = document.querySelector('[data-for="basic.symbols"]');
+  if (!wrap) return;
+  var body = wrap.querySelector('[data-role="sym-body"]');
+  var count = wrap.querySelector('[data-role="sym-count"]');
+  var moreBtn = wrap.querySelector('[data-role="sym-more"]');
+  if (!body || !count || !moreBtn) return;
+
+  var filtered = (d.functions || []).filter(function (f) {
+    if (state.sym.lang !== "all" && f.language !== state.sym.lang) return false;
+    if (state.sym.q) {
+      var hay = (f.name + " " + (f.signature || "") + " " + (f.namespace || "")).toLowerCase();
+      if (hay.indexOf(state.sym.q) === -1) return false;
+    }
+    return true;
+  });
+  var rows = filtered.slice(0, state.sym.shown).map(function (f) {
+    return "<tr>" +
+      '<td class="wrap"><span class="sym-name" title="' + esc(f.name) + '">' + esc(f.name) + "</span></td>" +
+      '<td class="wrap">' + esc(f.signature || f.name) + ' <span class="lang ' + esc(f.language) + '">' + esc(f.language) + "</span></td>" +
+      "<td>" + esc(f.bind) + "</td><td>" + esc(f.visibility) + "</td>" +
+      '<td class="mono">' + esc(f.address) + "</td>" +
+      '<td class="mono">' + esc(f.size) + "</td>" +
+      "<td>" + esc(f.source) + "</td></tr>";
+  }).join("");
+  body.innerHTML = rows || '<tr><td colspan="7" style="color:var(--muted);padding:14px">没有匹配的符号</td></tr>';
+  count.textContent = "显示 " + Math.min(state.sym.shown, filtered.length) + " / " + filtered.length +
+    "（共 " + (d.functions || []).length + "）";
+  moreBtn.hidden = filtered.length <= state.sym.shown;
+  moreBtn.textContent = "显示更多（剩余 " + Math.max(0, filtered.length - state.sym.shown) + "）";
+}
+
+/* ================= 下载 ================= */
+
+function downloadJson() {
+  if (!state.response) return;
+  var blob = new Blob([JSON.stringify(state.response, null, 2)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.target ? state.target.name : "analysis") + ".soinsight.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+
+init();
+</script>
+</body>
+</html>

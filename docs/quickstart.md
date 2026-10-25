@@ -64,6 +64,21 @@ soinsight config use quick-security
 soinsight scan libfoo.so
 ```
 
+## 6. Web 控制台（可选）
+
+不想敲命令时，可启动一个本地网页控制台，在浏览器里选择 .so 文件、勾选能力后一键分析，结果以卡片形式展示（ELF 头、符号表、发现项、DWARF 等）。
+
+```bash
+# 启动：在项目根目录执行
+python web/server.py            # 默认 http://127.0.0.1:8791
+
+# 或直接双击 web/start-web.bat（Windows）
+```
+
+用浏览器打开提示的地址即可。支持三种目标来源：**拖拽 / 点击上传 .so 文件**、**填写服务器上已有的绝对路径**、**直接选 `in/` 目录里的样本**。分析后端就是 `soinsight` CLI（`--format json`），所以 CLI 能跑的能力，网页里都能跑。
+
+> 仅监听本机 `127.0.0.1`，不上传任何数据到外部网络；非 ELF 文件或非法路径会被直接拒绝。
+
 ## 注意事项
 
 - 六大模块共 42 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
