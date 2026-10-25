@@ -164,8 +164,8 @@ soinsight basic dwarf libfoo.so
 组合扫描：
 
 ```text
-soinsight scan libfoo.so --module basic,security
-  → ModuleCatalog 展开两个领域的能力 ID
+soinsight scan libfoo.so --module-available basic,security
+  → ModuleCatalog 展开两个领域已注册的能力 ID
   → Planner 去重并补全跨域依赖
   → Runtime 执行统一计划
 ```

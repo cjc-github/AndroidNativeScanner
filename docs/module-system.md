@@ -142,7 +142,7 @@ automation.harness
 - 42 项能力定义及命名空间校验；
 - 领域命令树；
 - `modules list/show`；
-- `scan --module basic,security` 对单目标兼容能力进行展开；
+- `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
 - 单目标能力到 Runtime 的路由；
 - 开发期旧扁平命令隐藏兼容别名；
 - 6 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`。
@@ -159,4 +159,4 @@ automation.harness
 
 ## 6. YAML 中的模块与能力引用
 
-YAML 的 `analysis.modules` 使用模块 ID 和模块内 command，例如 `basic: [file, elf]`；`analysis.capabilities`、`analysis.exclude` 和 `capability_options` 使用完整 ID，例如 `security.hardening`。这样既保持用户侧六大模块结构，也保持 Runtime 的稳定 namespaced 能力标识。详见 [YAML 配置指南](configuration.md)。
+YAML 的 `analysis.modules` 使用模块 ID 和模块内 command，例如 `basic: [file, elf]`；`analysis.capabilities`、`analysis.exclude` 和 `capability_options` 使用完整 ID，例如 `security.hardening`。这样既保持用户侧六大模块结构，也保持 Runtime 的稳定 namespaced 能力标识。详见 [YAML 配置指南](archive/configuration.md)。

@@ -97,10 +97,12 @@ soinsight automation fuzz-target libfoo.so
 ### 5.3 跨域组合
 
 ```bash
-soinsight scan libfoo.so --module basic,security --format json
+soinsight scan libfoo.so --module-available basic,security --format json
 soinsight scan libfoo.so --enable basic.elf,security.hardening
 soinsight scan libfoo.so --profile security
 ```
+
+`--module-available` 宽松展开（只选已注册 Analyzer 的能力）；`--module` 为严格展开，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
 
 ### 5.4 多目标和自动化
 

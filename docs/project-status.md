@@ -76,7 +76,7 @@
 - [x] 运行时控制：Analyzer 超时看门狗、外部取消令牌、进度观察者（含缓存命中）、异常观察者不影响运行；
 - [x] `basic.dwarf`：参数名/参数类型/返回类型/声明位置、限定名还原、行号表头文件名、截断与畸形降级。
 
-当前自动化测试：`374 passed`（含 `cpp_demangle` 交叉校验；无该 dev 依赖时相应用例跳过）。
+当前自动化测试：完整 dev 环境（含 `cpp_demangle` 与 `pyelftools`）下 `405 passed, 9 skipped`——跳过的 9 例均为参考 demangler 自身无法解析的 C/JNI 符号，属预期行为；缺少 dev 依赖时 `289 passed, 2 skipped`（`test_demangler_oracle.py` 整模块不收集，1 个 pyelftools 用例跳过）。
 
 ### 真实共享库验证
 
@@ -146,7 +146,7 @@ basic.file → basic.elf → security.hardening → Finding → JSON
 soinsight basic file libfoo.so
 soinsight basic elf libfoo.so
 soinsight security hardening libfoo.so
-soinsight scan libfoo.so --module basic,security --format json
+soinsight scan libfoo.so --module-available basic,security --format json
 ```
 
 相关命令已输出真实结果，不再依赖测试注入。
