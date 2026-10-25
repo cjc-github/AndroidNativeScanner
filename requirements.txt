@@ -1,0 +1,3 @@
+# Runtime dependency for the SOInsight Web console (web/server.py) and the
+# soinsight CLI it drives. Pure-Python ELF/DWARF parsing needs nothing else.
+PyYAML>=5.4

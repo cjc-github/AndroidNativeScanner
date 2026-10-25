@@ -398,12 +398,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="SOInsight Web 控制台本地服务器（默认只绑定 127.0.0.1）"
     )
-    parser.add_argument("--host", default="127.0.0.1", help="绑定地址（默认 127.0.0.1）")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="起始端口（默认 8765）")
+    parser.add_argument("--host", default="127.0.0.1", help="绑定地址（默认 127.0.0.1；检测到 PORT 环境变量时自动改为 0.0.0.0）")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="起始端口（默认 8765；被 PORT 环境变量覆盖）")
     parser.add_argument("--timeout", type=int, default=180, help="单次分析超时秒数（默认 180）")
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     args = parser.parse_args(argv)
     ANALYSIS_TIMEOUT = max(10, args.timeout)
+
+    # Cloud deploy injects PORT and expects a public bind on 0.0.0.0; locally we
+    # keep the loopback-only default so the server never exposes the host.
+    host = args.host
+    env_port = os.environ.get("PORT")
+    if env_port:
+        port = int(env_port)
+        if host == "127.0.0.1":
+            host = "0.0.0.0"
+    else:
+        port = args.port
 
     _load_catalog()
     if _STATE["error"]:
@@ -411,18 +422,18 @@ def main(argv: list[str] | None = None) -> int:
         print("请确认当前 Python 能 import soinsight（需要 PyYAML，且 src/ 存在）。")
 
     server = None
-    for port in range(args.port, args.port + 20):
+    for p in range(port, port + 20):
         try:
-            server = ThreadingHTTPServer((args.host, port), Handler)
+            server = ThreadingHTTPServer((host, p), Handler)
             break
         except OSError:
             continue
     if server is None:
-        print(f"错误: 端口 {args.port}-{args.port + 19} 均被占用，请用 --port 换一个。")
+        print(f"错误: 端口 {port}-{port + 19} 均被占用，请用 --port 换一个。")
         return 1
     server.daemon_threads = True
 
-    url = f"http://{args.host}:{server.server_address[1]}"
+    url = f"http://{host}:{server.server_address[1]}"
     analyzer_count = len(_STATE["analyzer_ids"])
     print("SOInsight Web 控制台")
     print(f"  版本        {__version__}")
@@ -430,7 +441,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Python      {platform.python_version()} ({sys.executable})")
     print(f"  已注册能力  {analyzer_count} 个 Analyzer")
     print(f"  地址        {url}")
-    print("  说明        仅绑定 127.0.0.1；停止服务请按 Ctrl+C")
+    bind_note = f"绑定 0.0.0.0（云端 PORT={env_port}）" if env_port else "仅绑定 127.0.0.1"
+    print(f"  说明        {bind_note}；停止服务请按 Ctrl+C")
     print()
 
     if not args.no_open:
