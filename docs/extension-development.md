@@ -183,7 +183,7 @@ options = context.config.extra.get("capability_options", {}).get(
 min_length = int(options.get("min_length", 4))
 ```
 
-能力实现应定义默认值、类型、范围和未知键策略；不要让 Renderer 或 CLI 解释某个 Analyzer 的业务参数。YAML 结构见 [配置指南](configuration.md)。
+能力实现应定义默认值、类型、范围和未知键策略；不要让 Renderer 或 CLI 解释某个 Analyzer 的业务参数。YAML 结构见 [配置指南](archive/configuration.md)。
 
 ## 8a. 复用二进制解析基础设施
 

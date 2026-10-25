@@ -775,14 +775,13 @@ Roadmap 按交付依赖推进，但每项能力始终归属六大产品模块，
 ```text
 docs/
 ├── README.md
-├── getting-started.md
-├── user-guide.md
-├── cli-reference.md
+├── quickstart.md               # 一页快速使用（安装 + 最常用命令）
 ├── module-system.md
 ├── architecture.md
 ├── extension-development.md
 ├── migration-v1-to-v2.md
-└── project-status.md
+├── project-status.md
+└── archive/                    # 原详细使用文档（getting-started/user-guide/cli-reference/configuration）
 ```
 
 后续按需要增加：结果 Schema、IR、动态沙箱、AI Provider、安全模型、Workflow 格式、各能力 SDS。

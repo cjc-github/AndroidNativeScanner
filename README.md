@@ -24,15 +24,13 @@ Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六�
 
 | 文档 | 内容 |
 |---|---|
-| [快速开始](docs/getting-started.md) | 环境、安装、构建和首次运行 |
-| [使用手册](docs/user-guide.md) | 六大模块、组合扫描、输出和诊断 |
-| [YAML 配置指南](docs/configuration.md) | 模块/功能点订制、配置创建、激活和管理 |
-| [CLI 命令参考](docs/cli-reference.md) | 当前命令树、参数、状态和退出码 |
+| [快速使用](docs/quickstart.md) | 安装、最常用命令和输出选项（一页） |
 | [模块体系](docs/module-system.md) | 六大产品模块、42 项能力及跨域依赖规则 |
+| [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
 | [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
 | [扩展开发指南](docs/extension-development.md) | 为能力实现 Analyzer、Rule、Profile、Renderer |
 | [V1 到 V2 迁移](docs/migration-v1-to-v2.md) | 迁移原则、领域映射和顺序 |
-| [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
+| [详细使用文档归档](docs/archive/) | 原快速开始/使用手册/CLI 命令参考/YAML 配置指南 |
 | [V2 软件设计说明书](design/design_v2.0.md) | 六大能力域、CLI、设计模式与详细架构的唯一主设计 |
 | [V3 设计占位](design/design_v3.0.md) | V3 尚未启动及其启动条件 |
 | [V1 历史规划](design/design_v1.0.md) | 历史参考 |

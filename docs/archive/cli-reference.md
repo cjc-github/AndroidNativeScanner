@@ -86,7 +86,8 @@ soinsight automation {fuzz-target|harness|seed|crash-cluster|report|workflow} TA
 soinsight scan TARGET [--config NAME_OR_PATH] [--module IDS] [--enable IDS] [--profile ID] [OPTIONS]
 ```
 
-- `--module basic,security`：展开产品模块内与当前单目标 Runtime 兼容的能力 ID；
+- `--module basic,security`：**严格**展开所选产品模块目录中的全部能力 ID；模块内若有尚未实现的能力，返回 `ANALYSIS_PLAN_ERROR`（退出码 3）并指出缺失的 Analyzer；
+- `--module-available basic,security`：**宽松**展开，只选择模块中已注册 Analyzer 的能力 ID（领域命令如 `basic elf TARGET` 内部即改写为此形式）；
 - `--enable basic.elf,security.hardening`：精确选择 namespaced Analyzer ID；
 - `--profile quick`：使用内置 Profile（`quick`、`security`）；
 - `--config quick-security`：加载托管 YAML 名称或外部路径；未指定时加载活动配置；
@@ -94,7 +95,7 @@ soinsight scan TARGET [--config NAME_OR_PATH] [--module IDS] [--enable IDS] [--p
 - 没有 YAML/CLI/Profile 选择项时使用 Registry 中默认启用的 Analyzer。
 
 ```bash
-soinsight scan libfoo.so --module basic,security --format json
+soinsight scan libfoo.so --module-available basic,security --format json
 soinsight scan libfoo.so --enable basic.file,basic.elf -o result.json
 soinsight scan libfoo.so --profile security --format sarif -o result.sarif
 soinsight basic elf libfoo.so --format json

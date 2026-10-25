@@ -18,15 +18,22 @@ def test_project_status_mentions_current_test_count_and_basic_file():
 
 
 def test_getting_started_no_longer_claims_zero_analyzers():
-    text = Path("docs/getting-started.md").read_text(encoding="utf-8")
+    text = Path("docs/archive/getting-started.md").read_text(encoding="utf-8")
 
     assert "basic.file" in text
     assert "当前显示 0 个 Analyzer" not in text
 
 
 def test_user_guide_describes_partial_implementation_status():
-    text = Path("docs/user-guide.md").read_text(encoding="utf-8")
+    text = Path("docs/archive/user-guide.md").read_text(encoding="utf-8")
 
     assert "partial" in text
     assert "basic.file" in text
     assert "尚未接入具体业务 Analyzer" not in text
+
+
+def test_quickstart_uses_lenient_module_selection():
+    text = Path("docs/quickstart.md").read_text(encoding="utf-8")
+
+    assert "--module-available" in text
+    assert "--module basic,security" not in text

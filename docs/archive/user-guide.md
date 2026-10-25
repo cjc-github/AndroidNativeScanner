@@ -10,7 +10,7 @@ soinsight modules show basic
 soinsight modules list --format json
 ```
 
-六个模块为 `basic`、`advanced`、`security`、`dynamic`、`ai`、`automation`。完整能力表见[模块体系](module-system.md)。
+六个模块为 `basic`、`advanced`、`security`、`dynamic`、`ai`、`automation`。完整能力表见[模块体系](../module-system.md)。
 
 ## 2. 运行单项能力
 
@@ -174,8 +174,10 @@ soinsight scan libfoo.so --format json -o result.json
 按产品模块选择：
 
 ```bash
-soinsight scan libfoo.so --module basic,security --format json
+soinsight scan libfoo.so --module-available basic,security --format json
 ```
+
+`--module-available` 只展开模块中已注册 Analyzer 的能力；`--module` 是严格展开，模块内若有未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）并指出缺失项。
 
 精确选择能力实现：
 
