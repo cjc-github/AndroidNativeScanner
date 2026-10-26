@@ -69,8 +69,10 @@
 
 ### 5. Web 控制台（最新提交）
 
-- [x] `web/server.py`：stdlib HTTP 服务，`/api/health`、`/api/modules`、`/api/samples`、`/api/analyze`；单能力（`capability=`）与组合（`modules=`）两种模式；服务器路径（traversal 校验）或二进制上传（`X-Filename`）；子进程调用 `python -m soinsight --format json` 并回传 ScanResult
+- [x] `web/server.py`：stdlib HTTP 服务，`/api/health`、`/api/modules`、`/api/samples`、`/api/analyze`；单能力（`capability=`）与组合（`modules=`）两种模式；服务器路径（traversal 校验）或二进制上传（`X-Filename`）；子进程调用 `python -m soinsight --format json` 并回传 ScanResult；另提供异步任务接口 `POST /api/jobs` + `GET /api/jobs/<id>/log?offset=`（实时轮询日志）+ `GET /api/jobs/<id>/result`（完整 JSON），供深度分析台页面使用
 - [x] `web/index.html`：拖拽上传/样本下拉、8 个已实现能力 + 组合 scan（basic+advanced+security）、结果卡片（ELF 头/指纹/符号表/加固/危险 API/DWARF/字符串分析/风险汇总/原始 JSON）、状态徽章、下载 JSON
+
+- [x] `web/so-scan.html`：独立"深度分析台"页面——选择 .so 文件（点击/拖拽）→ 一键启动全量 scan → 实时滚动日志 → 结果摘要（退出码/耗时/风险分档/发现项计数/8 能力状态 chips + 文件/ELF/符号/字符串/风险/发现项分区）→ 下载 JSON；控制台头部提供入口链接
 - [x] `web/start-web.bat` Windows 启动脚本；云端适配（`PORT`/`0.0.0.0` + `requirements.txt`）
 
 本地集成测试通过：上传、路径安全、非 ELF（exit 5 `INVALID_ELF`）、错误 400/403/404 等均覆盖。

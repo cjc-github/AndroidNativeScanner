@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOInsight 深度分析台</title>
+<style>
+  :root {
+    --bg: #f4f7f8;
+    --surface: #ffffff;
+    --surface-2: #f8fafb;
+    --border: #dfe7ea;
+    --border-strong: #c8d4da;
+    --text: #16232b;
+    --muted: #5b7080;
+    --accent: #0f766e;
+    --accent-strong: #115e59;
+    --accent-soft: #e7f4f2;
+    --accent-border: #bfe3de;
+    --ok: #15803d; --ok-bg: #e9f7ee; --ok-border: #bfe4cd;
+    --warn: #92600a; --warn-bg: #fdf6e3; --warn-border: #eee0b8;
+    --fail: #b91c1c; --fail-bg: #fbeaea; --fail-border: #eecaca;
+    --info: #4a5b6a; --info-bg: #eef2f5; --info-border: #d8e0e6;
+    --sev-critical: #8b1a1a; --sev-critical-bg: #fbeaea;
+    --sev-high: #b4440e; --sev-high-bg: #fdf0e7;
+    --sev-medium: #92600a; --sev-medium-bg: #fdf6e3;
+    --sev-low: #1e50a8; --sev-low-bg: #eaf1fb;
+    --sev-info: #4a5b6a; --sev-info-bg: #eef2f5;
+    --mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(22, 35, 43, .05), 0 1px 8px rgba(22, 35, 43, .04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  pre, code, .mono { font-family: var(--mono); }
+  a { color: var(--accent); }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 22px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.ok { background: var(--ok); }
+  .dot.fail { background: var(--fail); }
+  main { max-width: 1040px; margin: 18px auto 48px; padding: 0 18px; display: grid; gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .card > .card-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .card > .card-head h2 { margin: 0; font-size: 14px; }
+  .card > .body-pad { padding: 16px; }
+  .step-no {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft);
+    color: var(--accent-strong); display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  #dropzone {
+    border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
+    padding: 28px 18px; text-align: center; color: var(--muted); cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.drag, #dropzone:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+  #dropzone strong.dz-title { color: var(--text); }
+  #dropzone .file-meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 9px 22px; font-size: 14px; cursor: pointer;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-strong); }
+  button.ghost {
+    background: var(--surface); color: var(--info); border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 7px 16px; font-size: 13px; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px;
+    border-radius: 999px; font-size: 12px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--muted); white-space: nowrap;
+  }
+  .badge.running { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-border); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+  .badge.error { background: var(--fail-bg); color: var(--fail); border-color: var(--fail-border); }
+  .spacer { flex: 1; }
+  #logfile {
+    height: 280px; overflow: auto; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-all; margin: 0;
+  }
+  #logfile .t { color: var(--muted); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .stat {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 18px; font-weight: 600; margin-top: 2px; }
+  .stat .v.small { font-size: 14px; }
+  .chipgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 8px; }
+  .chip {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    background: var(--surface-2); font-family: var(--mono); font-size: 12px;
+  }
+  .chip .st {
+    font-size: 11px; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  }
+  .chip .st.success, .chip .st.cached { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+  .chip .st.failed { background: var(--fail-bg); color: var(--fail); border-color: var(--fail-border); }
+  .chip .st.skipped { background: var(--info-bg); color: var(--info); border-color: var(--info-border); }
+  .chip .st.timeout { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+  details.sect { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  details.sect > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 13px; }
+  details.sect > .sect-body { padding: 12px 14px; border-top: 1px solid var(--border); }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tbl th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); padding: 6px 8px; }
+  table.tbl td { border-bottom: 1px solid var(--border); padding: 6px 8px; vertical-align: top; }
+  table.tbl tr:last-child td { border-bottom: none; }
+  .sev-CRITICAL { color: var(--sev-critical); font-weight: 600; }
+  .sev-HIGH { color: var(--sev-high); font-weight: 600; }
+  .sev-MEDIUM { color: var(--sev-medium); font-weight: 600; }
+  .sev-LOW { color: var(--sev-low); font-weight: 600; }
+  .sev-INFO { color: var(--sev-info); font-weight: 600; }
+  .risk-pill {
+    display: inline-block; min-width: 64px; text-align: center;
+    border-radius: 999px; padding: 2px 10px; border: 1px solid var(--border);
+    background: var(--surface); font-weight: 600;
+  }
+  .risk-low, .risk-LOW { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+  .risk-medium, .risk-MEDIUM { background: var(--sev-medium-bg); color: var(--sev-medium); border-color: var(--sev-medium-bg); }
+  .risk-high, .risk-HIGH { background: var(--sev-high-bg); color: var(--sev-high); border-color: var(--sev-high-bg); }
+  .risk-critical, .risk-CRITICAL { background: var(--sev-critical-bg); color: var(--sev-critical); border-color: var(--sev-critical-bg); }
+  #rawjson { max-height: 420px; overflow: auto; font: 12px/1.5 var(--mono); margin: 0; white-space: pre; }
+  .inner-note { color: var(--muted); font-size: 12px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="healthDot" title="服务状态"></span>
+  <h1>SOInsight 深度分析台</h1>
+  <span class="sub" id="healthInfo">连接中…</span>
+  <span class="spacer"></span>
+  <a href="/">← 返回控制台</a>
+</header>
+<main>
+  <section class="card">
+    <div class="card-head"><span class="step-no">1</span><h2>选择 .so / ELF 文件</h2><span class="badge" id="pickBadge">未选择</span></div>
+    <div class="body-pad">
+      <div id="dropzone" tabindex="0" role="button" aria-label="选择文件">
+        <strong class="dz-title">点击选择</strong> 或将 <strong class="dz-title">.so / .elf / .o / .dylib</strong> 文件拖拽到此处
+        <div class="file-meta" id="fileMeta"></div>
+      </div>
+      <input type="file" id="fileInput" hidden>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><span class="step-no">2</span><h2>启动分析</h2></div>
+    <div class="body-pad row">
+      <button class="primary" id="startBtn" disabled>▶ 启动全量分析</button>
+      <span class="badge" id="stateBadge">空闲</span>
+      <span class="inner-note">默认运行全部 8 项已实现能力（文件 / ELF / 符号 / DWARF / 字符串 / 加固 / 危险 API / 风险）及内置安全规则</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><span class="step-no">3</span><h2>分析日志</h2><span class="badge" id="logBadge">等待任务</span><span class="spacer"></span>
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px">
+        <input type="checkbox" id="autoscroll" checked> 自动滚动
+      </label>
+    </div>
+    <div class="body-pad">
+      <pre id="logfile" hidden></pre>
+      <div id="logEmpty" class="inner-note">尚无日志。选择文件并启动分析后，这里实时滚动显示子进程进度。</div>
+    </div>
+  </section>
+
+  <section class="card" id="resultCard" style="display:none">
+    <div class="card-head"><span class="step-no">4</span><h2>分析结果</h2><span class="spacer"></span><button class="ghost" id="downloadBtn">下载 JSON</button></div>
+    <div class="body-pad">
+      <div class="stat-grid" id="statGrid"></div>
+      <h3 style="font-size:13px;margin:16px 0 8px;color:var(--muted)">能力执行状态</h3>
+      <div class="chipgrid" id="chipGrid"></div>
+      <div id="sectionsZone" style="display:grid;gap:10px;margin-top:14px"></div>
+      <details class="sect" style="margin-top:12px">
+        <summary>原始 JSON（预览截断至 200KB）</summary>
+        <div class="sect-body"><pre id="rawjson"></pre></div>
+      </details>
+    </div>
+  </section>
+  <footer>日志与分析子进程 stderr 同步输出；结果 JSON 可下载，与 CLI 输出完全一致。</footer>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v == null ? "" : v)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const fmtBytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MiB" : (n / 1024).toFixed(1) + " KiB";
+
+const state = { file: null, jobId: null, offset: 0, pollTimer: null, lastPayload: null, done: false };
+
+function setBadge(id, text, cls) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = el.className.split(" ").filter((c) => c !== "badge").join(" ").trim();
+  el.classList.add("badge");
+  if (cls) el.classList.add(cls);
+}
+
+async function loadHealth() {
+  try {
+    const data = await (await fetch("/api/health")).json();
+    const ok = data.ok && data.registered_analyzers;
+    $("healthDot").className = "dot " + (ok ? "ok" : "fail");
+    $("healthInfo").textContent = ok
+      ? `v${data.version} · ${data.registered_analyzers.length} 个 Analyzer 已注册`
+      : `服务异常：${data.catalog_error || "unknown"}`;
+  } catch (err) {
+    $("healthDot").className = "dot fail";
+    $("healthInfo").textContent = "无法连接本地服务（请运行 web/server.py）";
+    throw err;
+  }
+}
+
+function bindPicking() {
+  const dz = $("dropzone");
+  const input = $("fileInput");
+  dz.addEventListener("click", () => input.click());
+  dz.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") input.click(); });
+  input.addEventListener("change", () => pickFile(input.files[0]));
+  document.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
+  document.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget) dz.classList.remove("drag");
+  });
+  document.addEventListener("drop", (e) => {
+    e.preventDefault(); dz.classList.remove("drag");
+    if (e.dataTransfer && e.dataTransfer.files.length) pickFile(e.dataTransfer.files[0]);
+  });
+}
+
+function pickFile(file) {
+  if (!file) return;
+  state.file = file;
+  $("fileMeta").textContent = `${file.name} · ${fmtBytes(file.size)}`;
+  $("pickBadge").textContent = "已选择";
+  $("pickBadge").className = "badge";
+  $("startBtn").disabled = false;
+  setBadge("stateBadge", "待启动", null);
+}
+
+function logLine(stamp, text, isError) {
+  $("logEmpty").hidden = true;
+  const body = $("logfile");
+  body.hidden = false;
+  const span = document.createElement("span");
+  if (stamp) {
+    const time = document.createElement("span");
+    time.className = "t";
+    time.textContent = `[${stamp}] `;
+    span.appendChild(time);
+  }
+  const textNode = document.createElement("span");
+  if (isError) textNode.className = "err";
+  textNode.textContent = text;
+  span.appendChild(textNode);
+  body.appendChild(span);
+  body.appendChild(document.createTextNode("\n"));
+  if ($("autoscroll").checked) body.scrollTop = body.scrollHeight;
+}
+
+async function startAnalysis() {
+  if (!state.file || state.jobId) return;
+  setBadge("stateBadge", "上传并排队中…", "running");
+  $("startBtn").disabled = true;
+  try {
+    const response = await fetch("/api/jobs", {
+      method: "POST",
+      headers: { "X-Filename": state.file.name },
+      body: state.file,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || "创建任务失败");
+    state.jobId = data.job;
+    state.offset = 0;
+    state.done = false;
+    setBadge("stateBadge", "分析中…", "running");
+    setBadge("logBadge", "运行中", "running");
+    logLine(null, `任务 ${data.job} 已创建，开始订阅实时日志`);
+    pollOnce();
+  } catch (err) {
+    setBadge("stateBadge", "启动失败", "error");
+    setBadge("logBadge", "失败", "error");
+    logLine(null, `启动失败: ${err.message}`, true);
+    $("startBtn").disabled = false;
+  }
+}
+
+async function pollOnce() {
+  if (!state.jobId || state.done) return;
+  let data = null;
+  try {
+    const response = await fetch(`/api/jobs/${state.jobId}/log?offset=${state.offset}`);
+    data = await response.json();
+    if (!data.ok) throw new Error(data.error || "轮询失败");
+  } catch (err) {
+    setBadge("stateBadge", "网络异常，重试中…", "warn");
+    state.pollTimer = setTimeout(pollOnce, 1500);
+    return;
+  }
+  for (const line of data.lines || []) logLine(line.t, line.text);
+  state.offset = data.offset;
+  if (!data.done) {
+    state.pollTimer = setTimeout(pollOnce, 600);
+    return;
+  }
+  state.done = true;
+  const failed = data.error || data.exit_code === null;
+  setBadge("logBadge", failed ? "失败" : `完成 · ${data.duration_ms} ms`, failed ? "error" : "ok");
+  logLine(null, failed
+    ? `任务失败：${data.error || "子进程被终止"}`
+    : `任务完成（exit_code=${data.exit_code}，用时 ${data.duration_ms} ms）`, failed);
+  if (failed) {
+    setBadge("stateBadge", "分析失败", "error");
+    return;
+  }
+  renderResult();
+}
+
+async function renderResult() {
+  try {
+    const record = await (await fetch(`/api/jobs/${state.jobId}/result`)).json();
+    if (!record.ok) throw new Error(record.error || "结果获取失败");
+    if (record.error) {
+      setBadge("stateBadge", "分析失败", "error");
+      logLine(null, `分析失败：${record.error}`, true);
+      return;
+    }
+    const payload = record.payload || {};
+    const result = payload.result || {};
+    state.lastPayload = payload;
+    paintResult(result, record);
+    $("resultCard").style.display = "";
+    $("resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    setBadge("stateBadge", `完成 · ${record.duration_ms} ms`, "ok");
+  } catch (err) {
+    setBadge("stateBadge", "结果展示失败", "error");
+    logLine(null, `结果展示失败: ${err.message}`, true);
+  }
+}
+
+function paintResult(result, record) {
+  const results = result.results || {};
+  const findings = result.findings || [];
+  const risk = (results["security.risk"] || {}).data || {};
+  const strings = (results["advanced.strings"] || {}).data || {};
+  const fileData = (results["basic.file"] || {}).data || {};
+  const elf = (results["basic.elf"] || {}).data || {};
+
+  const riskLevel = risk.risk_level || "low";
+  const stats = [
+    ["退出码", String(record.exit_code), (record.exit_code === 0 ? "risk-low" : "risk-medium")],
+    ["耗时", `${record.duration_ms} ms`, null],
+    ["风险评分", String(risk.risk_score ?? "—"), "risk-" + riskLevel.toLowerCase()],
+    ["发现项", String(findings.length), findings.length ? "risk-high" : "risk-low"],
+    ["字符串事实", `${strings.counts ? strings.counts.unique_strings : "—"} 唯一`, null],
+  ];
+  $("statGrid").innerHTML = stats.map(([k, v, cls]) => `
+    <div class="stat"><div class="k">${esc(k)}</div><div class="v small ${cls || ""}">${esc(v)}</div></div>`).join("");
+
+  $("chipGrid").innerHTML = Object.entries(results).map(([id, r]) => `
+    <div class="chip"><span>${esc(id)}</span>
+      <span class="st ${esc((r.status || "").toLowerCase())}">${esc(r.status)}${r.duration_ms != null ? " · " + r.duration_ms + "ms" : ""}</span>
+    </div>`).join("");
+
+  const sections = [];
+  const kv = (pairs) => `<table class="tbl"><tbody>${pairs.map(([k, v]) =>
+    `<tr><th style="width:170px;color:var(--muted)">${esc(k)}</th><td>${v}</td></tr>`).join("")}</tbody></table>`;
+
+  if (fileData && Object.keys(fileData).length) {
+    sections.push(["文件基本信息", kv([
+      ["路径", esc((result.target && result.target.path) || fileData.real_path || fileData.path || "—")],
+      ["SHA-256", `<span class="mono">${esc(fileData.sha256 || (result.target && result.target.sha256) || "—")}</span>`],
+      ["格式", esc(fileData.format || "—") + (fileData.magic ? ` · magic <span class="mono">${esc(fileData.magic)}</span>` : "")],
+      ["大小", fileData.size != null ? `${esc(fileData.size)} bytes` : "—"],
+    ])]);
+  }
+  if (elf && Object.keys(elf).length) {
+    sections.push(["ELF 概要", kv([
+      ["类别 / 字节序", esc([elf.elf_class, elf.endianness].filter(Boolean).join(" / ") || "—")],
+      ["类型 / 机器", esc([elf.type, elf.machine].filter(Boolean).join(" / ") || "—")],
+      ["入口", `<span class="mono">${esc(elf.entry_point || "—")}</span>`],
+      ["段表", `${esc(elf.program_header_count ?? "—")} PHDR · ${esc(elf.section_header_count ?? "—")} SHDR`],
+      ["GNU_STACK 可执行", esc(elf.executable_stack == null ? "未知" : elf.executable_stack ? "是（风险）" : "否")],
+      ["GNU_RELRO", esc(elf.has_gnu_relro == null ? "未知" : elf.has_gnu_relro ? "已启用" : "缺失")],
+    ])]);
+  }
+  const symbolsData = (results["basic.symbols"] || {}).data || {};
+  if (Object.keys(symbolsData).length) {
+    const counts = symbolsData.counts || {};
+    const names = (symbolsData.functions || []).slice(0, 40).map((f) => {
+      const demangled = f.demangled ? f.demangled.display : "";
+      return `<tr><td class="mono">${esc(f.name || "?")}</td><td class="mono">${esc(demangled || f.signature || "")}</td><td>${esc(f.jni ? "JNI" : f.language || "")}</td></tr>`;
+    }).join("");
+    sections.push(["符号摘要", [
+      `<p class="inner-note" style="margin:4px 0">导出函数 ${esc(counts.exported_functions || 0)} · demangle ${esc(symbolsData.demangled_count || 0)} · JNI ${esc(symbolsData.jni_count || 0)} · 数据导出 ${esc(counts.exported_data || 0)} · 导入 ${esc(counts.imports || 0)} · 未分类 ${esc(counts.exported_unclassified || 0)}${symbolsData.stripped ? " · 已剥离 symtab" : ""}（函数列表截断 40 条）</p>`,
+      names ? `<table class="tbl"><tr><th>mangled</th><th>签名 / demangled</th><th>语言</th></tr>${names}</table>` : "<p class='inner-note' style='margin:4px 0'>无导出函数。</p>",
+    ].join("")]);
+  }
+  if (Object.keys(strings).length) {
+    const classified = strings.classified || {};
+    const countOf = (cat) => (classified[cat] && classified[cat].count) || 0;
+    const urlHits = ((classified.url && classified.url.hits) || []).slice(0, 10).map((h) =>
+      `<tr><td class="mono">${esc(h.value)}</td><td class="mono">${esc(h.offset || "")}${h.section ? " · " + esc(h.section) : ""}</td></tr>`).join("");
+    const sensHits = ((classified.sensitive && classified.sensitive.hits) || []).slice(0, 10).map((h) =>
+      `<tr><td>${esc(h.label || "")}</td><td class="mono">${esc(h.value)}</td><td class="mono">${esc(h.offset || "")}${h.section ? " · " + esc(h.section) : ""}</td></tr>`).join("");
+    const b64Hits = ((classified.base64 && classified.base64.hits) || []).slice(0, 10).map((h) =>
+      `<tr><td class="mono">${esc(h.value)}</td><td class="mono">${esc(h.decoded || "")}</td></tr>`).join("");
+    sections.push(["字符串分析", [
+      `<p class="inner-note" style="margin:4px 0">唯一 ${esc(strings.counts.unique_strings)} / 出现 ${esc(strings.counts.total_strings)}${strings.scan_truncated ? " · 仅扫描文件头部" : ""}${strings.classify === false ? " · 未分类" : ""}</p>`,
+      `<table class="tbl"><tr><th>分类</th><th>命中</th></tr>
+        <tr><td>URL</td><td>${esc(countOf("url"))}</td></tr>
+        <tr><td>敏感凭据</td><td>${esc(countOf("sensitive"))}</td></tr>
+        <tr><td>Base64 候选</td><td>${esc(countOf("base64"))}</td></tr></table>`,
+      urlHits ? `<p class="inner-note" style="margin:10px 0 4px">URL 样例</p><table class="tbl">${urlHits}</table>` : "",
+      sensHits ? `<p class="inner-note" style="margin:10px 0 4px">凭据样例</p><table class="tbl"><tr><th>标签</th><th>值</th><th>位置</th></tr>${sensHits}</table>` : "",
+      b64Hits ? `<p class="inner-note" style="margin:10px 0 4px">Base64 样例</p><table class="tbl"><tr><th>值</th><th>解码预览</th></tr>${b64Hits}</table>` : "",
+    ].join("")]);
+  }
+  const riskIndicators = risk.string_indicators || {};
+  if (risk.risk_score != null) {
+    sections.push(["风险汇总", [
+      `<p style="margin:4px 0">风险评分 <strong>${esc(risk.risk_score)}</strong> → <span class="risk-pill risk-${esc(String(riskLevel).toLowerCase())}">${esc(riskLevel)}</span></p>`,
+      `<table class="tbl"><tr><th>来源</th><th>计数</th><th>权重分</th></tr>
+        <tr><td>URL 指标</td><td>${esc(riskIndicators.url_count ?? "—")}</td><td>${esc(riskIndicators.url_score ?? "—")}</td></tr>
+        <tr><td>敏感凭据指标</td><td>${esc(riskIndicators.sensitive_count ?? "—")}</td><td>${esc(riskIndicators.sensitive_score ?? "—")}</td></tr>
+        <tr><td>Base64 指标</td><td>${esc(riskIndicators.base64_count ?? "—")}</td><td>${esc(riskIndicators.base64_score ?? "—")}</td></tr></table>`,
+      (risk.top_findings || []).length
+        ? `<p class="inner-note" style="margin:10px 0 4px">Top 发现</p><table class="tbl">
+           ${risk.top_findings.map((t) => `<tr><td>${esc(t.rule_id)}</td><td><span class="sev-${esc(String(t.severity).toUpperCase())}">${esc(t.severity)}</span></td><td>${esc(t.title)}</td></tr>`).join("")}</table>`
+        : "",
+    ].join("")]);
+  }
+  if (findings.length) {
+    sections.push(["发现项（规则 + 分析器）", `<table class="tbl"><tr><th>规则</th><th>严重度</th><th>置信度</th><th>说明</th></tr>` +
+      findings.map((f) => `<tr>
+        <td class="mono">${esc(f.rule_id)}</td>
+        <td><span class="sev-${esc(String(f.severity).toUpperCase())}">${esc(f.severity)}</span></td>
+        <td>${esc(f.confidence)}</td>
+        <td>${esc(f.message)}${(f.locations || []).slice(0, 2).map((loc) => `<div class="inner-note mono" style="margin-top:2px">${esc([loc.offset, loc.section, loc.symbol, loc.address].filter(Boolean).join(" · "))}</div>`).join("")}</td>
+      </tr>`).join("") + "</table>"]);
+  }
+  $("sectionsZone").innerHTML = sections.map(([title, html], idx) => `
+    <details class="sect"${idx === 0 ? " open" : ""}>
+      <summary>${esc(title)}</summary><div class="sect-body">${html}</div>
+    </details>`).join("");
+
+  let snapshot = JSON.stringify(payload, null, 2);
+  if (snapshot.length > 200 * 1024) snapshot = snapshot.slice(0, 200 * 1024) + "\n… (已截断，下载 JSON 可获得完整内容)";
+  $("rawjson").textContent = snapshot;
+}
+
+bindPicking();
+loadHealth().catch(() => {});
+$("startBtn").addEventListener("click", startAnalysis);
+$("downloadBtn").addEventListener("click", () => {
+  if (!state.lastPayload) return;
+  const blob = new Blob([JSON.stringify(state.lastPayload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.file ? state.file.name : "soinsight") + ".analysis.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+</script>
+</body>
+</html>

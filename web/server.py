@@ -23,6 +23,16 @@ API::
                              目标二选一：查询参数 path=<绝对路径>，
                              或请求体直接传文件字节并带 X-Filename 头。
                            返回 {ok, exit_code, command, duration_ms, payload}
+    POST /api/jobs         创建一个后台深度扫描任务（目标同 /api/analyze）。
+                           以 ``python -m soinsight scan <target> --format json``
+                           默认全量能力运行，stderr 进度实时写日志。返回
+                           {ok, job}。
+    GET  /api/jobs/<id>/log?offset=N
+                           增量日志：{ok, lines:[{t,text}], offset, done,
+                           exit_code, duration_ms}。done=True 后可拉结果。
+    GET  /api/jobs/<id>/result
+                           任务完成后取完整 CLI JSON：{ok, exit_code,
+                           duration_ms, command, payload}。
 """
 
 from __future__ import annotations
@@ -37,6 +47,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +65,10 @@ SAMPLE_SUFFIXES = {".so", ".elf", ".o", ".dylib"}
 
 ANALYSIS_TIMEOUT = 180
 _ANALYSIS_LOCK = threading.Lock()
+
+MAX_JOBS_KEPT = 8
+_JOBS: dict[str, dict] = {}
+_JOBS_LOCK = threading.Lock()
 
 # The catalog import needs the package on sys.path; the heavy imports happen
 # lazily inside _load_catalog() so a broken environment fails one endpoint
@@ -204,6 +219,197 @@ def _run_analysis(mode: str, capability: str, modules: str, target: Path) -> dic
     }
 
 
+def _now_stamp() -> str:
+    return time.strftime("%H:%M:%S")
+
+
+def _job_log(job: dict, text: str) -> None:
+    with _JOBS_LOCK:
+        job["lines"].append({"t": _now_stamp(), "text": text})
+
+
+def _prune_jobs() -> None:
+    with _JOBS_LOCK:
+        overflow = len(_JOBS) - MAX_JOBS_KEPT
+        if overflow > 0:
+            oldest = sorted(_JOBS, key=lambda key: _JOBS[key]["started"])[:overflow]
+            for key in oldest:
+                _JOBS.pop(key, None)
+
+
+def _finish_job(job: dict, **fields: object) -> None:
+    with _JOBS_LOCK:
+        job.update(fields)
+        job["done"] = True
+
+
+def _write_upload(body: bytes, filename: str) -> Path:
+    """Persist one uploaded target to a private temp file and return it."""
+    suffix = Path(os.path.basename(filename)).suffix
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,8}", suffix):
+        suffix = ".so"
+    handle, temp_path = tempfile.mkstemp(prefix="soinsight-upload-", suffix=suffix)
+    with os.fdopen(handle, "wb") as stream:
+        stream.write(body)
+    return Path(temp_path)
+
+
+def _transform_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(SRC_DIR), env.get("PYTHONPATH")) if part
+    )
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def _start_job(target: Path, display_name: str, cleanup: bool = False) -> dict:
+    """Create a background full scan job and return its tracking record."""
+    job_id = uuid.uuid4().hex[:12]
+    argv = [sys.executable, "-m", "soinsight", "scan", str(target)]
+    argv += ["--format", "json", "--no-cache"]
+    job = {
+        "id": job_id,
+        "filename": display_name,
+        "target": str(target),
+        "cleanup_target": cleanup,
+        "lines": [],
+        "started": time.time(),
+        "done": False,
+        "exit_code": None,
+        "duration_ms": None,
+        "payload": None,
+        "error": None,
+        "command": argv,
+    }
+    with _JOBS_LOCK:
+        _JOBS[job_id] = job
+    _prune_jobs()
+    threading.Thread(
+        target=_job_worker, args=(job, target), daemon=True, name=f"soinsight-job-{job_id}"
+    ).start()
+    return job
+
+
+def _job_worker(job: dict, target: Path) -> None:
+    """Run the CLI scan in the background, streaming stderr into the job log.
+
+    stdout stays on its own pump thread so a hung child process hits the
+    overall deadline instead of blocking the worker on ``stdout.read()``.
+    """
+    started = time.perf_counter()
+    try:
+        _job_log(job, f"目标: {target.name}（{target.stat().st_size} 字节）")
+    except OSError as exc:
+        _finish_job(job, error=f"目标文件不可读: {exc}")
+        return
+    if not _ANALYSIS_LOCK.acquire(timeout=10):
+        _finish_job(job, error="已有分析在占用执行槽位，且等待超时")
+        return
+    process = None
+    try:
+        process = subprocess.Popen(
+            job["command"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_transform_env(),
+            cwd=str(REPO_ROOT),
+        )
+        _job_log(job, "子进程已启动，实时进度如下")
+
+        stdout_chunks: list[str] = []
+
+        def _pump_streams(stream, sink) -> None:
+            for line in stream:
+                text = line.rstrip()
+                if text:
+                    sink(text)
+
+        pump_out = threading.Thread(
+            target=_pump_streams, args=(process.stdout, stdout_chunks.append),
+            daemon=True,
+        )
+        pump_out.start()
+        pump_err = threading.Thread(
+            target=_pump_streams, args=(process.stderr, lambda text: _job_log(job, text)),
+            daemon=True,
+        )
+        pump_err.start()
+
+        deadline = started + max(5.0, ANALYSIS_TIMEOUT)
+        while True:
+            if process.poll() is not None:
+                break
+            if time.perf_counter() > deadline:
+                process.kill()
+                process.wait(timeout=30)
+                _job_log(job, f"分析超时（> {ANALYSIS_TIMEOUT}s），子进程已终止")
+                _finish_job(
+                    job,
+                    error=f"分析超时（超过 {ANALYSIS_TIMEOUT} 秒）",
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                )
+                return
+            pump_out.join(timeout=0.5)
+            pump_err.join(timeout=0.0)
+
+        pump_out.join(timeout=30)
+        pump_err.join(timeout=30)
+        wait_seconds = ANALYSIS_TIMEOUT - (time.perf_counter() - started)
+        process.wait(timeout=max(1.0, wait_seconds))
+        exit_code = process.returncode
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        stdout_text = "".join(stdout_chunks)
+        _job_log(job, f"分析结束（exit_code={exit_code}，用时 {duration_ms} ms）")
+
+        parse_error = None
+        try:
+            payload = json.loads(stdout_text) if stdout_text.strip() else None
+        except json.JSONDecodeError as exc:
+            payload, parse_error = None, f"CLI 输出不是有效 JSON: {exc}"
+
+        if payload is None:
+            _job_log(job, f"错误: {parse_error or 'CLI 未产生 JSON 输出'}")
+            _finish_job(
+                job,
+                exit_code=exit_code,
+                duration_ms=duration_ms,
+                error=parse_error or f"CLI 未产生 JSON 输出（退出码 {exit_code}）",
+            )
+            return
+
+        _job_log(
+            job,
+            f"结果 JSON 已生成（{len(json.dumps(payload, ensure_ascii=False)) // 1024} KB），在结果面板中查看",
+        )
+        envelope_diagnostics = payload.get("diagnostics") if isinstance(payload, dict) else None
+        for diagnostic in (envelope_diagnostics or [])[:3]:
+            _job_log(
+                job,
+                f"CLI 诊断: [{diagnostic.get('code')}] {diagnostic.get('message')}",
+            )
+        _finish_job(job, exit_code=exit_code, duration_ms=duration_ms, payload=payload)
+    except Exception as exc:  # pragma: no cover - 环境相关的兜底
+        _job_log(job, f"内部错误: {type(exc).__name__}: {exc}")
+        _finish_job(job, error=f"任务执行失败: {type(exc).__name__}: {exc}")
+    finally:
+        if process is not None:
+            for stream_obj in (process.stdout, process.stderr):
+                try:
+                    stream_obj.close()
+                except OSError:
+                    pass
+        _ANALYSIS_LOCK.release()
+        if job.get("cleanup_target"):
+            try:
+                target.unlink()
+            except OSError:
+                pass
+
+
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -214,6 +420,57 @@ CONTENT_TYPES = {
     ".ico": "image/x-icon",
     ".md": "text/plain; charset=utf-8",
 }
+
+_JOB_LOG_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/log")
+_JOB_RESULT_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/result")
+
+
+def _safe_int(value: str | None) -> tuple[int, bool]:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0, True
+    return max(0, parsed), False
+
+
+def _job_log_payload(job_id: str, offset: int) -> dict | None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return None
+        lines = [dict(item) for item in job["lines"][offset:]]
+        return {
+            "ok": True,
+            "job": job_id,
+            "filename": job["filename"],
+            "started": job["started"],
+            "lines": lines,
+            "offset": offset + len(lines),
+            "done": job["done"],
+            "exit_code": job["exit_code"],
+            "duration_ms": job["duration_ms"],
+            "error": job["error"],
+        }
+
+
+def _job_result_record(job_id: str) -> dict | None:
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return None
+        return {
+            "ok": True,
+            "job": job_id,
+            "filename": job["filename"],
+            "target": job["target"],
+            "started": job["started"],
+            "done": job["done"],
+            "exit_code": job["exit_code"],
+            "duration_ms": job["duration_ms"],
+            "command": job["command"],
+            "error": job["error"],
+            "payload": job["payload"],
+        }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -258,7 +515,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routes ----------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
-        route = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        route = parsed.path
         if route in ("/", "/index.html"):
             self._serve_static("/index.html")
         elif route == "/favicon.ico":
@@ -278,12 +536,44 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "modules": _STATE["catalog"]})
         elif route == "/api/samples":
             self._send_json({"ok": True, "samples": _list_samples()})
+        elif _JOB_LOG_ROUTE.fullmatch(route):
+            params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+            offset, parse_failed = _safe_int(params.get("offset"))
+            if parse_failed:
+                self._send_json(
+                    {"ok": False, "error": "offset 必须是非负整数"},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            payload = _job_log_payload(_JOB_LOG_ROUTE.fullmatch(route).group(1), offset)
+            if payload is None:
+                self._send_json(
+                    {"ok": False, "error": "任务不存在或已被清理"},
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+            self._send_json(payload)
+        elif _JOB_RESULT_ROUTE.fullmatch(route):
+            record = _job_result_record(_JOB_RESULT_ROUTE.fullmatch(route).group(1))
+            if record is None:
+                self._send_json(
+                    {"ok": False, "error": "任务不存在或已被清理"},
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+            if not record["done"]:
+                self._send_json(
+                    {"ok": False, "error": "任务尚未结束，继续轮询 /log"},
+                    HTTPStatus.CONFLICT,
+                )
+                return
+            self._send_json(record)
         else:
             self._serve_static(route)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib name
         parsed = urlparse(self.path)
-        if parsed.path != "/api/analyze":
+        if parsed.path not in ("/api/analyze", "/api/jobs"):
             self._send_json(
                 {"ok": False, "error": f"未知路径: {parsed.path}"},
                 HTTPStatus.NOT_FOUND,
@@ -291,7 +581,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
-        mode = params.get("mode", "single")
+        is_job = parsed.path == "/api/jobs"
+        mode = params.get("mode", "scan" if is_job else "single")
         capability = params.get("capability", "").strip()
         modules = params.get(
             "modules", ""
@@ -339,13 +630,13 @@ class Handler(BaseHTTPRequestHandler):
                     stream.write(body)
                 target = Path(temp_path)
 
-            if mode not in ("single", "scan"):
+            if not is_job and mode not in ("single", "scan"):
                 self._send_json(
                     {"ok": False, "error": f"未知 mode: {mode}"},
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
-            if mode == "single":
+            if not is_job and mode == "single":
                 _load_catalog()
                 known = _known_capability_ids()
                 if capability not in known:
@@ -359,6 +650,25 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     return
 
+            if is_job:
+                _load_catalog()
+                if _STATE["error"]:
+                    self._send_json(
+                        {"ok": False, "error": _STATE["error"]},
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                    )
+                    return
+                record = _start_job(target, target.name, cleanup=not path_param)
+                self._send_json(
+                    {
+                        "ok": True,
+                        "job": record["id"],
+                        "filename": record["filename"],
+                        "note": "轮询 /api/jobs/<id>/log 直到 done=True，再取 /api/jobs/<id>/result",
+                    }
+                )
+                return
+
             if not _ANALYSIS_LOCK.acquire(timeout=5):
                 self._send_json(
                     {"ok": False, "error": "已有分析在进行中，请稍候重试"},
@@ -371,7 +681,9 @@ class Handler(BaseHTTPRequestHandler):
                 _ANALYSIS_LOCK.release()
             self._send_json(result)
         finally:
-            if temp_path:
+            # Job uploads are owned by the background worker: it unlinks the
+            # temp target after the child process has finished with it.
+            if temp_path and not is_job:
                 try:
                     os.unlink(temp_path)
                 except OSError:
