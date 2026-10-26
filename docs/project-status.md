@@ -75,8 +75,13 @@
 - [x] `security.dangerous-api`：精确匹配、FORTIFY 归一化、无类型导出单独归类、选项与严重度阈值；
 - [x] 运行时控制：Analyzer 超时看门狗、外部取消令牌、进度观察者（含缓存命中）、异常观察者不影响运行；
 - [x] `basic.dwarf`：参数名/参数类型/返回类型/声明位置、限定名还原、行号表头文件名、截断与畸形降级。
+- [x] `advanced.strings`：URL/敏感/Base64 分类、ELF 分节归属、截断诊断、非 ELF 目标可用；
+- [x] `security.risk`：指纹去重、严重度/置信度/类别计数、V1 权重口径字符串指标、分档；
+- [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
-当前自动化测试：完整 dev 环境（含 `cpp_demangle` 与 `pyelftools`）下 `405 passed, 9 skipped`——跳过的 9 例均为参考 demangler 自身无法解析的 C/JNI 符号，属预期行为；缺少 dev 依赖时 `289 passed, 2 skipped`（`test_demangler_oracle.py` 整模块不收集，1 个 pyelftools 用例跳过）。
+当前自动化测试（`PYTHONPATH=src pytest`，pyelftools 可用、`cpp_demangle` 未装）：
+`332 passed, 1 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
+（`pip install -e '.[dev]'`）后该模块以及参考 demangler 比对用例会恢复收集。
 
 ### 真实共享库验证
 
@@ -158,9 +163,10 @@ soinsight scan libfoo.so --module-available basic,security --format json
 - `basic.symbols`（✅ 已完成：导出符号 + C++ demangle + JNI 解码）；
 - `basic.dwarf`（✅ 已完成：参数名、参数类型、返回类型、声明位置；与 `basic.symbols` 在渲染层联合）；
 - `security.dangerous-api`（✅ 已完成：依赖 `basic.symbols`，按符号名精确匹配）；
-- `advanced.strings`；
-- `security.risk`；
-- V1 URL/Secret/Base64/JNI 规则迁移。
+- `advanced.strings`（✅ 已完成：纯 Python 提取，任意文件可用；URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断；实现于 `analyzers/advanced.py` 与 `infrastructure/strings/`）；
+- `security.risk`（✅ 已完成：依赖 `security.hardening` + `security.dangerous-api` + `advanced.strings`，按指纹去重、严重度/置信度/类别计数、V1 权重口径的字符串指标、可配置权重的风险分档；实现于 `analyzers/security.py`）；
+- V1 URL/Secret/Base64 规则迁移（✅ 已完成：`rules/string_rules.py` 提供 `security.sensitive-string`、`security.hardcoded-url`、`security.encoded-payload` 三条内置规则，指纹格式 `sensitive:<label>:<value>` / `url:<value>` / `base64:<value>`）；
+- V1 JNI 规则迁移（未做：JNI 导出统计已由 `basic.symbols` 以计数形式提供，命名建议类规则形态仍在设计）。
 
 ### 运行时控制（Phase 2 提前落地）
 
@@ -188,6 +194,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 - 漏洞模式；
 - 证据链、去重、置信度和风险评分；
+- 软依赖（仅排序的可选依赖），支撑聚合类 Analyzer（`security.vulnerability` 等）在上游缺席时降级评分，也用于 `security.risk` 的非 ELF 降级；
 - CI Gate 和基线抑制。
 
 ### Phase 5：动态分析
@@ -226,7 +233,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 公开测试版本至少需要：
 
 - 第一条跨域真实链路（✅ 已完成）；
-- File/ELF/Symbols/Dwarf/Hardening/Dangerous API（✅ 已实现，Strings 待迁移）；
+- File/ELF/Symbols/Dwarf/Hardening/Dangerous API（✅ 已实现）+ Strings/Risk 规则链（✅ 已实现）；
 - 内置 Profile（✅ 已完成）；
 - CLI 与文档一致；
 - JSON Schema；

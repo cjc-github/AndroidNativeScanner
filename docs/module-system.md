@@ -38,16 +38,22 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 
 ### 2.2 高级分析
 
-| 命令 | 稳定能力 ID | 能力 |
-|---|---|---|
-| `advanced strings` | `advanced.strings` | 字符串分析 |
-| `advanced constants` | `advanced.constants` | 常量分析 |
-| `advanced algorithm` | `advanced.algorithm` | 算法识别 |
-| `advanced protocol` | `advanced.protocol` | 协议识别 |
-| `advanced file-format` | `advanced.file-format` | 文件格式识别 |
-| `advanced library` | `advanced.library` | 第三方库识别 |
-| `advanced compiler` | `advanced.compiler` | 编译器识别 |
-| `advanced obfuscation` | `advanced.obfuscation` | 混淆识别 |
+| 命令 | 稳定能力 ID | 能力 | 状态 |
+|---|---|---|---|
+| `advanced strings` | `advanced.strings` | 字符串分析 | 已实现 |
+| `advanced constants` | `advanced.constants` | 常量分析 | 外壳 |
+| `advanced algorithm` | `advanced.algorithm` | 算法识别 | 外壳 |
+| `advanced protocol` | `advanced.protocol` | 协议识别 | 外壳 |
+| `advanced file-format` | `advanced.file-format` | 文件格式识别 | 外壳 |
+| `advanced library` | `advanced.library` | 第三方库识别 | 外壳 |
+| `advanced compiler` | `advanced.compiler` | 编译器识别 | 外壳 |
+| `advanced obfuscation` | `advanced.obfuscation` | 混淆识别 | 外壳 |
+
+`advanced.strings` 对任意文件（含非 ELF）做纯 Python 可见串提取并去重计数，可选
+URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS_TRUNCATED` /
+`STRINGS_INPUT_TRUNCATED` 诊断，规模上限通过能力选项
+（`min_length`/`max_strings`/`max_hits_per_category`/`max_scan_bytes`/`classify`）
+控制。
 
 ### 2.3 安全分析
 
@@ -56,7 +62,22 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `security hardening` | `security.hardening` | 安全保护检测 | 已实现 |
 | `security dangerous-api` | `security.dangerous-api` | 危险 API 检测 | 已实现 |
 | `security vulnerability` | `security.vulnerability` | 漏洞模式识别 | 外壳 |
-| `security risk` | `security.risk` | 风险评分/评估 | 外壳 |
+| `security risk` | `security.risk` | 风险评分/评估 | 已实现 |
+
+`security.risk` 聚合 `security.hardening`、`security.dangerous-api` 的发现项与
+`advanced.strings` 分类事实：按指纹（缺失指纹时按 `rule:message`）去重统计
+严重度/置信度/类别，按 V1 口径加权 URL/凭据/Base64 指标，叠加
+critical=12/high=8/medium=5/low=2/info=1（可用能力选项
+`security.risk.severity_weights` 覆盖）算出风险分并分档
+low/medium/high/critical。三个内置规则
+`security.sensitive-string`、`security.hardcoded-url`、`security.encoded-payload`
+随规则引擎自动运行，缺失 `advanced.strings` 数据时静默跳过。
+
+风险评分需要三条上游全部成功：非 ELF 目标（或任一上游失败/跳过）会让
+`security.risk` 以 `DEPENDENCY_FAILED` 整体跳过，此时字符串事实仍会被规则引擎
+转成发现项，但**没有风险分档**——这是有意设计而非缺漏。若希望"缺上游即按
+空集降级评分"，要先给调度器引入"仅用于排序的可选依赖（软依赖）"，规划于
+`security.vulnerability` 阶段一并落地。
 
 ### 2.4 动态分析
 

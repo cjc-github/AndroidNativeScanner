@@ -630,10 +630,12 @@ var PRESETS = [
   { id: "basic.elf", name: "ELF 头", desc: "类 / 端序 / 类型 / 机器 / 入口 / 段表 + RELRO、NX" },
   { id: "basic.symbols", name: "符号表", desc: "导出函数、导入符号、C++ demangle、JNI 解码" },
   { id: "basic.dwarf", name: "DWARF", desc: "调试信息函数与参数（stripped 时如实报告）" },
+  { id: "advanced.strings", name: "字符串分析", desc: "可打印字符串提取、偏移定位与 URL / 敏感信息 / Base64 分类" },
   { id: "security.hardening", name: "加固检查", desc: "PIE / NX / RELRO 事实核查" },
-  { id: "security.dangerous-api", name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" }
+  { id: "security.dangerous-api", name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" },
+  { id: "security.risk", name: "风险汇总", desc: "Findings 去重、严重度 / 置信度汇总与加权评分" }
 ];
-var SCAN_PRESET = { id: "scan", name: "组合扫描", desc: "basic + security 全部已实现分析器" };
+var SCAN_PRESET = { id: "scan", name: "组合扫描", desc: "basic + advanced + security 全部已实现分析器" };
 
 /* ================= DOM ================= */
 
@@ -836,7 +838,7 @@ function updateRunButton() {
   if (state.running) return;
   if (!state.target) runStatus.textContent = "请选择目标文件和分析能力";
   else if (!state.health) runStatus.textContent = "本地服务未连接，无法运行";
-  else if (state.mode === "scan") runStatus.textContent = "就绪：组合扫描 basic + security";
+  else if (state.mode === "scan") runStatus.textContent = "就绪：组合扫描 basic + advanced + security";
   else runStatus.textContent = "就绪：" + state.capability;
 }
 
@@ -857,7 +859,7 @@ function runAnalysis() {
   var params = new URLSearchParams();
   params.set("mode", state.mode);
   if (state.mode === "single") params.set("capability", state.capability);
-  else params.set("modules", "basic,security");
+  else params.set("modules", "basic,advanced,security");
 
   var headers = {};
   var body;
@@ -959,8 +961,10 @@ function renderAnalyzerCard(id, result) {
   else if (id === "basic.elf") bodyHtml = renderElfData(data);
   else if (id === "basic.symbols") bodyHtml = renderSymbolsData(data);
   else if (id === "basic.dwarf") bodyHtml = renderDwarfData(data);
+  else if (id === "advanced.strings") bodyHtml = renderStringsData(data);
   else if (id === "security.dangerous-api") bodyHtml = renderDangerousApiData(data);
   else if (id === "security.hardening") bodyHtml = '<div class="note">加固结论见下方「发现项」汇总。</div>';
+  else if (id === "security.risk") bodyHtml = renderRiskData(data);
   else bodyHtml = renderGenericData(data);
 
   var diags = (result.diagnostics || []).map(renderDiagnostic).join("");
@@ -1076,6 +1080,55 @@ function renderDangerousApiData(d) {
     (sevChips || '<span class="chip ok">未发现危险 API</span>') +
     "</div>" +
     (matched ? '<div class="fact-row" style="margin-top:8px"><span style="font-size:12.5px;color:var(--muted)">命中 API：</span>' + matched + "</div>" : "");
+}
+
+var RISK_LEVEL = { low: "ok", medium: "warn", high: "fail", critical: "fail" };
+var RISK_LABEL = { low: "低风险", medium: "中风险", high: "高风险", critical: "严重风险" };
+
+function renderStringsData(d) {
+  var counts = d.counts || {};
+  var classified = d.classified || {};
+  var chipFor = function (label, key) {
+    var c = classified[key] || { count: 0 };
+    return '<span class="chip ' + (c.count ? "warn" : "ok") + '">' +
+      esc(label) + " × " + esc(c.count) + "</span>";
+  };
+  var rows = [];
+  ["url", "sensitive", "base64"].forEach(function (key) {
+    ((classified[key] || {}).hits || []).slice(0, 100).forEach(function (hit) {
+      rows.push("<tr>" +
+        '<td><span class="chip ' + (key === "url" ? "info" : "warn") + '">' + esc(key) + "</span></td>" +
+        '<td class="wrap mono">' + esc(hit.value || "") + "</td>" +
+        '<td class="mono">' + esc(hit.offset || "") + "</td>" +
+        '<td class="mono">' + esc(hit.section || "—") + "</td>" +
+        '<td class="wrap small">' + esc(hit.label || (hit.decoded ? "解码预览: " + hit.decoded : "")) + "</td></tr>");
+    });
+  });
+  return countBox(counts.unique_strings, "唯一字符串") + " " + countBox(counts.total_strings, "出现次数") +
+    '<div class="fact-row" style="margin-top:10px">' +
+    chipFor("URL", "url") + chipFor("敏感字符串", "sensitive") + chipFor("Base64", "base64") +
+    ((d.scan_truncated ? '<span class="chip warn">输入被截断</span>' : "")) + "</div>" +
+    '<div class="table-wrap" style="margin-top:10px"><table class="data"><thead><tr>' +
+    "<th>类别</th><th>值</th><th>偏移</th><th>节</th><th>备注</th>" +
+    '</tr></thead><tbody>' + (rows.join("") || '<tr><td colspan="5" style="color:var(--muted)">无分类命中</td></tr>') +
+    "</tbody></table></div>";
+}
+
+function renderRiskData(d) {
+  var sev = d.counts_by_severity || {};
+  var sevChips = Object.keys(sev).sort(function (a, b) { return sevRank(b) - sevRank(a); }).map(function (s) {
+    return '<span class="sev-badge ' + esc(s) + '">' + esc(SEV_LABEL[s] || s) + " × " + esc(sev[s]) + "</span>";
+  }).join(" ");
+  var level = d.risk_level || "";
+  var ind = d.string_indicators || {};
+  return '<div class="fact-row" style="margin-top:0">' +
+    '<span class="chip ' + (RISK_LEVEL[level] || "info") + '">' + esc(RISK_LABEL[level] || level) + "（" + esc(d.risk_score) + " 分）</span>" +
+    '<span class="chip info">去重后 ' + esc(d.unique_finding_count) + " / 原 " + esc(d.finding_count) + "</span>" +
+    "</div>" +
+    '<div class="fact-row" style="margin-top:8px">' + (sevChips || '<span class="chip ok">无分析器发现项</span>') + "</div>" +
+    '<div class="fact-row" style="margin-top:8px"><span class="small" style="color:var(--muted)">字符串指标：URL × ' + esc(ind.url_count) +
+    "（" + esc(ind.url_score) + "分）、敏感 × " + esc(ind.sensitive_count) + "（" + esc(ind.sensitive_score) +
+    "分）、Base64 × " + esc(ind.base64_count) + "（" + esc(ind.base64_score) + "分）</span></div>";
 }
 
 function renderGenericData(d) {

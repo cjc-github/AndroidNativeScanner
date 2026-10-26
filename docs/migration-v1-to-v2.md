@@ -13,10 +13,10 @@ V1 在 V2 达到真实能力验收前继续可用。
 | 文件属性/哈希 | `basic.file` | Analyzer | 已迁移 |
 | ELF Header | `basic.elf` | Analyzer | 已迁移 |
 | 导入导出/JNI 符号 | `basic.symbols` | Analyzer + 可选 Rule | 已迁移 |
-| 字符串提取 | `advanced.strings` | Analyzer | 待迁移 |
-| URL/Base64/敏感字符串 | `advanced.strings` 事实 + `security.*` Rule | Analyzer + Rule | 待迁移 |
+| 字符串提取 | `advanced.strings` | Analyzer | 已迁移 |
+| URL/Base64/敏感字符串 | `advanced.strings` 事实 + `security.*` Rule | Analyzer + Rule | 已迁移 |
 | 危险函数 | `security.dangerous-api` | Analyzer，依赖 `basic.symbols` | 已迁移 |
-| 基础风险汇总 | `security.risk` | 聚合 Analyzer/Rule | 待迁移 |
+| 基础风险汇总 | `security.risk` | 聚合 Analyzer/Rule | 已迁移 |
 | 目录批量扫描 | `automation.workflow` | Workflow/批处理编排 | 待迁移 |
 | 文本报告 | `automation.report` + Renderer | 报告编排与展示分离 | 待迁移 |
 | 调试信息/参数名 | `basic.dwarf` | Analyzer，依赖 `basic.elf` | 已迁移 |
@@ -77,8 +77,8 @@ basic.file
 basic.symbols        （✅ 已迁移）
 basic.dwarf          （✅ 已迁移）
 security.dangerous-api（✅ 已迁移）
-advanced.strings
-security.risk
+advanced.strings     （✅ 已迁移）
+security.risk        （✅ 已迁移）
 ```
 
 ### 第三批：加深基础分析
@@ -129,5 +129,8 @@ basic.disasm → basic.cfg/basic.callgraph/basic.dataflow
 | `basic.dwarf` | 已满足 | 依赖 `basic.elf`，渲染层与 `basic.symbols` 联合 |
 | `security.hardening` | 已满足 | 基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding；第一条跨域链路终点 |
 | `security.dangerous-api` | 已满足 | 依赖 `basic.symbols`，精确匹配 + FORTIFY 归一化；V1 子串匹配的结构化替代 |
+| `advanced.strings` | 已满足 | 纯 Python 提取（不依赖外部工具），URL/敏感/Base64 分类迁移自 V1 与 V1 `URL/Secret` 关键词口径一致，并新增分节归属与截断诊断 |
+| `security.sensitive-string` / `security.hardcoded-url` / `security.encoded-payload` | 已满足 | V1 URL/Secret/Base64 关键词逻辑按"事实 + Rule"拆分迁移；指纹去重；缺失字符串事实时静默跳过 |
+| `security.risk` | 已满足 | 聚合 hardening/dangerous-api 发现项与字符串指标，V1 权重口径，指纹去重计分分档 |
 
-尚未迁移的能力（`advanced.strings`、`security.risk`、URL/Secret/Base64/JNI 规则等）以上述 10 项作为验收清单，迁移完成时在表中补行。
+尚未迁移的能力（URL 之外的 V1 规则如 JNI 命名建议、目录批量扫描、文本报告编排等）以上述 10 项作为验收清单，迁移完成时在表中补行。

@@ -6,6 +6,14 @@ from .registry import RuleRegistry
 
 
 class RuleEngine:
+    """Evaluate rules whose required analyzer results are available.
+
+    A rule is a judgment over data that may legitimately be absent, so a
+    missing dependency is a silent skip rather than a scan diagnostic: basic
+    scans keep their output clean, and ``RULE_EXCEPTION`` still reports a
+    broken rule implementation.
+    """
+
     def __init__(self, registry: RuleRegistry | None = None) -> None:
         self.registry = registry or RuleRegistry()
 
@@ -19,16 +27,6 @@ class RuleEngine:
                 not in {AnalysisStatus.SUCCESS, AnalysisStatus.CACHED}
             ]
             if missing:
-                context.diagnostics.append(
-                    Diagnostic(
-                        code="RULE_DEPENDENCY_MISSING",
-                        level=DiagnosticLevel.WARNING,
-                        message=(
-                            f"Rule '{rule.metadata.id}' skipped; unavailable results: "
-                            + ", ".join(missing)
-                        ),
-                    )
-                )
                 continue
             try:
                 context.add_findings(rule.evaluate(context))

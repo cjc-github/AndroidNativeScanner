@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-10-24，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api` Analyzer 已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-10-26，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.risk` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
@@ -44,12 +44,14 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（basic.file/basic.elf/basic.symbols/basic.dwarf/security.hardening/security.dangerous-api 已实现；其余为能力外壳）
+# 领域命令（basic.file/basic.elf/basic.symbols/basic.dwarf/advanced.strings/security.hardening/security.dangerous-api/security.risk 已实现；其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 PYTHONPATH=src python3 -m soinsight basic symbols libfoo.so
 PYTHONPATH=src python3 -m soinsight basic dwarf libfoo.so --format json
+PYTHONPATH=src python3 -m soinsight advanced strings libfoo.so
 PYTHONPATH=src python3 -m soinsight security hardening README.md
 PYTHONPATH=src python3 -m soinsight security dangerous-api libfoo.so
+PYTHONPATH=src python3 -m soinsight security risk libfoo.so --format json
 
 # 创建并使用可复用 YAML 分析配置
 PYTHONPATH=src python3 -m soinsight config create quick-security
@@ -139,13 +141,15 @@ V2 已具备：
 - Text/JSON/Markdown/HTML/SARIF Renderer、ToolRunner、ArtifactStore 基础边界；
 - Python 包安装和 Wheel 构建脚本。
 
-V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`：
+V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.risk`：
 
 - `basic.symbols` 枚举导出函数并恢复签名：`.dynsym`/`.symtab` 符号事实、Itanium C++ mangled name 解出的参数类型、JNI native 方法名解出的 Java 包名/类名/方法名与参数类型。demangler 已在 5 个真实 C++ 共享库（2943 个导出函数）上与参考实现全量比对：1895 个 C++ 符号全部解出，0 个无法解码、0 个类型差异；
 - `basic.dwarf` 解析 DWARF 调试信息，补回参数名、参数类型、返回类型和声明位置，并在渲染层与 `basic.symbols` 按 mangled name 联合；
-- `security.dangerous-api` 按符号名精确匹配导入/导出的危险 API（FORTIFY 变体与前导下划线先归一化）。
+- `advanced.strings` 对任意文件做纯 Python 可见串提取与去重，分类 JSON/URL/硬编码密钥/Token/JWT 与可解码 Base64，并归属 ELF 分节；截断在数据与诊断中显式声明；
+- `security.risk` 聚合 hardening/dangerous-api 发现项与字符串指标，按指纹去重计分并分档（权重可通过能力选项覆盖）；
+- 三条内置规则 `security.sensitive-string` / `security.hardcoded-url` / `security.encoded-payload` 随规则引擎自动把字符串事实转为可复核的发现项。
 
-V2 尚未具备其他具体业务 Analyzer、真实缓存、外部插件发现、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
+V2 尚未具备其他具体业务 Analyzer（如 `security.vulnerability`、类型/反汇编/动态分析）、真实缓存治理、外部插件协议、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)。
 
 ## 开发原则
 

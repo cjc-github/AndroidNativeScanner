@@ -65,6 +65,51 @@ def _render_symbols(result) -> list[str]:
     return lines
 
 
+_TEXT_STRING_LIMIT = 5
+
+
+def _render_strings(result) -> list[str]:
+    """Render the ``advanced.strings`` facts, or nothing when not collected."""
+    strings_result = result.results.get("advanced.strings")
+    if strings_result is None or not strings_result.data:
+        return []
+    data = strings_result.data
+    counts = data.get("counts", {})
+    lines = [
+        "",
+        "Strings:",
+        f"  Printable strings    {counts.get('unique_strings', 0)} unique / "
+        f"{counts.get('total_strings', 0)} occurrences",
+    ]
+    classified = data.get("classified", {})
+    categories = [
+        ("URLs", "url"),
+        ("Sensitive", "sensitive"),
+        ("Base64 blobs", "base64"),
+    ]
+    summary = ", ".join(
+        f"{label} {_category_count(classified, category)}"
+        for label, category in categories
+    )
+    lines.append(f"  Classified           {summary}")
+    for label, category in categories:
+        shown = classified.get(category, {}).get("hits", [])[:_TEXT_STRING_LIMIT]
+        for hit in shown:
+            lines.append(f"    {label}: {_elide(str(hit.get('value', '')))}")
+        remainder = _category_count(classified, category) - len(shown)
+        if remainder > 0:
+            lines.append(f"    {label}: ... and {remainder} more")
+    return lines
+
+
+def _category_count(classified: dict, category: str) -> int:
+    return int(classified.get(category, {}).get("count", 0) or 0)
+
+
+def _elide(text: str, limit: int = 80) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 class TextRenderer(Renderer):
     format = "text"
 
@@ -102,6 +147,7 @@ class TextRenderer(Renderer):
                     ]
                 )
             lines.extend(_render_symbols(result))
+            lines.extend(_render_strings(result))
             lines.extend(["", "Findings:"])
             if result.findings:
                 lines[-1] = f"Findings: {len(result.findings)}"

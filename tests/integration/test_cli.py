@@ -173,7 +173,7 @@ def test_cli_lists_product_modules_with_status_column():
     assert stdout.getvalue().splitlines() == [
         "MODULE      NAME      CAPABILITIES  STATUS",
         "basic       基础分析            10  partial",
-        "advanced    高级分析             8  catalog-only",
+        "advanced    高级分析             8  partial",
         "security    安全分析             4  partial",
         "dynamic     动态分析             5  catalog-only",
         "ai          AI 分析              8  catalog-only",
@@ -262,13 +262,15 @@ def test_cli_lists_plugins_as_table():
 
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
-        "ID                     VERSION KIND      DEFAULT NAME",
-        "basic.dwarf            1.0.0   collector yes     DWARF Analyzer",
-        "basic.elf              1.0.0   collector yes     ELF Header Analyzer",
-        "basic.file             1.0.0   collector yes     File Analyzer",
-        "basic.symbols          1.0.0   collector yes     Symbol Analyzer",
-        "security.dangerous-api 1.0.0   detector  yes     Dangerous API Detection",
-        "security.hardening     1.0.0   collector yes     Hardening Analyzer",
+        "ID                     VERSION KIND        DEFAULT NAME",
+        "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
+        "basic.dwarf            1.0.0   collector   yes     DWARF Analyzer",
+        "basic.elf              1.0.0   collector   yes     ELF Header Analyzer",
+        "basic.file             1.0.0   collector   yes     File Analyzer",
+        "basic.symbols          1.0.0   collector   yes     Symbol Analyzer",
+        "security.dangerous-api 1.0.0   detector    yes     Dangerous API Detection",
+        "security.hardening     1.0.0   collector   yes     Hardening Analyzer",
+        "security.risk          1.0.0   transformer yes     Risk Analyzer",
     ]
 
 
@@ -347,7 +349,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   6\n" in output
+    assert "  Registered analyzers   8\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -498,6 +500,73 @@ def test_cli_dangerous_api_skips_when_symbols_unavailable(tmp_path):
     assert exit_code == 5
     assert payload["result"]["results"]["basic.elf"]["status"] == "failed"
     assert payload["result"]["results"]["security.dangerous-api"]["status"] == "skipped"
+
+
+def test_cli_advanced_strings_classifies_and_mints_rules(tmp_path):
+    """URL/secret/base64 hits must classify facts and raise security rules."""
+    stdout = StringIO()
+    target = tmp_path / "plain.txt"
+    target.write_bytes(
+        "https://api.example.com/v1/login\x00"
+        "AIzaSyA1234567890abcdefghijklmnopqrstuvw\x00".encode()
+    )
+
+    exit_code = main(
+        ["advanced", "strings", str(target), "--format", "json"], stdout=stdout
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["result"]["requested_analyzers"] == ["advanced.strings"]
+    analysis = payload["result"]["results"]["advanced.strings"]
+    assert analysis["status"] == "success"
+    assert analysis["data"]["classified"]["url"]["count"] == 1
+    assert analysis["data"]["classified"]["sensitive"]["count"] == 1
+    rule_ids = [finding["rule_id"] for finding in payload["result"]["findings"]]
+    assert "security.hardcoded-url" in rule_ids
+    assert "security.sensitive-string.google-api-key" in rule_ids
+
+
+def test_cli_strings_renders_classified_text(tmp_path):
+    stdout = StringIO()
+    target = tmp_path / "plain.txt"
+    target.write_bytes(b"a plain https://kernel.org sample\x00")
+
+    exit_code = main(["advanced", "strings", str(target)], stdout=stdout)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "advanced.strings" in output
+    assert "URL" in output
+
+
+def test_cli_risk_aggregates_reachable_chain(tmp_path, elf64_with_symbols):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(elf64_with_symbols)
+    stdout = StringIO()
+
+    exit_code = main(
+        ["security", "risk", str(target), "--format", "json"], stdout=stdout
+    )
+
+    payload = json.loads(stdout.getvalue())
+    result = payload["result"]
+    assert exit_code == 0
+    assert result["requested_analyzers"] == ["security.risk"]
+    assert result["resolved_analyzers"] == [
+        "advanced.strings",
+        "basic.file",
+        "basic.elf",
+        "basic.symbols",
+        "security.hardening",
+        "security.dangerous-api",
+        "security.risk",
+    ]
+    risk = result["results"]["security.risk"]
+    assert risk["status"] == "success"
+    # The fixture binary carries no hardening/API findings: the score stays 0.
+    assert risk["data"]["risk_score"] == 0
+    assert risk["data"]["risk_level"] == "low"
 
 
 def test_cli_writes_progress_to_stderr_not_stdout(tmp_path, elf64_with_symbols, capsys):

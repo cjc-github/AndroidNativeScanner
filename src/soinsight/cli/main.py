@@ -21,6 +21,7 @@ from ..infrastructure.config import AnalysisConfig, ConfigLoader, YamlConfigStor
 from ..infrastructure.plugins import PluginLoader
 from ..modules import ModuleCatalog, create_builtin_module_catalog
 from ..renderers import RendererRegistry, create_default_renderer_registry
+from ..rules import create_default_rule_engine
 from ..version import __version__
 
 # Development-version aliases. The domain command tree is canonical.
@@ -589,7 +590,9 @@ def _handle_analysis(
             "INVALID_CONFIGURATION", str(exc), output_format, output, renderers, stdout
         )
 
-    service = AnalysisService(AnalysisRuntime(registry))
+    service = AnalysisService(
+        AnalysisRuntime(registry, rule_engine=create_default_rule_engine())
+    )
     effective_profile = getattr(args, "profile", None)
     if not effective_profile and analysis_config:
         effective_profile = analysis_config.analysis.profile

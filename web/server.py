@@ -19,7 +19,7 @@ API::
     GET  /api/samples       in/ 目录下的验证样本列表（只读）
     POST /api/analyze      执行一次分析，查询参数：
                              mode=single&capability=basic.elf   单能力
-                             mode=scan&modules=basic,security   组合扫描
+                             mode=scan&modules=basic,advanced,security   组合扫描
                              目标二选一：查询参数 path=<绝对路径>，
                              或请求体直接传文件字节并带 X-Filename 头。
                            返回 {ok, exit_code, command, duration_ms, payload}
@@ -293,7 +293,9 @@ class Handler(BaseHTTPRequestHandler):
         params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
         mode = params.get("mode", "single")
         capability = params.get("capability", "").strip()
-        modules = params.get("modules", "").strip() or "basic,security"
+        modules = params.get(
+            "modules", ""
+        ).strip() or "basic,advanced,security"
         path_param = params.get("path", "").strip()
 
         length = int(self.headers.get("Content-Length") or 0)

@@ -12,7 +12,6 @@ from ..core.models import (
     Severity,
 )
 
-
 class SecurityHardeningAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
         id="security.hardening",
@@ -284,6 +283,168 @@ def _resolve_options(context) -> dict:
         if candidate in _SEVERITY_ORDER:
             resolved["min_severity"] = candidate
     return resolved
+
+
+_DEFAULT_FINDING_WEIGHTS = {
+    "critical": 12,
+    "high": 8,
+    "medium": 5,
+    "low": 2,
+    "info": 1,
+}
+
+
+class SecurityRiskAnalyzer(Analyzer):
+    """Summarize findings and string indicators into one risk picture.
+
+    The analyzer runs inside the DAG, so it can consume analyzer findings
+    (hardening, dangerous API) and the ``advanced.strings`` classified facts
+    directly. Findings produced by built-in rules are emitted after the DAG
+    completes and therefore surface at scan level, never duplicated here;
+    the string-based indicators cover the same sources with counts.
+
+    The score is a heuristic ordering aid, not a probability. Weights default
+    to a severity ladder (12/8/5/2/1) plus the V1 string weighting
+    (url=2, key/token=4, JWT=3, generic credential=2, base64=3) so a V1-style
+    comparison stays meaningful; every severity weight is overridable through
+    capability options.
+    """
+
+    metadata = AnalyzerMetadata(
+        id="security.risk",
+        name="Risk Analyzer",
+        version="1.0.0",
+        description="Dedup, aggregate and score findings by severity and confidence.",
+        kind=AnalyzerKind.TRANSFORMER,
+        requires=("security.hardening", "security.dangerous-api", "advanced.strings"),
+    )
+
+    def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
+        del target
+        weights, thresholds = _resolve_risk_options(context)
+        findings: list[Finding] = []
+        for analyzer_id in self.metadata.requires:
+            upstream = context.require(analyzer_id)
+            findings.extend(upstream.findings)
+
+        unique, duplicate_count = _dedupe(findings)
+        unique.sort(
+            key=lambda finding: (-_SEVERITY_ORDER[finding.severity], finding.rule_id)
+        )
+
+        severity_counts = _count(finding.severity.value for finding in unique)
+        confidence_counts = _count(finding.confidence.value for finding in unique)
+        category_counts = _count(finding.category for finding in unique)
+
+        score = sum(weights[finding.severity.value] for finding in unique)
+        indicators = _string_indicators(context)
+        score += indicators.pop("score")
+
+        return AnalysisResult(
+            analyzer_id=self.metadata.id,
+            analyzer_version=self.metadata.version,
+            status=AnalysisStatus.SUCCESS,
+            data={
+                "finding_count": len(findings),
+                "unique_finding_count": len(unique),
+                "duplicate_count": duplicate_count,
+                "counts_by_severity": severity_counts,
+                "counts_by_confidence": confidence_counts,
+                "counts_by_category": category_counts,
+                "string_indicators": indicators,
+                "risk_score": score,
+                "risk_level": _level_for(score, thresholds),
+                "top_findings": [
+                    {
+                        "rule_id": finding.rule_id,
+                        "title": finding.title,
+                        "severity": finding.severity.value,
+                        "confidence": finding.confidence.value,
+                    }
+                    for finding in unique[:5]
+                ],
+            },
+        )
+
+
+def _dedupe(findings: list[Finding]) -> tuple[list[Finding], int]:
+    unique: dict[tuple[str, ...], Finding] = {}
+    for finding in findings:
+        key = (
+            finding.fingerprint
+            or f"{finding.rule_id}:{finding.message}"
+        )
+        unique.setdefault(key, finding)
+    duplicates = len(findings) - len(unique)
+    return list(unique.values()), duplicates
+
+
+def _string_indicators(context) -> dict[str, int]:
+    """V1-style weights over classified strings; no double count with rules."""
+    labels = {
+        "Key": 4, "Token": 4, "JWT": 3,
+    }
+    strings = context.require("advanced.strings")
+    classified = strings.data.get("classified", {})
+    sensitive = classified.get("sensitive", {})
+    sensitive_score = 0
+    for hit in sensitive.get("hits", []):
+        label = hit.get("label", "")
+        sensitive_score += 4 if ("Key" in label or "Token" in label) else (
+            3 if "JWT" in label else 2
+        )
+    # Counts must use the totals so a max_hits-per-category cap cannot
+    # silently shrink the reported indicator counts.
+    sensitive_count = int(sensitive.get("count", 0) or 0) or len(sensitive.get("hits", []))
+    url_count = int(classified.get("url", {}).get("count", 0) or 0)
+    base64_count = int(classified.get("base64", {}).get("count", 0) or 0)
+    return {
+        "url_count": url_count,
+        "url_score": url_count * 2,
+        "sensitive_count": sensitive_count,
+        "sensitive_score": sensitive_score,
+        "base64_count": base64_count,
+        "base64_score": base64_count * 3,
+        "score": url_count * 2 + sensitive_score + base64_count * 3,
+    }
+
+
+def _count(values) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _level_for(score: int, thresholds: tuple[int, str]) -> str:
+    for boundary, level in thresholds:
+        if score < boundary:
+            return level
+    return "critical"
+
+
+def _resolve_risk_options(context) -> tuple[dict[str, int], tuple[tuple[int, str], ...]]:
+    extra = getattr(getattr(context, "config", None), "extra", None) or {}
+    declared = extra.get("capability_options", {}).get("security.risk", {})
+    weights = dict(_DEFAULT_FINDING_WEIGHTS)
+    if isinstance(declared.get("severity_weights"), dict):
+        for severity, value in declared["severity_weights"].items():
+            if severity not in weights:
+                continue
+            try:
+                candidate = int(value)
+            except (TypeError, ValueError):
+                continue
+            weights[severity] = max(0, candidate)
+    return weights, _default_thresholds_for(weights)
+
+
+def _default_thresholds_for(weights: dict[str, int]) -> tuple[tuple[int, str], ...]:
+    """Boundaries scale with the weight of one high finding, so overridden
+    weights and levels stay proportionate: below one high finding is ``low``,
+    up to three is ``medium``, up to six is ``high``, beyond is ``critical``."""
+    unit = max(1, weights["high"])
+    return ((unit, "low"), (unit * 3, "medium"), (unit * 6, "high"))
 
 
 def _stripped_diagnostic(analyzer_id: str, symbols) -> list[Diagnostic]:
