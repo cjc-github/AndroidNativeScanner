@@ -1,4 +1,4 @@
-﻿"""SOInsight V2 domain-oriented command-line framework."""
+"""SOInsight V2 domain-oriented command-line framework."""
 
 import argparse
 import json
@@ -158,6 +158,7 @@ def _render_main_help() -> str:
         "  doctor      Inspect local environment\n"
         "  report      Validate or display JSON result\n"
         "  cache       Inspect cache location\n"
+        "  web         Launch the web interface\n"
         "\n"
         "Use:\n"
         "  soinsight <command> --help\n"
@@ -228,6 +229,11 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
     cache.add_argument("action", choices=("info",), nargs="?", default="info")
     cache.add_argument("--cache-dir", default=".soinsight/cache")
     cache.set_defaults(handler="cache")
+
+    web = subparsers.add_parser("web", help="Launch the web interface")
+    web.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    web.add_argument("--port", type=int, default=8080, help="Port to bind (default: 8080)")
+    web.set_defaults(handler="web")
 
     config = subparsers.add_parser(
         "config", help="Create, select, validate and edit YAML configurations"
@@ -965,6 +971,21 @@ def _handle_config(
         return 2
 
 
+def _handle_web(args: argparse.Namespace, stdout: TextIO) -> int:
+    """Launch the web interface."""
+    from ..web import run_server
+    
+    stdout.write(f"Starting SOInsight web interface on {args.host}:{args.port}\n")
+    stdout.write("Press Ctrl+C to stop\n")
+    
+    try:
+        run_server(args.host, args.port)
+    except KeyboardInterrupt:
+        stdout.write("\nWeb server stopped\n")
+    
+    return 0
+
+
 def _handle_reserved(args: argparse.Namespace, stdout: TextIO) -> int:
     capability_id = getattr(args, "capability_id", args.command)
     stdout.write(
@@ -1029,6 +1050,8 @@ def main(
     if args.handler == "cache":
         output_stream.write(f"Cache directory: {Path(args.cache_dir).resolve()}\n")
         return 0
+    if args.handler == "web":
+        return _handle_web(args, output_stream)
     if args.handler == "config":
         return _handle_config(args, yaml_config_store, output_stream)
     if args.handler == "reserved":

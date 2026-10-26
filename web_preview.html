@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOInsight Web - 共享对象静态分析工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+        
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .upload-hint {
+            font-size: 0.9em;
+            color: #999;
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .file-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+        
+        .file-info.show {
+            display: block;
+        }
+        
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .file-size {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .analyzer-selection {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .selection-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .analyzer-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .analyzer-option {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .analyzer-option:hover {
+            background: #e9ecef;
+        }
+
+        .analyzer-option input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+
+        .analyzer-label {
+            font-size: 0.9em;
+            color: #495057;
+        }
+
+        .selection-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .select-all-btn {
+            padding: 6px 12px;
+            font-size: 0.85em;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .select-all-btn:hover {
+            background: #5a6268;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-section {
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        .progress-section.show {
+            display: block;
+        }
+        
+        .progress-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .progress-log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .log-entry.start {
+            color: #4ec9b0;
+        }
+        
+        .log-entry.finish {
+            color: #9cdcfe;
+        }
+        
+        .log-entry.success {
+            background: rgba(78, 201, 176, 0.1);
+        }
+        
+        .log-entry.failed {
+            background: rgba(244, 71, 71, 0.1);
+            color: #f44747;
+        }
+        
+        .result-section {
+            display: none;
+        }
+        
+        .result-section.show {
+            display: block;
+        }
+        
+        .result-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .result-content {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .result-content iframe {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+        
+        .error-message {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* 预览演示样式 */
+        .demo-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .demo-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+        
+        .demo-description {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .demo-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        
+        .demo-btn {
+            background: #f8f9fa;
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95em;
+        }
+        
+        .demo-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .demo-result {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .demo-result.show {
+            display: block;
+        }
+        
+        .demo-result h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .demo-result pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SOInsight Web</h1>
+            <p>共享对象静态分析工具</p>
+        </div>
+        
+        <div class="content">
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">点击或拖拽上传 .so 文件</div>
+                    <div class="upload-hint">支持 ELF 共享对象文件</div>
+                    <input type="file" id="fileInput" accept=".so,.elf">
+                </div>
+                
+                <div class="file-info" id="fileInfo">
+                    <div class="file-name" id="fileName"></div>
+                    <div class="file-size" id="fileSize"></div>
+                    <div class="analyzer-selection">
+                        <div class="selection-title">选择分析器：</div>
+                        <div class="analyzer-options">
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="basic.file" checked>
+                                <span class="analyzer-label">📁 基础信息</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="basic.elf" checked>
+                                <span class="analyzer-label">🔧 ELF结构</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="basic.symbols" checked>
+                                <span class="analyzer-label">🔍 符号分析</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="basic.dwarf" checked>
+                                <span class="analyzer-label">🐛 DWARF调试</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="advanced.strings" checked>
+                                <span class="analyzer-label">📝 字符串分析</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="security.hardening" checked>
+                                <span class="analyzer-label">🛡️ 安全加固</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="security.dangerous-api" checked>
+                                <span class="analyzer-label">⚠️ 危险API</span>
+                            </label>
+                            <label class="analyzer-option">
+                                <input type="checkbox" name="analyzer" value="security.risk" checked>
+                                <span class="analyzer-label">📊 风险评估</span>
+                            </label>
+                        </div>
+                        <div class="selection-actions">
+                            <button type="button" class="select-all-btn" onclick="selectAllAnalyzers()">全选</button>
+                            <button type="button" class="select-all-btn" onclick="deselectAllAnalyzers()">全不选</button>
+                        </div>
+                    </div>
+                    <button class="btn" id="analyzeBtn">开始分析</button>
+                </div>
+            </div>
+            
+            <div class="progress-section" id="progressSection">
+                <div class="progress-title">分析进度</div>
+                <div class="progress-log" id="progressLog"></div>
+            </div>
+            
+            <div class="result-section" id="resultSection">
+                <div class="result-title">分析结果</div>
+                <div class="result-content" id="resultContent"></div>
+            </div>
+            
+            <div class="error-message" id="errorMessage"></div>
+            
+            <!-- 预览演示部分 -->
+            <div class="demo-section">
+                <div class="demo-title">📊 分析结果预览演示</div>
+                <div class="demo-description">
+                    点击下方按钮查看不同类型的分析结果示例<br>
+                    这些是真实分析器会产生的输出格式
+                </div>
+                
+                <div class="demo-buttons">
+                    <button class="demo-btn" onclick="showDemo('basic')">基础信息</button>
+                    <button class="demo-btn" onclick="showDemo('symbols')">符号分析</button>
+                    <button class="demo-btn" onclick="showDemo('dwarf')">DWARF调试</button>
+                    <button class="demo-btn" onclick="showDemo('strings')">字符串分析</button>
+                    <button class="demo-btn" onclick="showDemo('hardening')">安全加固</button>
+                    <button class="demo-btn" onclick="showDemo('dangerous')">危险API</button>
+                    <button class="demo-btn" onclick="showDemo('risk')">风险评估</button>
+                </div>
+                
+                <div class="demo-result" id="demoResult">
+                    <h3 id="demoTitle"></h3>
+                    <pre id="demoContent"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressLog = document.getElementById('progressLog');
+        const resultSection = document.getElementById('resultSection');
+        const resultContent = document.getElementById('resultContent');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        let selectedFile = null;
+        
+        // 点击上传区域触发文件选择
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        // 拖拽上传
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+        
+        // 文件选择
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+        
+        function handleFileSelect(file) {
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.classList.add('show');
+            errorMessage.classList.remove('show');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+        
+        // 开始分析（演示模式）
+        analyzeBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            
+            // 获取选中的分析器
+            const selectedAnalyzers = Array.from(document.querySelectorAll('input[name="analyzer"]:checked'))
+                .map(cb => cb.value);
+            
+            if (selectedAnalyzers.length === 0) {
+                showError('请至少选择一个分析器');
+                return;
+            }
+            
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<span class="loading"></span> 分析中...';
+            progressSection.classList.add('show');
+            progressLog.innerHTML = '';
+            resultSection.classList.remove('show');
+            errorMessage.classList.remove('show');
+            
+            // 模拟分析进度
+            await simulateAnalysis(selectedAnalyzers);
+            
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = '开始分析';
+        });
+        
+        // 全选/取消全选分析器
+        function selectAllAnalyzers() {
+            document.querySelectorAll('input[name="analyzer"]').forEach(cb => cb.checked = true);
+        }
+        
+        function deselectAllAnalyzers() {
+            document.querySelectorAll('input[name="analyzer"]').forEach(cb => cb.checked = false);
+        }
+        
+        async function simulateAnalysis(selectedAnalyzers) {
+            // 分析器配置
+            const analyzerConfig = {
+                'basic.file': { duration: 50 },
+                'basic.elf': { duration: 100 },
+                'basic.symbols': { duration: 200 },
+                'basic.dwarf': { duration: 150 },
+                'advanced.strings': { duration: 120 },
+                'security.hardening': { duration: 80 },
+                'security.dangerous-api': { duration: 90 },
+                'security.risk': { duration: 110 }
+            };
+            
+            // 只运行选中的分析器
+            for (const analyzerId of selectedAnalyzers) {
+                const config = analyzerConfig[analyzerId];
+                if (!config) continue;
+                
+                // 开始
+                addLogEntry({
+                    type: 'analyzer_start',
+                    analyzer_id: analyzerId
+                });
+                
+                await sleep(config.duration);
+                
+                // 完成
+                addLogEntry({
+                    type: 'analyzer_finish',
+                    analyzer_id: analyzerId,
+                    status: 'success',
+                    duration_ms: config.duration
+                });
+            }
+            
+            // 显示模拟结果
+            await sleep(500);
+            showMockResult();
+        }
+        
+        function addLogEntry(event) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            if (event.type === 'analyzer_start') {
+                entry.classList.add('start');
+                entry.textContent = `▶ 开始: ${event.analyzer_id}`;
+            } else if (event.type === 'analyzer_finish') {
+                entry.classList.add('finish');
+                if (event.status === 'success') {
+                    entry.classList.add('success');
+                    entry.textContent = `✓ 完成: ${event.analyzer_id} (${event.duration_ms}ms)`;
+                } else {
+                    entry.classList.add('failed');
+                    entry.textContent = `✗ 失败: ${event.analyzer_id} - ${event.status}`;
+                }
+            }
+            
+            progressLog.appendChild(entry);
+            progressLog.scrollTop = progressLog.scrollHeight;
+        }
+        
+        function showMockResult() {
+            resultSection.classList.add('show');
+            resultContent.innerHTML = `
+                <div style="padding: 20px; background: #f8f9fa;">
+                    <h3 style="margin-bottom: 15px; color: #333;">分析结果摘要</h3>
+                    <p style="color: #666; line-height: 1.6;">
+                        这是一个预览演示。实际使用时，上传真实的 .so 文件将显示完整的分析结果，包括：
+                    </p>
+                    <ul style="margin: 15px 0; padding-left: 25px; color: #555;">
+                        <li>ELF 文件基本信息（架构、入口点、段信息等）</li>
+                        <li>导出符号列表（函数签名、类型、绑定等）</li>
+                        <li>DWARF 调试信息（参数名、类型、源码位置）</li>
+                        <li>危险 API 检测结果（严重度、证据、修复建议）</li>
+                    </ul>
+                    <p style="color: #999; font-size: 0.9em; margin-top: 15px;">
+                        点击下方按钮查看各分析器的输出示例
+                    </p>
+                </div>
+            `;
+        }
+        
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+        }
+        
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        
+        // 演示数据
+        const demoData = {
+            basic: {
+                title: '📋 基础信息分析结果',
+                content: `{
+  "analyzer_id": "basic.file",
+  "status": "success",
+  "data": {
+    "file_type": "ELF",
+    "file_size": 245760,
+    "sha256": "a1b2c3d4e5f6...",
+    "magic": "7f454c4602010100"
+  }
+}
+
+{
+  "analyzer_id": "basic.elf",
+  "status": "success",
+  "data": {
+    "class": "ELF64",
+    "data": "Little Endian",
+    "type": "DYN (Shared object file)",
+    "machine": "Advanced Micro Devices X86-64",
+    "entry_point": "0x1040",
+    "sections": [".text", ".data", ".rodata", ".dynsym", ".dynstr"],
+    "segments": ["LOAD", "DYNAMIC", "GNU_RELRO"]
+  }
+}`
+            },
+            symbols: {
+                title: '🔍 符号分析结果',
+                content: `{
+  "analyzer_id": "basic.symbols",
+  "status": "success",
+  "data": {
+    "symbol_tables": [".dynsym"],
+    "stripped": true,
+    "counts": {
+      "exported_functions": 93,
+      "exported_data": 12,
+      "imports": 230,
+      "local": 45
+    },
+    "demangled_count": 67,
+    "jni_count": 3,
+    "functions": [
+      {
+        "name": "curl_easy_init",
+        "signature": "CURL *curl_easy_init()",
+        "language": "C",
+        "kind": "function",
+        "bind": "GLOBAL",
+        "visibility": "DEFAULT"
+      },
+      {
+        "name": "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC1Ev",
+        "signature": "std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>::basic_string()",
+        "language": "C++",
+        "kind": "constructor",
+        "namespace": "std::__cxx11",
+        "class": "basic_string"
+      }
+    ]
+  }
+}`
+            },
+            dwarf: {
+                title: '🐛 DWARF 调试信息',
+                content: `{
+  "analyzer_id": "basic.dwarf",
+  "status": "success",
+  "data": {
+    "has_debug_info": true,
+    "version": 4,
+    "units": ["libcurl.so"],
+    "functions": [
+      {
+        "name": "Curl_connect",
+        "linkage_name": "Curl_connect",
+        "signature": "CURLcode Curl_connect(struct connectdata *conn, bool *async, bool *protocol_connect)",
+        "return_type": "CURLcode",
+        "parameters": [
+          {"name": "conn", "type": "struct connectdata *"},
+          {"name": "async", "type": "bool *"},
+          {"name": "protocol_connect", "type": "bool *"}
+        ],
+        "decl_file": "lib/connect.c",
+        "decl_line": 1234,
+        "low_pc": "0x1a2b3c"
+      },
+      {
+        "name": "Curl_ssl_connect",
+        "linkage_name": "Curl_ssl_connect",
+        "signature": "CURLcode Curl_ssl_connect(struct connectdata *conn, int sockindex)",
+        "return_type": "CURLcode",
+        "parameters": [
+          {"name": "conn", "type": "struct connectdata *"},
+          {"name": "sockindex", "type": "int"}
+        ],
+        "decl_file": "lib/vtls/vtls.c",
+        "decl_line": 567,
+        "low_pc": "0x1d4e5f"
+      }
+    ]
+  }
+}`
+            },
+            strings: {
+                title: '📝 字符串分析结果',
+                content: `{
+  "analyzer_id": "advanced.strings",
+  "status": "success",
+  "data": {
+    "total_strings": 1547,
+    "unique_strings": 892,
+    "min_length": 3,
+    "max_length": 256,
+    "avg_length": 24.5,
+    "categories": {
+      "urls": 23,
+      "emails": 5,
+      "ips": 12,
+      "paths": 156,
+      "error_messages": 89,
+      "debug_strings": 34
+    },
+    "strings": [
+      {
+        "value": "https://api.example.com/v1/users",
+        "offset": "0x2a4b8",
+        "length": 38,
+        "category": "url",
+        "section": ".rodata"
+      },
+      {
+        "value": "admin@example.com",
+        "offset": "0x2a5c0",
+        "length": 19,
+        "category": "email",
+        "section": ".rodata"
+      },
+      {
+        "value": "192.168.1.100",
+        "offset": "0x2a6d4",
+        "length": 13,
+        "category": "ip",
+        "section": ".rodata"
+      },
+      {
+        "value": "/etc/passwd",
+        "offset": "0x2a7e8",
+        "length": 11,
+        "category": "path",
+        "section": ".rodata"
+      },
+      {
+        "value": "Connection refused",
+        "offset": "0x2a8fc",
+        "length": 18,
+        "category": "error_message",
+        "section": ".rodata"
+      }
+    ]
+  }
+}`
+            },
+            hardening: {
+                title: '🛡️ 安全加固检测结果',
+                content: `{
+  "analyzer_id": "security.hardening",
+  "status": "success",
+  "data": {
+    "checks": {
+      "nx": {
+        "status": "enabled",
+        "description": "NX (No-eXecute) bit is enabled",
+        "details": "Stack and heap are non-executable"
+      },
+      "pie": {
+        "status": "enabled",
+        "description": "PIE (Position Independent Executable) is enabled",
+        "details": "Binary is position independent"
+      },
+      "relro": {
+        "status": "full",
+        "description": "Full RELRO is enabled",
+        "details": "GOT is read-only after relocation"
+      },
+      "canary": {
+        "status": "enabled",
+        "description": "Stack canary is present",
+        "details": "__stack_chk_fail is present"
+      },
+      "cfi": {
+        "status": "not_detected",
+        "description": "CFI (Control Flow Integrity) not detected",
+        "details": "No CFI signatures found"
+      },
+      "safe_stack": {
+        "status": "not_detected",
+        "description": "SafeStack not detected",
+        "details": "No SafeStack instrumentation found"
+      }
+    },
+    "score": 85,
+    "summary": "4/6 security mechanisms enabled"
+  },
+  "findings": [
+    {
+      "rule_id": "security.hardening.nx",
+      "title": "NX bit enabled",
+      "severity": "info",
+      "confidence": "high",
+      "message": "Stack and heap are non-executable, preventing code injection attacks"
+    },
+    {
+      "rule_id": "security.hardening.pie",
+      "title": "PIE enabled",
+      "severity": "info",
+      "confidence": "high",
+      "message": "Binary is position independent, enabling ASLR"
+    },
+    {
+      "rule_id": "security.hardening.relro",
+      "title": "Full RELRO enabled",
+      "severity": "info",
+      "confidence": "high",
+      "message": "GOT is read-only after relocation, preventing GOT overwrite attacks"
+    },
+    {
+      "rule_id": "security.hardening.canary",
+      "title": "Stack canary present",
+      "severity": "info",
+      "confidence": "high",
+      "message": "Stack buffer overflow detection is enabled"
+    },
+    {
+      "rule_id": "security.hardening.cfi",
+      "title": "CFI not detected",
+      "severity": "medium",
+      "confidence": "medium",
+      "message": "Control Flow Integrity is not enabled, consider enabling for additional protection"
+    },
+    {
+      "rule_id": "security.hardening.safe_stack",
+      "title": "SafeStack not detected",
+      "severity": "low",
+      "confidence": "medium",
+      "message": "SafeStack is not enabled, consider enabling for additional stack protection"
+    }
+  ]
+}`
+            },
+            dangerous: {
+                title: '⚠️ 危险 API 检测结果',
+                content: `{
+  "analyzer_id": "security.dangerous-api",
+  "status": "success",
+  "data": {
+    "matched_apis": ["system", "popen", "strcpy", "sprintf", "gets", "dlopen"],
+    "finding_count": 6,
+    "counts_by_severity": {
+      "critical": 2,
+      "high": 3,
+      "medium": 1
+    }
+  },
+  "findings": [
+    {
+      "rule_id": "security.dangerous-api.system",
+      "rule_version": "1.0.0",
+      "title": "Dangerous API imported: system",
+      "category": "dangerous-api",
+      "severity": "critical",
+      "confidence": "high",
+      "message": "The library imports 'system' (命令执行); the capability is reachable through this symbol.",
+      "fingerprint": "system:import:system",
+      "evidence": [
+        {
+          "symbol": "system",
+          "canonical_symbol": "system",
+          "usage": "import",
+          "source": ".dynsym",
+          "api_category": "命令执行"
+        }
+      ],
+      "remediation": "避免把不可信输入传给 system()；改用 execve 并显式传参数组。"
+    },
+    {
+      "rule_id": "security.dangerous-api.popen",
+      "rule_version": "1.0.0",
+      "title": "Dangerous API imported: popen",
+      "category": "dangerous-api",
+      "severity": "critical",
+      "confidence": "high",
+      "message": "The library imports 'popen' (命令执行); the capability is reachable through this symbol.",
+      "fingerprint": "popen:import:popen",
+      "evidence": [
+        {
+          "symbol": "popen",
+          "canonical_symbol": "popen",
+          "usage": "import",
+          "source": ".dynsym",
+          "api_category": "命令执行"
+        }
+      ],
+      "remediation": "popen 会经过 shell 解释；改用 posix_spawn 或 pipe+fork+exec。"
+    },
+    {
+      "rule_id": "security.dangerous-api.strcpy",
+      "rule_version": "1.0.0",
+      "title": "Dangerous API imported: strcpy",
+      "category": "dangerous-api",
+      "severity": "high",
+      "confidence": "high",
+      "message": "The library imports 'strcpy' (内存破坏); the capability is reachable through this symbol.",
+      "fingerprint": "strcpy:import:strcpy",
+      "evidence": [
+        {
+          "symbol": "strcpy",
+          "canonical_symbol": "strcpy",
+          "usage": "import",
+          "source": ".dynsym",
+          "api_category": "内存破坏"
+        }
+      ],
+      "remediation": "改用 strncpy/strlcpy 并保证终止符；或启用 FORTIFY。"
+    }
+  ]
+}`
+            },
+            risk: {
+                title: '📊 安全风险评估结果',
+                content: `{
+  "analyzer_id": "security.risk",
+  "status": "success",
+  "data": {
+    "overall_risk_score": 72,
+    "risk_level": "high",
+    "total_findings": 15,
+    "findings_by_severity": {
+      "critical": 3,
+      "high": 5,
+      "medium": 4,
+      "low": 3
+    },
+    "risk_categories": {
+      "command_injection": {
+        "score": 95,
+        "level": "critical",
+        "finding_count": 2,
+        "description": "Command execution APIs detected"
+      },
+      "memory_safety": {
+        "score": 78,
+        "level": "high",
+        "finding_count": 4,
+        "description": "Unsafe memory operations detected"
+      },
+      "authentication": {
+        "score": 45,
+        "level": "medium",
+        "finding_count": 3,
+        "description": "Potential authentication weaknesses"
+      },
+      "information_disclosure": {
+        "score": 32,
+        "level": "low",
+        "finding_count": 2,
+        "description": "Potential information leakage"
+      },
+      "denial_of_service": {
+        "score": 58,
+        "level": "medium",
+        "finding_count": 4,
+        "description": "Potential DoS vectors"
+      }
+    },
+    "recommendations": [
+      {
+        "priority": "critical",
+        "category": "command_injection",
+        "title": "Replace system() and popen() calls",
+        "description": "Use execve() with explicit argument arrays instead of shell-interpreted commands",
+        "effort": "medium"
+      },
+      {
+        "priority": "high",
+        "category": "memory_safety",
+        "title": "Replace unsafe string functions",
+        "description": "Replace strcpy/sprintf with strncpy/snprintf or use FORTIFY_SOURCE",
+        "effort": "low"
+      },
+      {
+        "priority": "high",
+        "category": "memory_safety",
+        "title": "Enable stack protection",
+        "description": "Compile with -fstack-protector-strong to detect buffer overflows",
+        "effort": "low"
+      },
+      {
+        "priority": "medium",
+        "category": "authentication",
+        "title": "Review authentication mechanisms",
+        "description": "Ensure proper input validation and use secure authentication libraries",
+        "effort": "high"
+      }
+    ],
+    "compliance": {
+      "cwe_top_25": {
+        "covered": 8,
+        "total": 25,
+        "violations": [
+          "CWE-78: OS Command Injection",
+          "CWE-120: Buffer Copy without Checking Size",
+          "CWE-676: Use of Potentially Dangerous Function"
+        ]
+      },
+      "owasp": {
+        "covered": 5,
+        "total": 10,
+        "violations": [
+          "A03:2021 - Injection",
+          "A06:2021 - Vulnerable and Outdated Components"
+        ]
+      }
+    }
+  },
+  "findings": [
+    {
+      "rule_id": "security.risk.command_injection",
+      "title": "Command injection risk detected",
+      "severity": "critical",
+      "confidence": "high",
+      "message": "Multiple command execution APIs found without proper input sanitization",
+      "category": "command_injection",
+      "cwe": "CWE-78"
+    },
+    {
+      "rule_id": "security.risk.memory_safety",
+      "title": "Memory safety issues detected",
+      "severity": "high",
+      "confidence": "high",
+      "message": "Unsafe memory operations detected without bounds checking",
+      "category": "memory_safety",
+      "cwe": "CWE-120"
+    }
+  ]
+}`
+            }
+        };
+        
+        function showDemo(type) {
+            const demo = demoData[type];
+            if (!demo) return;
+            
+            const demoResult = document.getElementById('demoResult');
+            const demoTitle = document.getElementById('demoTitle');
+            const demoContent = document.getElementById('demoContent');
+            
+            demoTitle.textContent = demo.title;
+            demoContent.textContent = demo.content;
+            demoResult.classList.add('show');
+            
+            // 滚动到演示区域
+            demoResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    </script>
+</body>
+</html>
