@@ -89,6 +89,7 @@ class AnalysisRuntime:
             observer,
             getattr(config, "timeout_seconds", None),
         )
+        self._attach_text_outputs(context)
         if cache:
             for result in context.results.values():
                 if result.status == AnalysisStatus.SUCCESS and not result.cache_hit:
@@ -105,3 +106,31 @@ class AnalysisRuntime:
             ),
         )
         return self.aggregator.aggregate(context, plan, duration_ms, profile)
+
+    def _attach_text_outputs(self, context: AnalysisContext) -> None:
+        """Populate each result's ``text`` via the owning analyzer's ``format_text``.
+
+        ``text`` is a human-readable summary of one analyzer's own output. It is
+        carried into the JSON payload so web clients (and any other consumer of
+        the scan document) can render it without re-implementing the layout; the
+        CLI's own ``--format text`` report is produced separately by
+        :mod:`soinsight.renderers.text_renderer` and does not read this field.
+
+        Best-effort by design: an analyzer without ``format_text``, or a failure
+        while formatting, leaves the field empty instead of failing the analysis.
+        """
+        for analyzer_id, result in context.results.items():
+            if result.text:
+                continue
+            analyzer = self.registry.get(analyzer_id)
+            if analyzer is None:
+                continue
+            formatter = getattr(analyzer, "format_text", None)
+            if not callable(formatter):
+                continue
+            try:
+                rendered = formatter(result)
+            except Exception:  # pragma: no cover - 环境相关的兜底
+                continue
+            if rendered:
+                result.text = rendered

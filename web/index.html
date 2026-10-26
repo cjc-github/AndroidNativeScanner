@@ -143,15 +143,25 @@
   #capability-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   @media (max-width: 560px) { #capability-grid { grid-template-columns: 1fr; } }
   .cap-card {
-    border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px;
-    cursor: pointer; background: var(--surface-2); transition: border-color .12s, background .12s;
+    position: relative;
+    border: 1px solid var(--border); border-radius: 9px; padding: 9px 34px 9px 12px;
+    cursor: pointer; background: var(--surface-2); transition: border-color .12s, background .12s, opacity .12s;
   }
   .cap-card:hover { border-color: var(--accent-border); }
   .cap-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .cap-card.dim { opacity: .45; }
+  .cap-card .check {
+    position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 4px;
+    border: 1.5px solid var(--border-strong); background: #fff; color: transparent;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; line-height: 1;
+  }
+  .cap-card.selected .check { border-color: var(--accent); background: var(--accent); color: #fff; }
   .cap-card .t { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
   .cap-card .t .cmd { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
   .cap-card .d { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
   .cap-card.scan .t { color: var(--accent-strong); }
+  .cap-actions { margin-left: auto; display: flex; gap: 6px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
   /* ---------- run bar ---------- */
@@ -185,6 +195,53 @@
     background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius);
     padding: 42px 20px; text-align: center; color: var(--muted); font-size: 13.5px;
   }
+
+  /* ---------- result tabs ---------- */
+  .tabs-wrap { display: flex; align-items: stretch; }
+  .tab-nav {
+    flex: none; width: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface); color: var(--muted); font-size: 17px; line-height: 1;
+  }
+  .tab-nav:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-strong); }
+  .tab-nav:disabled { opacity: .35; cursor: default; }
+  #tab-prev { border-radius: var(--radius) 0 0 0; border-right: none !important; }
+  #tab-next { border-radius: 0 var(--radius) 0 0; border-left: none !important; }
+  .tabs {
+    flex: 1; min-width: 0;
+    display: flex; gap: 2px; overflow-x: auto; padding: 6px 8px 0;
+    background: var(--surface); border: 1px solid var(--border); border-bottom: none;
+    scrollbar-width: thin;
+  }
+  .tab {
+    border: none !important; background: transparent; color: var(--muted);
+    font-size: 13px; padding: 9px 14px; border-radius: 8px 8px 0 0;
+    border-bottom: 2px solid transparent !important; margin-bottom: -1px;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  }
+  .tab:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+  .tab.active {
+    background: var(--accent-soft); color: var(--accent-strong); font-weight: 650;
+    border-bottom-color: var(--accent) !important;
+  }
+  .tab .id { font-family: var(--mono); font-size: 12px; }
+  .tab .st { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #c3ccd2; }
+  .tab .st.ok { background: #22a35b; }
+  .tab .st.warn { background: #d98b0a; }
+  .tab .st.fail { background: #d23c3c; }
+  .tab .st.info { background: #7b8b98; }
+  .tab-panels {
+    background: var(--surface); border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius); box-shadow: var(--shadow);
+    padding: 16px; margin-bottom: 14px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .panel-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
+  .panel-head b { font-size: 13.8px; }
+  .panel-head .cap-id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .panel-head .v { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .raw-actions { display: flex; gap: 8px; margin-bottom: 10px; }
   .result-meta {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -218,6 +275,17 @@
   .analyzer-card > header .v { font-size: 11.5px; color: var(--muted); }
   .analyzer-card > header .dur { margin-left: auto; font-size: 12px; color: var(--muted); font-family: var(--mono); }
   .analyzer-card .body { padding: 14px 16px; }
+  .text-block { margin-top: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+  .text-block > summary {
+    cursor: pointer; padding: 8px 12px; font-size: 12px; font-weight: 700; color: var(--muted);
+    font-family: var(--mono); letter-spacing: .03em; user-select: none;
+  }
+  .text-block > summary:hover { color: var(--fg); }
+  .text-pre {
+    margin: 0; padding: 10px 12px; border-top: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre-wrap;
+    word-break: break-word; max-height: 480px; overflow: auto; color: var(--fg);
+  }
 
   .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 18px; }
   .kv .k { font-size: 12px; color: var(--muted); }
@@ -321,10 +389,11 @@
   details.raw > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
   details.raw[open] > summary::before { transform: rotate(90deg); }
   details.raw > summary .actions { margin-left: auto; display: flex; gap: 7px; }
-  details.raw pre {
+  details.raw pre, #panel-raw pre {
     margin: 0; padding: 14px 16px; border-top: 1px solid var(--border);
     font-size: 12px; line-height: 1.55; overflow-x: auto; max-height: 520px; overflow-y: auto;
     background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 9px;
   }
 
   .note {
@@ -405,9 +474,10 @@
   <div id="banner">
     <h3>页面还无法调用分析：未连接到本地分析服务</h3>
     <p>浏览器里的 HTML 自己不能执行本机的 Python 分析。请先在<strong>项目目录</strong>启动本地服务，再刷新本页：</p>
-    <pre>Windows：双击 site\start-web.bat
-任意平台：python site/server.py          # 启动并自动打开浏览器
-指定端口：python site/server.py --port 9000</pre>
+    <pre>Windows：双击 web\start-web.bat
+任意平台：py -3 web/server.py          # 启动并自动打开浏览器
+指定端口：py -3 web/server.py --port 9000</pre>
+    <p>推荐用 <code>py -3</code>（Python 3.10）而不是裸 <code>python</code>：本机默认的 Python 3.13 未安装依赖 PyYAML，用它会启动失败。</p>
     <p>服务只绑定 127.0.0.1，不会把本机文件暴露到局域网；分析由服务以子进程方式调用 <code>python -m soinsight</code> 完成。</p>
     <div class="actions">
       <button class="small" id="retry-health">重新检测连接</button>
@@ -440,9 +510,14 @@
       </div>
 
       <div class="panel">
-        <h2><span class="step">2</span>选择分析能力</h2>
+        <h2><span class="step">2</span>选择分析能力
+          <span class="cap-actions">
+            <button class="small" id="cap-all" type="button">全选</button>
+            <button class="small" id="cap-none" type="button">清空</button>
+          </span>
+        </h2>
         <div id="capability-grid"></div>
-        <p class="hint">共 6 个已实现 Analyzer（另外 36 项能力在目录中预留、尚未实现，选择后会返回未实现提示）。依赖会自动补齐：如选 <code>basic.elf</code> 会连带执行 <code>basic.file</code>。</p>
+        <p class="hint">可多选：点击卡片勾选/取消，一次运行会执行所有选中项。<span id="cap-count">正在获取可用分析器…</span>依赖会自动补齐：如选 <code>basic.elf</code> 会连带执行 <code>basic.file</code>。</p>
       </div>
     </div>
 
@@ -460,19 +535,26 @@
       <div id="empty-state">分析结果将显示在这里。结果由本机 Python 实算，结构化 JSON 可复制、可下载。</div>
       <div id="result-body" hidden>
         <div class="result-meta" id="result-meta"></div>
-        <div id="analyzer-cards"></div>
-        <div id="findings-section"></div>
-        <div id="diagnostics-section"></div>
-        <details class="raw" id="raw-details">
-          <summary>
-            原始 JSON（soinsight.scan/v1）
-            <span class="actions">
-              <button class="small" id="copy-json">复制</button>
-              <button class="small" id="download-json">下载</button>
-            </span>
-          </summary>
-          <pre id="raw-json"></pre>
-        </details>
+        <div class="tabs-wrap">
+          <button type="button" class="tab-nav" id="tab-prev" title="上一个分析结果" aria-label="上一个分析结果">‹</button>
+          <div class="tabs" id="result-tabs" role="tablist"></div>
+          <button type="button" class="tab-nav" id="tab-next" title="下一个分析结果" aria-label="下一个分析结果">›</button>
+        </div>
+        <div class="tab-panels" id="result-panels">
+          <div class="tab-panel" id="panel-summary" data-tab="summary">
+            <div class="section-title" style="margin-top:0">本次运行</div>
+            <div class="fact-row" id="summary-status" style="margin-top:0"></div>
+            <div id="findings-section"></div>
+            <div id="diagnostics-section"></div>
+          </div>
+          <div class="tab-panel" id="panel-raw" data-tab="raw">
+            <div class="raw-actions">
+              <button class="small" id="copy-json" type="button">复制 JSON</button>
+              <button class="small" id="download-json" type="button">下载 JSON</button>
+            </div>
+            <pre id="raw-json"></pre>
+          </div>
+        </div>
       </div>
     </section>
   </section>
@@ -530,8 +612,8 @@
         </div>
         <h3 style="margin-top:14px">Web 控制台如何工作</h3>
         <div class="run-box">
-          <pre>python site/server.py        <span style="color:#5b7080"># 启动服务并自动打开浏览器</span></pre>
-          <pre class="last">soinsight basic elf TARGET --format json   <span style="color:#5b7080"># 页面每次运行等价于这条 CLI</span></pre>
+          <pre>py -3 web/server.py        <span style="color:#5b7080"># 启动服务并自动打开浏览器</span></pre>
+          <pre class="last">soinsight scan TARGET --enable basic.elf,basic.symbols --format json   <span style="color:#5b7080"># 页面每次运行等价于这条 CLI</span></pre>
         </div>
         <p class="hint" style="margin-top:8px">页面通过 <code>/api/analyze</code> 把目标交给本地服务，服务以子进程执行上面的 CLI 并回传 JSON；服务仅绑定 127.0.0.1，上传文件只写入系统临时目录、分析后即删。命令行用法见 <code>docs/quickstart.md</code>。</p>
       </div>
@@ -540,7 +622,7 @@
 </main>
 
 <footer>
-  SOInsight · Web 控制台由 site/server.py 提供本地分析服务 · 页面与命令行的结果完全一致（同一 Analyzer、同一 JSON Schema）
+  SOInsight · Web 控制台由 web/server.py 提供本地分析服务 · 页面与命令行的结果完全一致（同一 Analyzer、同一 JSON Schema）
 </footer>
 
 <script>
@@ -618,24 +700,33 @@ var state = {
   health: null,
   samples: [],
   target: null,
-  mode: "single",
-  capability: "basic.elf",
+  mode: "multi",          // "multi"（多选能力）或 "scan"（组合扫描全部）
+  capabilities: [],       // 多选的能力 id
+  activeTab: "summary",
   running: false,
   response: null,
   timer: null,
   sym: { q: "", lang: "all", shown: 200 }
 };
 
-var PRESETS = [
-  { id: "basic.file", name: "文件属性", desc: "大小 / SHA-256 / magic / 格式判定" },
-  { id: "basic.elf", name: "ELF 头", desc: "类 / 端序 / 类型 / 机器 / 入口 / 段表 + RELRO、NX" },
-  { id: "basic.symbols", name: "符号表", desc: "导出函数、导入符号、C++ demangle、JNI 解码" },
-  { id: "basic.dwarf", name: "DWARF", desc: "调试信息函数与参数（stripped 时如实报告）" },
-  { id: "advanced.strings", name: "字符串分析", desc: "可打印字符串提取、偏移定位与 URL / 敏感信息 / Base64 分类" },
-  { id: "security.hardening", name: "加固检查", desc: "PIE / NX / RELRO 事实核查" },
-  { id: "security.dangerous-api", name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" },
-  { id: "security.risk", name: "风险汇总", desc: "Findings 去重、严重度 / 置信度汇总与加权评分" }
-];
+/* 静态展示元数据：服务端只提供 analyzer id，中文名与说明必须由页面维护。
+   新增 analyzer 时在这里补一条即可；没补也能正常显示（回退成 id）。 */
+var CAP_META = {
+  "basic.file":          { name: "文件属性", desc: "大小 / SHA-256 / magic / 格式判定" },
+  "basic.elf":           { name: "ELF 头",   desc: "类 / 端序 / 类型 / 机器 / 入口 / 段表 + RELRO、NX" },
+  "basic.symbols":       { name: "符号表",   desc: "导出函数、导入符号、C++ demangle、JNI 解码" },
+  "basic.dwarf":         { name: "DWARF",    desc: "调试信息函数与参数（stripped 时如实报告）" },
+  "advanced.strings":    { name: "字符串分析", desc: "可打印字符串提取、偏移定位与 URL / 敏感信息 / Base64 分类" },
+  "security.hardening":  { name: "加固检查", desc: "PIE / NX / RELRO 事实核查" },
+  "security.dangerous-api": { name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" },
+  "security.risk":       { name: "风险汇总", desc: "Findings 去重、严重度 / 置信度汇总与加权评分" }
+};
+/* 离线兜底顺序（health 拿不到清单时用） */
+var CAP_META_ORDER = Object.keys(CAP_META);
+
+/* 运行时能力清单：由 /api/health 的 registered_analyzers 决定，见 buildPresets() */
+var PRESETS = [];
+
 var SCAN_PRESET = { id: "scan", name: "组合扫描", desc: "basic + advanced + security 全部已实现分析器" };
 
 /* ================= DOM ================= */
@@ -658,15 +749,24 @@ var errorBox = $("error-box");
 var emptyState = $("empty-state");
 var resultBody = $("result-body");
 var resultMeta = $("result-meta");
-var analyzerCards = $("analyzer-cards");
+var resultTabs = $("result-tabs");
+var tabPrev = $("tab-prev");
+var tabNext = $("tab-next");
+var resultPanels = $("result-panels");
+var rawPanel = $("panel-raw");
+var summaryStatus = $("summary-status");
 var findingsSection = $("findings-section");
 var diagnosticsSection = $("diagnostics-section");
 var rawJson = $("raw-json");
 
+var EMPTY_TEXT = "分析结果将显示在这里。结果由本机 Python 实算，结构化 JSON 可复制、可下载。";
+
 /* ================= 初始化 ================= */
 
 function init() {
+  buildPresets(null);   // 先用页面内置清单渲染，未连服务时面板也有内容
   renderCapabilityGrid();
+  renderCapCount();
   bindEvents();
   checkHealth();
 }
@@ -692,9 +792,22 @@ function bindEvents() {
   $("use-path").addEventListener("click", useTypedPath);
   pathInput.addEventListener("keydown", function (e) { if (e.key === "Enter") useTypedPath(); });
   $("chip-clear").addEventListener("click", clearTarget);
+  $("cap-all").addEventListener("click", selectAllCapabilities);
+  $("cap-none").addEventListener("click", clearCapabilities);
   runBtn.addEventListener("click", runAnalysis);
   $("retry-health").addEventListener("click", checkHealth);
+  resultTabs.addEventListener("click", function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest(".tab") : null;
+    if (btn) selectTab(btn.getAttribute("data-tab"));
+  });
+  resultTabs.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft") { e.preventDefault(); stepTab(-1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); stepTab(1); }
+  });
+  tabPrev.addEventListener("click", function () { stepTab(-1); });
+  tabNext.addEventListener("click", function () { stepTab(1); });
   $("copy-json").addEventListener("click", function (e) {
+    if (!state.response) return;
     copyText(JSON.stringify(state.response, null, 2), e.currentTarget);
   });
   $("download-json").addEventListener("click", downloadJson);
@@ -725,6 +838,7 @@ function checkHealth() {
       text.textContent = "服务正常 · Python " + data.python;
       $("version-badge").textContent = "v" + data.version + " · " + data.registered_analyzers.length + " Analyzer";
       banner.classList.remove("show");
+      applyAnalyzers(data.registered_analyzers);   // 能力清单以服务端为准
       loadSamples();
       updateRunButton();
     })
@@ -734,6 +848,7 @@ function checkHealth() {
       text.textContent = "未连接";
       $("version-badge").textContent = "离线模式";
       banner.classList.add("show");
+      renderCapCount();
       updateRunButton();
     });
 }
@@ -795,23 +910,66 @@ function renderTargetChip(sourceLabel) {
 
 /* ================= 能力选择 ================= */
 
+/* 按服务端返回的 analyzer id 清单重建可选能力。
+   registered 为空时回退到页面内置的 CAP_META 顺序（离线预览用）。 */
+function buildPresets(registered) {
+  var source = (registered && registered.length) ? registered : CAP_META_ORDER;
+  PRESETS = source.map(function (id) {
+    var meta = CAP_META[id];
+    return {
+      id: id,
+      name: (meta && meta.name) || id,
+      desc: (meta && meta.desc) || "服务端已注册，页面暂无中文说明（可在 CAP_META 中补充）。",
+      unknown: !meta
+    };
+  });
+}
+
+/* health 返回后刷新清单：保留仍存在的勾选，剔除服务端已移除的能力 */
+function applyAnalyzers(registered) {
+  buildPresets(registered);
+  state.capabilities = state.capabilities.filter(function (id) {
+    return PRESETS.filter(function (p) { return p.id === id; }).length > 0;
+  });
+  renderCapabilityGrid();
+  renderCapCount();
+  updateRunButton();
+}
+
+function renderCapCount() {
+  var el = $("cap-count");
+  if (!el) return;
+  if (!state.health) {
+    el.textContent = "未连接服务，下面是页面内置清单，连接后会改为以服务端返回为准。";
+    return;
+  }
+  var unknown = PRESETS.filter(function (p) { return p.unknown; }).length;
+  el.textContent = "当前服务端注册 " + PRESETS.length + " 个 Analyzer，全部可选" +
+    (unknown ? "（其中 " + unknown + " 个页面缺少中文说明，显示原名）" : "") + "。";
+}
+
 function renderCapabilityGrid() {
+  var cardHtml = function (extraClass, dataAttr, name, cmd, desc) {
+    return '<div class="cap-card ' + extraClass + '" ' + dataAttr + ' role="button" tabindex="0" aria-pressed="false">' +
+      '<span class="check" aria-hidden="true">✓</span>' +
+      '<div class="t">' + esc(name) + ' <span class="cmd">' + esc(cmd) + "</span></div>" +
+      '<div class="d">' + esc(desc) + "</div></div>";
+  };
   var html = PRESETS.map(function (preset) {
-    return '<div class="cap-card" data-cap="' + preset.id + '" role="button" tabindex="0">' +
-      '<div class="t">' + esc(preset.name) + ' <span class="cmd">' + esc(preset.id) + "</span></div>" +
-      '<div class="d">' + esc(preset.desc) + "</div></div>";
+    return cardHtml("", 'data-cap="' + preset.id + '"', preset.name, preset.id, preset.desc);
   }).join("") +
-  '<div class="cap-card scan" data-scan="1" role="button" tabindex="0">' +
-    '<div class="t">' + esc(SCAN_PRESET.name) + ' <span class="cmd">scan --module-available</span></div>' +
-    '<div class="d">' + esc(SCAN_PRESET.desc) + "</div></div>";
+    cardHtml("scan", 'data-scan="1"', SCAN_PRESET.name, "scan --module-available", SCAN_PRESET.desc);
   capGrid.innerHTML = html;
   Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
     var activate = function () {
       if (card.dataset.scan) {
-        state.mode = "scan";
+        // 组合扫描是独立开关：开启后忽略单项勾选，运行全部已实现分析器
+        state.mode = state.mode === "scan" ? "multi" : "scan";
       } else {
-        state.mode = "single";
-        state.capability = card.dataset.cap;
+        var id = card.dataset.cap;
+        var index = state.capabilities.indexOf(id);
+        if (index >= 0) state.capabilities.splice(index, 1);
+        else state.capabilities.push(id);
       }
       syncCapabilitySelection();
       updateRunButton();
@@ -825,33 +983,54 @@ function renderCapabilityGrid() {
 }
 
 function syncCapabilitySelection() {
+  var scanMode = state.mode === "scan";
   Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
     var selected = card.dataset.scan
-      ? state.mode === "scan"
-      : (state.mode === "single" && card.dataset.cap === state.capability);
+      ? scanMode
+      : state.capabilities.indexOf(card.dataset.cap) >= 0;
     card.classList.toggle("selected", selected);
+    card.classList.toggle("dim", !selected && scanMode);
+    card.setAttribute("aria-pressed", selected ? "true" : "false");
   });
 }
 
+function selectAllCapabilities() {
+  state.capabilities = PRESETS.map(function (p) { return p.id; });
+  state.mode = "multi";
+  syncCapabilitySelection();
+  updateRunButton();
+}
+
+function clearCapabilities() {
+  state.capabilities = [];
+  state.mode = "multi";
+  syncCapabilitySelection();
+  updateRunButton();
+}
+
 function updateRunButton() {
-  var ready = !!state.target && !!state.health && !state.running;
+  var hasCaps = state.capabilities.length > 0;
+  var ready = !!state.target && !!state.health && !state.running && (state.mode === "scan" || hasCaps);
   runBtn.disabled = !ready;
   if (state.running) return;
   if (!state.target) runStatus.textContent = "请选择目标文件和分析能力";
   else if (!state.health) runStatus.textContent = "本地服务未连接，无法运行";
+  else if (state.mode !== "scan" && !hasCaps) runStatus.textContent = "请至少勾选一项分析能力";
   else if (state.mode === "scan") runStatus.textContent = "就绪：组合扫描 basic + advanced + security";
-  else runStatus.textContent = "就绪：" + state.capability;
+  else runStatus.textContent = "就绪：" + state.capabilities.join(" + ") + "（" + state.capabilities.length + " 项）";
 }
 
 /* ================= 运行分析 ================= */
 
 function runAnalysis() {
   if (state.running || !state.target) return;
+  if (state.mode !== "scan" && !state.capabilities.length) return;
+  clearResults();                       // 每次运行前先清空上一次的分析结果
+  emptyState.textContent = "正在分析，请稍候…";
   state.running = true;
   runBtn.disabled = true;
   runSpinner.classList.add("on");
   runLabel.textContent = "分析中…";
-  errorBox.classList.remove("show");
   var startedAt = performance.now();
   state.timer = setInterval(function () {
     elapsedEl.textContent = "已用 " + ((performance.now() - startedAt) / 1000).toFixed(1) + " s";
@@ -859,8 +1038,8 @@ function runAnalysis() {
 
   var params = new URLSearchParams();
   params.set("mode", state.mode);
-  if (state.mode === "single") params.set("capability", state.capability);
-  else params.set("modules", "basic,advanced,security");
+  if (state.mode === "scan") params.set("modules", "basic,advanced,security");
+  else params.set("capabilities", state.capabilities.join(","));
 
   var headers = {};
   var body;
@@ -886,6 +1065,9 @@ function runAnalysis() {
     })
     .catch(function (err) {
       showError(err && err.message ? err.message : String(err));
+      emptyState.textContent = EMPTY_TEXT;
+      emptyState.hidden = false;
+      resultBody.hidden = true;
     })
     .then(function () {  // finally（无参 then 总会在其后执行）
       clearInterval(state.timer);
@@ -935,19 +1117,20 @@ function renderResults(data) {
   var shaBtn = $("copy-sha");
   if (shaBtn) shaBtn.addEventListener("click", function () { copyText(scan.target.sha256, shaBtn); });
 
+  var results = scan.results || {};
   var order = (scan.resolved_analyzers && scan.resolved_analyzers.length)
     ? scan.resolved_analyzers
-    : Object.keys(scan.results || {});
-  analyzerCards.innerHTML = order
-    .filter(function (id) { return scan.results && scan.results[id]; })
-    .map(function (id) { return renderAnalyzerCard(id, scan.results[id]); })
-    .join("");
+    : Object.keys(results);
+  var ids = order.filter(function (id) { return results[id]; });
 
+  buildResultTabs(ids, results);
+  renderSummaryStatus(ids, results);
   renderFindings(scan.findings || []);
   renderDiagnostics(scan.diagnostics || []);
   rawJson.textContent = JSON.stringify(data, null, 2);
+  selectTab(ids.indexOf(state.activeTab) >= 0 ? state.activeTab : "summary");
 
-  if (scan.results && scan.results["basic.symbols"]) {
+  if (results["basic.symbols"]) {
     state.sym.q = "";
     state.sym.lang = "all";
     state.sym.shown = 200;
@@ -955,7 +1138,124 @@ function renderResults(data) {
   }
 }
 
-function renderAnalyzerCard(id, result) {
+/* ---- 结果 Tab ---- */
+
+function statusClass(status) {
+  var entry = STATUS_LABEL[status];
+  return entry ? entry[1] : "info";
+}
+
+/* 能力 id -> 页面上展示的中文名称（与选择卡片一致）；未知 id 回退为 id 本身 */
+function capabilityName(id) {
+  var meta = CAP_META[id];
+  return (meta && meta.name) || id;   // 依赖自动补齐的分析器也能拿到中文名
+}
+
+function buildResultTabs(ids, results) {
+  clearAnalyzerPanels();
+  var tabs = [{ tab: "summary", label: "概览" }].concat(ids.map(function (id) {
+    return { tab: id, label: capabilityName(id), cap: id, status: (results[id] || {}).status };
+  })).concat([{ tab: "raw", label: "原始 JSON" }]);
+
+  resultTabs.innerHTML = tabs.map(function (t) {
+    return '<button type="button" class="tab" role="tab" data-tab="' + esc(t.tab) + '"' +
+      (t.cap ? ' title="' + esc(t.cap) + '"' : "") + ">" +
+      (t.status ? '<span class="st ' + statusClass(t.status) + '"></span>' : "") +
+      "<span>" + esc(t.label) + "</span>" +
+      (t.cap ? '<span class="id">' + esc(t.cap) + "</span>" : "") +
+      "</button>";
+  }).join("");
+
+  ids.forEach(function (id) {
+    var panel = document.createElement("div");
+    panel.className = "tab-panel";
+    panel.setAttribute("data-tab", id);
+    panel.setAttribute("data-kind", "analyzer");
+    panel.innerHTML = renderAnalyzerBody(id, results[id]);
+    resultPanels.insertBefore(panel, rawPanel);
+  });
+}
+
+function selectTab(id) {
+  state.activeTab = id;
+  Array.prototype.forEach.call(resultTabs.querySelectorAll(".tab"), function (btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-tab") === id);
+  });
+  Array.prototype.forEach.call(resultPanels.querySelectorAll(".tab-panel"), function (panel) {
+    panel.classList.toggle("active", panel.getAttribute("data-tab") === id);
+  });
+  var active = resultTabs.querySelector(".tab.active");
+  if (active && active.scrollIntoView) {
+    try { active.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" }); }
+    catch (e) { active.scrollIntoView(); }
+  }
+  updateTabNav();
+}
+
+/* ←/→：切换到上一个/下一个分析结果 Tab */
+function tabOrder() {
+  return Array.prototype.map.call(resultTabs.querySelectorAll(".tab"), function (btn) {
+    return btn.getAttribute("data-tab");
+  });
+}
+
+function stepTab(delta) {
+  var order = tabOrder();
+  if (!order.length) return;
+  var cur = order.indexOf(state.activeTab);
+  var next = cur < 0 ? (delta > 0 ? 0 : order.length - 1)
+    : Math.min(order.length - 1, Math.max(0, cur + delta));
+  if (next !== cur) selectTab(order[next]);
+}
+
+function updateTabNav() {
+  var order = tabOrder();
+  var cur = order.indexOf(state.activeTab);
+  tabPrev.disabled = !order.length || cur <= 0;
+  tabNext.disabled = !order.length || cur < 0 || cur >= order.length - 1;
+}
+
+function renderSummaryStatus(ids, results) {
+  if (!ids.length) {
+    summaryStatus.innerHTML = '<span class="note" style="margin-top:0">本次运行没有产生分析器结果。</span>';
+    return;
+  }
+  summaryStatus.innerHTML = ids.map(function (id) {
+    var r = results[id] || {};
+    var entry = STATUS_LABEL[r.status] || ["未知", "info"];
+    return '<span class="chip ' + entry[1] + ' mono">' + esc(capabilityName(id)) +
+      " · " + esc(entry[0]) + " · " + esc(fmtMs(r.duration_ms)) + "</span>";
+  }).join("");
+}
+
+/* 清空上一次的结果：Tab、面板、发现项、诊断、原始 JSON 全部复位 */
+function clearResults() {
+  state.response = null;
+  state.activeTab = "summary";
+  state.sym = { q: "", lang: "all", shown: 200 };
+  errorBox.classList.remove("show");
+  errorBox.textContent = "";
+  resultMeta.innerHTML = "";
+  resultTabs.innerHTML = "";
+  clearAnalyzerPanels();
+  updateTabNav();
+  summaryStatus.innerHTML = "";
+  findingsSection.innerHTML = "";
+  diagnosticsSection.innerHTML = "";
+  rawJson.textContent = "";
+  resultBody.hidden = true;
+  emptyState.hidden = false;
+  emptyState.textContent = EMPTY_TEXT;
+}
+
+function clearAnalyzerPanels() {
+  Array.prototype.forEach.call(
+    resultPanels.querySelectorAll('.tab-panel[data-kind="analyzer"]'),
+    function (panel) { panel.remove(); }
+  );
+}
+
+function renderAnalyzerBody(id, result) {
   var data = result.data || {};
   var bodyHtml;
   if (id === "basic.file") bodyHtml = renderFileData(data);
@@ -964,21 +1264,30 @@ function renderAnalyzerCard(id, result) {
   else if (id === "basic.dwarf") bodyHtml = renderDwarfData(data);
   else if (id === "advanced.strings") bodyHtml = renderStringsData(data);
   else if (id === "security.dangerous-api") bodyHtml = renderDangerousApiData(data);
-  else if (id === "security.hardening") bodyHtml = '<div class="note">加固结论见下方「发现项」汇总。</div>';
+  else if (id === "security.hardening") bodyHtml = '<div class="note">加固结论见「概览」Tab 的发现项汇总。</div>';
   else if (id === "security.risk") bodyHtml = renderRiskData(data);
   else bodyHtml = renderGenericData(data);
 
   var diags = (result.diagnostics || []).map(renderDiagnostic).join("");
   var cache = result.cache_hit ? '<span class="chip info">缓存命中</span>' : "";
+  var textBlock = result.text
+    ? '<details class="text-block"><summary>文本化结果</summary>' +
+      '<pre class="text-pre">' + esc(result.text) + "</pre></details>"
+    : "";
 
-  return '<div class="analyzer-card"><header>' +
-    '<span class="id">' + esc(id) + "</span>" +
-    '<span class="v">v' + esc(result.analyzer_version || "?") + "</span>" +
-    statusChip(result.status) + cache +
-    '<span class="dur">' + esc(fmtMs(result.duration_ms)) + "</span>" +
-    '</header><div class="body">' + bodyHtml +
-    (diags ? '<div style="margin-top:10px">' + diags + "</div>" : "") +
-    "</div></div>";
+  // Tab 面板里名称 / 状态 / 耗时已经体现在标签上，这里只补标题、版本与缓存标记
+  return '<div class="panel-head">' +
+    "<b>" + esc(capabilityName(id)) + "</b>" +
+    '<span class="cap-id">' + esc(id) + "</span>" +
+    '<span class="chip ' + statusClass(result.status) + '">' +
+      esc((STATUS_LABEL[result.status] || ["未知"])[0]) + "</span>" +
+    cache +
+    '<span class="v">analyzer v' + esc(result.analyzer_version || "?") +
+      " · " + esc(fmtMs(result.duration_ms)) + "</span>" +
+    "</div>" +
+    bodyHtml +
+    textBlock +
+    (diags ? '<div style="margin-top:10px">' + diags + "</div>" : "");
 }
 
 function renderFileData(d) {

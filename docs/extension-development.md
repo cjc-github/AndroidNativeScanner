@@ -60,6 +60,22 @@ class FileAnalyzer(Analyzer):
 - 可降级问题写入 Diagnostic；
 - 未知异常交给 Runtime 隔离。
 
+### 可选：提供人读文本摘要
+
+实现 `format_text(result) -> str | None` 可以让 Web 控制台直接展示一段人类可读的文本，无需自己写渲染逻辑：
+
+```python
+def format_text(self, result):
+    if result.status != AnalysisStatus.SUCCESS:
+        return None
+    data = result.data
+    return f"=== 文件信息 ===\n路径: {data['name']}\n大小: {data['size']} 字节\n"
+```
+
+Runtime 会把返回值填入 `AnalysisResult.text` 并带入 JSON payload（`result.text` 字段，见 [CLI 输出 Schema](cli-output-schema.md)）。该钩子是可选的：不实现、返回 `None` 或抛异常都只会让 `text` 保持为空字符串，不影响分析本身。`text` 会随分析结果一起写入缓存，缓存命中时无需重新生成。
+
+注意：命令行 `--format text` 的报告由 `renderers/text_renderer.py` 单独生成，**不读取** `text` 字段。
+
 ## 4. 声明跨域依赖
 
 ```python

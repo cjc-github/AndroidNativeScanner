@@ -60,6 +60,7 @@
 | `diagnostics` | array | Analyzer 诊断 |
 | `duration_ms` | integer | Analyzer 耗时毫秒 |
 | `cache_hit` | boolean | 是否命中缓存 |
+| `text` | string | 该 Analyzer 的人读文本摘要（中文、供 Web 控制台直接展示）；未实现 `format_text` 的分析器为空字符串 |
 | `schema_version` | string | 当前为 `soinsight.result/v1` |
 
 ## 4. modules JSON

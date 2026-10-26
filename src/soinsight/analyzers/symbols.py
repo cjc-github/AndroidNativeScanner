@@ -15,6 +15,8 @@ what it can prove and never invents types.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from ..core.analyzer import Analyzer, AnalyzerMetadata
 from ..core.models import (
     AnalysisResult,
@@ -43,6 +45,9 @@ _DEFAULT_OPTIONS = {
 
 _DYNSYM = ".dynsym"
 _SYMTAB = ".symtab"
+
+_LANGUAGE_LABELS = {"c": "C", "c++": "C++", "jni": "JNI", "unknown": "未知"}
+_KIND_LABELS = {"function": "函数", "object": "对象", "data": "数据", "unknown": "未知"}
 
 
 class BasicSymbolsAnalyzer(Analyzer):
@@ -179,6 +184,54 @@ class BasicSymbolsAnalyzer(Analyzer):
             data=data,
             diagnostics=diagnostics,
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format symbol analysis result as text."""
+        if result.status == AnalysisStatus.FAILED:
+            return "=== 符号分析失败 ==="
+
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        lines = [
+            "=== 符号分析 ===",
+            f"符号表: {', '.join(data.get('symbol_tables', []))}",
+            f"已剥离: {'是' if data.get('stripped') else '否'}",
+            "",
+            "数量统计:",
+            f"  导出函数: {data.get('counts', {}).get('exported_functions', 0)}",
+            f"  导出数据: {data.get('counts', {}).get('exported_data', 0)}",
+            f"  未分类导出: {data.get('counts', {}).get('exported_unclassified', 0)}",
+            f"  导入符号: {data.get('counts', {}).get('imports', 0)}",
+            f"  本地符号: {data.get('counts', {}).get('local', 0)}",
+            f"  已 demangle: {data.get('demangled_count', 0)}",
+            f"  JNI 方法: {data.get('jni_count', 0)}",
+        ]
+
+        functions = data.get("functions", [])
+        if functions:
+            lines.append("")
+            lines.append(f"=== 导出函数（显示前 {min(20, len(functions))} / 共 {len(functions)} 个）===")
+            for func in functions[:20]:
+                lines.append(f"  {func.get('name', 'N/A')}")
+                sig = func.get('signature')
+                if sig and sig != func.get('name'):
+                    lines.append(f"    签名: {sig}")
+                if func.get('language') != 'c':
+                    lines.append(f"    语言: {_LANGUAGE_LABELS.get(func.get('language'), func.get('language', '未知'))}")
+                if func.get('namespace'):
+                    lines.append(f"    命名空间: {func['namespace']}")
+
+        imports = data.get("imports", [])
+        if imports:
+            lines.append("")
+            lines.append(f"=== 导入符号（显示前 {min(20, len(imports))} / 共 {len(imports)} 个）===")
+            for imp in imports[:20]:
+                kind = imp.get('kind', 'unknown')
+                lines.append(f"  {imp.get('name', 'N/A')}（{_KIND_LABELS.get(kind, kind)}）")
+
+        return "\n".join(lines)
 
 
 def _resolve_options(context) -> dict:

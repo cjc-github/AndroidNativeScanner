@@ -12,6 +12,8 @@ to ``None`` instead of being guessed at.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from ..core.analyzer import Analyzer, AnalyzerMetadata
 from ..core.models import (
     AnalysisResult,
@@ -98,6 +100,59 @@ class BasicDwarfAnalyzer(Analyzer):
             status=AnalysisStatus.SUCCESS,
             data=data,
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format DWARF analysis result as text."""
+        if result.status == AnalysisStatus.FAILED:
+            return "=== DWARF 分析失败 ==="
+
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        lines = [
+            "=== DWARF 调试信息 ===",
+            f"有调试信息: {'是' if data.get('has_debug_info') else '否'}",
+        ]
+
+        if not data.get('has_debug_info'):
+            lines.append("说明: 没有调试信息（已剥离的构建）")
+            return "\n".join(lines)
+
+        lines.extend([
+            f"DWARF 版本: {data.get('version', 'N/A')}",
+            f"编译单元数: {len(data.get('units', []))}",
+            "",
+        ])
+
+        functions = data.get("functions", [])
+        if functions:
+            lines.append(f"=== 有调试信息的函数（显示前 {min(20, len(functions))} / 共 {len(functions)} 个）===")
+            for func in functions[:20]:
+                lines.append(f"  {func.get('name', 'N/A')}")
+                if func.get('linkage_name'):
+                    lines.append(f"    链接名: {func['linkage_name']}")
+                if func.get('signature'):
+                    lines.append(f"    签名: {func['signature']}")
+                if func.get('return_type'):
+                    lines.append(f"    返回类型: {func['return_type']}")
+                if func.get('parameters'):
+                    lines.append(f"    参数:")
+                    for param in func['parameters']:
+                        param_name = param.get('name', '未命名')
+                        param_type = param.get('type', '未知')
+                        lines.append(f"      - {param_name}: {param_type}")
+                if func.get('decl_file'):
+                    decl_line = func.get('decl_line', '?')
+                    lines.append(f"    定义位置: {func['decl_file']}:{decl_line}")
+                if func.get('low_pc'):
+                    lines.append(f"    地址: {func['low_pc']}")
+                lines.append("")
+
+            if len(functions) > 20:
+                lines.append(f"  ... 以及另外 {len(functions) - 20} 个函数")
+
+        return "\n".join(lines)
 
 
 def _function_record(function) -> dict:

@@ -7,6 +7,7 @@ text target (valid non-ELF) and a synthetic ELF from tests.conftest.
 
 import json
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -69,6 +70,10 @@ class WebJobConsoleTests(unittest.TestCase):
             collected.extend(log["lines"])
             if log["done"]:
                 return {"lines": collected, "exit_code": log["exit_code"]}
+            # The job spawns a real subprocess, which needs a few hundred ms to
+            # start and import; polling without a pause burns through the
+            # iteration budget before the job ever gets going.
+            time.sleep(0.05)
         raise AssertionError("job did not finish within the harness timeout")
 
     def test_health_reports_registered_analyzers(self):
@@ -135,6 +140,73 @@ class WebJobConsoleTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(f"{self.base}/api/jobs/" + "0" * 12 + "/result")
         self.assertEqual(ctx.exception.code, 404)
+
+
+
+class WebAnalyzeMultiModeTests(unittest.TestCase):
+    """``POST /api/analyze?mode=multi`` runs exactly the capabilities picked."""
+
+    httpd: ThreadingHTTPServer
+    base: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
+        thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        thread.start()
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def _analyze(self, query: str, body: bytes | None = None):
+        request = urllib.request.Request(
+            f"{self.base}/api/analyze?{query}", data=body, method="POST"
+        )
+        request.add_header("X-Filename", "libsample.so")
+        return urllib.request.urlopen(request)
+
+    def test_multi_runs_only_selected_capabilities(self):
+        blob = build_elf64_with_symbols([("", 0, 3, 0xFFF1, 0, 0)], with_symtab=False)
+        response = self._analyze("mode=multi&capabilities=basic.file,basic.elf", blob)
+        self.assertEqual(response.status, 200)
+
+        payload = json.load(response)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["exit_code"], 0)
+
+        result = payload["payload"]["result"]
+        self.assertEqual(sorted(result["resolved_analyzers"]), ["basic.elf", "basic.file"])
+        self.assertEqual(sorted(result["results"]), ["basic.elf", "basic.file"])
+
+    def test_multi_results_carry_text_output(self):
+        blob = build_elf64_with_symbols([("", 0, 3, 0xFFF1, 0, 0)], with_symtab=False)
+        payload = json.load(self._analyze("mode=multi&capabilities=basic.file,basic.elf", blob))
+
+        for analyzer_id, entry in payload["payload"]["result"]["results"].items():
+            self.assertTrue(entry["text"], f"{analyzer_id} 的 text 为空")
+            self.assertTrue(
+                entry["text"].startswith("==="),
+                f"{analyzer_id} 的 text 不是预期的标题格式: {entry['text'][:40]!r}",
+            )
+
+    def test_multi_rejects_empty_capability_list(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self._analyze("mode=multi&capabilities=", b"placeholder")
+        self.assertEqual(ctx.exception.code, 400)
+        body = json.load(ctx.exception)
+        self.assertFalse(body["ok"])
+        self.assertIn("capabilities", body["error"])
+
+    def test_multi_rejects_unknown_capability(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self._analyze("mode=multi&capabilities=basic.elf,bogus.thing", b"placeholder")
+        self.assertEqual(ctx.exception.code, 400)
+        body = json.load(ctx.exception)
+        self.assertFalse(body["ok"])
+        self.assertIn("bogus.thing", body["error"])
 
 
 if __name__ == "__main__":  # pragma: no cover

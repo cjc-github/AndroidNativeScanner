@@ -27,6 +27,7 @@ class AnalysisResult:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     duration_ms: int = 0
     cache_hit: bool = False
+    text: str = ""
     schema_version: str = RESULT_SCHEMA_VERSION
 
 

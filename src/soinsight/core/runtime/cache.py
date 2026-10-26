@@ -77,6 +77,10 @@ class RuntimeCache:
             diagnostics=_reconstruct_diagnostics(payload.get("diagnostics", [])),
             duration_ms=payload.get("duration_ms", 0),
             cache_hit=True,
+            # Older cache files (written before ``text`` existed) have no such
+            # key; the runtime reparses an empty text on load, so this stays a
+            # cheap optional field rather than a cache-invalidating change.
+            text=payload.get("text", ""),
             schema_version=payload.get("schema_version", RESULT_SCHEMA_VERSION),
         )
 

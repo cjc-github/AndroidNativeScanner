@@ -19,6 +19,7 @@ API::
     GET  /api/samples       in/ 目录下的验证样本列表（只读）
     POST /api/analyze      执行一次分析，查询参数：
                              mode=single&capability=basic.elf   单能力
+                             mode=multi&capabilities=basic.elf,basic.symbols   多选能力
                              mode=scan&modules=basic,advanced,security   组合扫描
                              目标二选一：查询参数 path=<绝对路径>，
                              或请求体直接传文件字节并带 X-Filename 头。
@@ -149,11 +150,19 @@ def _list_samples() -> list[dict]:
     return samples
 
 
-def _run_analysis(mode: str, capability: str, modules: str, target: Path) -> dict:
+def _run_analysis(
+    mode: str,
+    capability: str,
+    modules: str,
+    target: Path,
+    capabilities: tuple[str, ...] = (),
+) -> dict:
     """Run one analysis in a subprocess and return the parsed JSON payload."""
     argv = [sys.executable, "-m", "soinsight"]
     if mode == "scan":
         argv += ["scan", str(target), "--module-available", modules]
+    elif mode == "multi":
+        argv += ["scan", str(target), "--enable", ",".join(capabilities)]
     else:
         argv += capability.split(".") + [str(target)]
     argv += ["--format", "json", "--no-cache", "--quiet"]
@@ -260,6 +269,9 @@ def _transform_env() -> dict[str, str]:
         part for part in (str(SRC_DIR), env.get("PYTHONPATH")) if part
     )
     env["PYTHONIOENCODING"] = "utf-8"
+    # Ensure HOME is set for Path.home() to work in subprocess
+    if "HOME" not in env and "USERPROFILE" in env:
+        env["HOME"] = env["USERPROFILE"]
     return env
 
 
@@ -584,6 +596,11 @@ class Handler(BaseHTTPRequestHandler):
         is_job = parsed.path == "/api/jobs"
         mode = params.get("mode", "scan" if is_job else "single")
         capability = params.get("capability", "").strip()
+        capabilities = tuple(
+            item.strip()
+            for item in params.get("capabilities", "").split(",")
+            if item.strip()
+        )
         modules = params.get(
             "modules", ""
         ).strip() or "basic,advanced,security"
@@ -630,7 +647,7 @@ class Handler(BaseHTTPRequestHandler):
                     stream.write(body)
                 target = Path(temp_path)
 
-            if not is_job and mode not in ("single", "scan"):
+            if not is_job and mode not in ("single", "scan", "multi"):
                 self._send_json(
                     {"ok": False, "error": f"未知 mode: {mode}"},
                     HTTPStatus.BAD_REQUEST,
@@ -645,6 +662,26 @@ class Handler(BaseHTTPRequestHandler):
                             "ok": False,
                             "error": f"未知能力: {capability or '(空)'}，可用: "
                             + ", ".join(sorted(known)),
+                        },
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+            if not is_job and mode == "multi":
+                _load_catalog()
+                known = _known_capability_ids()
+                if not capabilities:
+                    self._send_json(
+                        {"ok": False, "error": "mode=multi 需要至少一个 capabilities"},
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                unknown = [item for item in capabilities if item not in known]
+                if unknown:
+                    self._send_json(
+                        {
+                            "ok": False,
+                            "error": "未知能力: " + ", ".join(unknown)
+                            + "，可用: " + ", ".join(sorted(known)),
                         },
                         HTTPStatus.BAD_REQUEST,
                     )
@@ -676,7 +713,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             try:
-                result = _run_analysis(mode, capability, modules, target)
+                result = _run_analysis(mode, capability, modules, target, capabilities)
             finally:
                 _ANALYSIS_LOCK.release()
             self._send_json(result)

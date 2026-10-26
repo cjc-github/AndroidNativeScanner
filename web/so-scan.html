@@ -137,6 +137,16 @@
   .risk-critical, .risk-CRITICAL { background: var(--sev-critical-bg); color: var(--sev-critical); border-color: var(--sev-critical-bg); }
   #rawjson { max-height: 420px; overflow: auto; font: 12px/1.5 var(--mono); margin: 0; white-space: pre; }
   .inner-note { color: var(--muted); font-size: 12px; }
+  .txt-wrap { display: grid; gap: 10px; }
+  .txt-block { border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+  .txt-block > h4 {
+    margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .03em;
+  }
+  .txt-pre {
+    margin: 0; padding: 10px 12px; font: 12px/1.55 var(--mono);
+    white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto;
+  }
   footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
 </style>
 </head>
@@ -456,6 +466,12 @@ function paintResult(result, record) {
         <td>${esc(f.confidence)}</td>
         <td>${esc(f.message)}${(f.locations || []).slice(0, 2).map((loc) => `<div class="inner-note mono" style="margin-top:2px">${esc([loc.offset, loc.section, loc.symbol, loc.address].filter(Boolean).join(" · "))}</div>`).join("")}</td>
       </tr>`).join("") + "</table>"]);
+  }
+  const textSections = Object.entries(results)
+    .map(([id, r]) => r.text ? `<section class="txt-block"><h4 class="mono">${esc(id)}</h4><pre class="txt-pre">${esc(r.text)}</pre></section>` : "")
+    .join("");
+  if (textSections) {
+    sections.push(["文本化结果（每个分析器）", `<div class="txt-wrap">${textSections}</div>`]);
   }
   $("sectionsZone").innerHTML = sections.map(([title, html], idx) => `
     <details class="sect"${idx === 0 ? " open" : ""}>

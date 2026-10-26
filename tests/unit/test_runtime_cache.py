@@ -1,6 +1,8 @@
 """Unit tests for the file-backed runtime result cache."""
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from soinsight.core.analyzer import Analyzer, AnalyzerMetadata, AnalyzerRegistry
 from soinsight.core.models import (
@@ -149,3 +151,105 @@ def test_runtime_caches_and_hits_result_with_findings(tmp_path):
         second.results["security.hardening"].findings[0].rule_id
         == "security.hardening.executable-elf"
     )
+
+
+def test_runtime_cache_round_trips_text_output(tmp_path):
+    """``text`` is part of the cached payload, not something rebuilt on load."""
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+    target = AnalysisTarget(target_file, target_file.resolve(), "sample.so", 6, "sha")
+    cache = RuntimeCache(RuntimeConfig(cache_dir=tmp_path / "cache"))
+    result = AnalysisResult(
+        analyzer_id="basic.file",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"size": 6},
+        text="=== 文件信息 ===\n大小: 6 字节",
+    )
+
+    cache.put(target, result)
+    cached = cache.get(target, "basic.file", "1.0.0")
+
+    assert cached is not None
+    assert cached.text == "=== 文件信息 ===\n大小: 6 字节"
+
+
+def test_runtime_cache_reads_legacy_payload_without_text(tmp_path):
+    """Files written before ``text`` existed must still load, with an empty text."""
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+    target = AnalysisTarget(target_file, target_file.resolve(), "sample.so", 6, "sha")
+    cache = RuntimeCache(RuntimeConfig(cache_dir=tmp_path / "cache"))
+    cache.put(
+        target,
+        AnalysisResult(
+            analyzer_id="basic.file",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={"size": 6},
+            text="=== 文件信息 ===",
+        ),
+    )
+
+    path = cache._path(target, "basic.file", "1.0.0")
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    del payload["text"]  # simulate a cache entry from before the field existed
+    Path(path).write_text(json.dumps(payload), encoding="utf-8")
+
+    cached = cache.get(target, "basic.file", "1.0.0")
+
+    assert cached is not None
+    assert cached.text == ""
+    assert cached.data == {"size": 6}
+
+
+@dataclass
+class TextRecordingAnalyzer(Analyzer):
+    """Records analyze() and format_text() calls so cache hits can be observed."""
+
+    metadata: AnalyzerMetadata
+    analyzed: list[str]
+    formatted: list[str]
+
+    def analyze(self, target, context):
+        self.analyzed.append(self.metadata.id)
+        return AnalysisResult(
+            analyzer_id=self.metadata.id,
+            analyzer_version=self.metadata.version,
+            status=AnalysisStatus.SUCCESS,
+            data={"target": target.name},
+        )
+
+    def format_text(self, result):
+        self.formatted.append(result.analyzer_id)
+        return "=== 缓存的文本 ==="
+
+
+def test_runtime_reuses_cached_text_instead_of_reformatting(tmp_path):
+    """A cache hit carries its own text, so format_text is not called again."""
+    analyzed: list[str] = []
+    formatted: list[str] = []
+    registry = AnalyzerRegistry()
+    registry.register(
+        TextRecordingAnalyzer(
+            AnalyzerMetadata(id="basic.file", name="File", version="1"),
+            analyzed,
+            formatted,
+        )
+    )
+    config = RuntimeConfig(cache_enabled=True, cache_dir=tmp_path / "cache")
+
+    first = AnalysisRuntime(registry).execute(
+        _make_target(tmp_path), ("basic.file",), config
+    )
+    assert analyzed == ["basic.file"]
+    assert formatted == ["basic.file"]
+    assert first.results["basic.file"].text == "=== 缓存的文本 ==="
+
+    second = AnalysisRuntime(registry).execute(
+        _make_target(tmp_path), ("basic.file",), config
+    )
+    assert analyzed == ["basic.file"], "cache hit must not re-run the analyzer"
+    assert formatted == ["basic.file"], "cache hit must not re-render the text"
+    assert second.results["basic.file"].cache_hit is True
+    assert second.results["basic.file"].text == "=== 缓存的文本 ==="

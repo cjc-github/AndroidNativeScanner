@@ -1,5 +1,7 @@
 """Built-in Advanced domain analyzers."""
 
+from typing import Optional
+
 from ..core.analyzer import Analyzer, AnalyzerKind, AnalyzerMetadata
 from ..core.models import (
     AnalysisResult,
@@ -15,6 +17,7 @@ from ..infrastructure.strings.classify import _BASE64_MAX_BYTES, classify_string
 ANALYZER_ID = "advanced.strings"
 
 _CATEGORIES = ("url", "sensitive", "base64")
+_CATEGORY_LABELS = {"url": "URL", "sensitive": "敏感字符串", "base64": "Base64"}
 
 _DEFAULT_OPTIONS = {
     "min_length": 4,
@@ -104,6 +107,61 @@ class AdvancedStringsAnalyzer(Analyzer):
             },
             diagnostics=diagnostics,
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format string analysis result as text."""
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        counts = data.get("counts", {})
+        classified = data.get("classified", {})
+
+        lines = [
+            "=== 字符串分析 ===",
+            f"字符串总数: {counts.get('total_strings', 0)}",
+            f"唯一字符串数: {counts.get('unique_strings', 0)}",
+            f"最小长度: {data.get('min_length', 0)}",
+            f"扫描字节数: {data.get('scanned_bytes', 0):,}",
+            "",
+        ]
+
+        # 分类统计
+        if data.get("classify"):
+            lines.append("=== 字符串分类 ===")
+            for category in _CATEGORIES:
+                cat_data = classified.get(category, {})
+                count = cat_data.get("count", 0)
+                truncated = cat_data.get("truncated", False)
+                lines.append(f"  {_CATEGORY_LABELS.get(category, category)}: {count}")
+
+                # 显示示例
+                hits = cat_data.get("hits", [])[:5]
+                for hit in hits:
+                    value = hit.get("value", "")
+                    if len(value) > 60:
+                        value = value[:57] + "..."
+                    lines.append(f"    - {value}")
+
+                if truncated:
+                    lines.append(f"    ...（已截断）")
+            lines.append("")
+
+        # 显示部分字符串样本
+        strings = data.get("strings", [])
+        if strings:
+            lines.append(f"=== 字符串样本（显示前 {min(10, len(strings))} / 共 {len(strings)} 个）===")
+            for s in strings[:10]:
+                value = s.get("value", "")
+                if len(value) > 80:
+                    value = value[:77] + "..."
+                offset = s.get("offset", "")
+                lines.append(f"  [{offset}] {value}")
+
+            if len(strings) > 10:
+                lines.append(f"  ... 以及另外 {len(strings) - 10} 个字符串")
+
+        return "\n".join(lines)
 
 
 def _read_head(path, max_scan_bytes: int) -> tuple[bytes, bool]:

@@ -1,5 +1,7 @@
 """Built-in Security domain analyzers."""
 
+from typing import Optional
+
 from ..core.analyzer import Analyzer, AnalyzerKind, AnalyzerMetadata
 from ..core.models import (
     AnalysisResult,
@@ -11,6 +13,11 @@ from ..core.models import (
     Finding,
     Severity,
 )
+
+# 文本化结果（format_text）使用的中文标签
+_SEVERITY_LABELS = {"critical": "严重", "high": "高", "medium": "中", "low": "低", "info": "提示"}
+_CONFIDENCE_LABELS = {"high": "高", "medium": "中", "low": "低"}
+_RISK_LABELS = {"low": "低风险", "medium": "中风险", "high": "高风险", "critical": "严重风险"}
 
 class SecurityHardeningAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
@@ -69,6 +76,33 @@ class SecurityHardeningAnalyzer(Analyzer):
             data={"hardening_summary": {"finding_count": len(findings)}},
             findings=findings,
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format hardening analysis result as text."""
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        summary = data.get("hardening_summary", {})
+        finding_count = summary.get("finding_count", 0)
+
+        lines = [
+            "=== 安全加固检查 ===",
+            f"发现项: {finding_count}",
+            "",
+        ]
+
+        if result.findings:
+            lines.append("=== 加固问题 ===")
+            for finding in result.findings:
+                severity = _SEVERITY_LABELS.get(finding.severity.value, finding.severity.value)
+                lines.append(f"  [{severity}] {finding.title}")
+                lines.append(f"    {finding.message}")
+                lines.append("")
+        else:
+            lines.append("未发现加固问题。")
+
+        return "\n".join(lines)
 
 
 # --- dangerous API rule table ------------------------------------------------
@@ -204,6 +238,57 @@ class SecurityDangerousApiAnalyzer(Analyzer):
             findings=findings,
             diagnostics=_stripped_diagnostic(self.metadata.id, symbols),
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format dangerous API analysis result as text."""
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        matched_apis = data.get("matched_apis", [])
+        finding_count = data.get("finding_count", 0)
+        counts_by_severity = data.get("counts_by_severity", {})
+
+        lines = [
+            "=== 危险 API 检测 ===",
+            f"命中 API 数: {len(matched_apis)}",
+            f"发现项: {finding_count}",
+            "",
+        ]
+
+        # 按严重程度统计
+        if counts_by_severity:
+            lines.append("=== 严重度分布 ===")
+            for severity in ["critical", "high", "medium", "low"]:
+                count = counts_by_severity.get(severity, 0)
+                if count > 0:
+                    lines.append(f"  {_SEVERITY_LABELS.get(severity, severity)}: {count}")
+            lines.append("")
+
+        # 显示匹配的 API
+        if matched_apis:
+            lines.append(f"=== 命中的危险 API（显示前 {min(20, len(matched_apis))} / 共 {len(matched_apis)} 个）===")
+            for api in matched_apis[:20]:
+                lines.append(f"  - {api}")
+            if len(matched_apis) > 20:
+                lines.append(f"  ... 以及另外 {len(matched_apis) - 20} 个 API")
+            lines.append("")
+
+        # 显示详细发现
+        if result.findings:
+            lines.append("=== 详细发现项 ===")
+            for finding in result.findings[:10]:
+                severity = _SEVERITY_LABELS.get(finding.severity.value, finding.severity.value)
+                lines.append(f"  [{severity}] {finding.title}")
+                lines.append(f"    {finding.message}")
+                if finding.remediation:
+                    lines.append(f"    修复建议: {finding.remediation}")
+                lines.append("")
+
+            if len(result.findings) > 10:
+                lines.append(f"  ... 以及另外 {len(result.findings) - 10} 个发现项")
+
+        return "\n".join(lines)
 
     def _inspect(
         self,
@@ -365,6 +450,73 @@ class SecurityRiskAnalyzer(Analyzer):
                 ],
             },
         )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format risk analysis result as text."""
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        risk_score = data.get("risk_score", 0)
+        risk_level = data.get("risk_level", "unknown")
+        finding_count = data.get("finding_count", 0)
+        unique_count = data.get("unique_finding_count", 0)
+        duplicate_count = data.get("duplicate_count", 0)
+        counts_by_severity = data.get("counts_by_severity", {})
+        counts_by_category = data.get("counts_by_category", {})
+        string_indicators = data.get("string_indicators", {})
+        top_findings = data.get("top_findings", [])
+
+        lines = [
+            "=== 安全风险评估 ===",
+            f"风险评分: {risk_score}",
+            f"风险等级: {_RISK_LABELS.get(risk_level, risk_level)}",
+            f"发现项总数: {finding_count}（去重后: {unique_count}，重复: {duplicate_count}）",
+            "",
+        ]
+
+        # 按严重程度统计
+        if counts_by_severity:
+            lines.append("=== 按严重度分布 ===")
+            for severity in ["critical", "high", "medium", "low"]:
+                count = counts_by_severity.get(severity, 0)
+                if count > 0:
+                    lines.append(f"  {_SEVERITY_LABELS.get(severity, severity)}: {count}")
+            lines.append("")
+
+        # 按类别统计
+        if counts_by_category:
+            lines.append("=== 按类别分布 ===")
+            for category, count in sorted(counts_by_category.items(), key=lambda x: x[1], reverse=True):
+                lines.append(f"  {category}: {count}")
+            lines.append("")
+
+        # 字符串指标
+        if string_indicators:
+            lines.append("=== 字符串指标 ===")
+            url_count = string_indicators.get("url_count", 0)
+            url_score = string_indicators.get("url_score", 0)
+            sensitive_count = string_indicators.get("sensitive_count", 0)
+            sensitive_score = string_indicators.get("sensitive_score", 0)
+            base64_count = string_indicators.get("base64_count", 0)
+            base64_score = string_indicators.get("base64_score", 0)
+
+            lines.append(f"  URL: {url_count}（评分: {url_score}）")
+            lines.append(f"  敏感字符串: {sensitive_count}（评分: {sensitive_score}）")
+            lines.append(f"  Base64: {base64_count}（评分: {base64_score}）")
+            lines.append("")
+
+        # 显示高风险发现
+        if top_findings:
+            lines.append("=== 风险最高的发现项 ===")
+            for finding in top_findings:
+                severity = _SEVERITY_LABELS.get(finding.get("severity", ""), finding.get("severity", "未知"))
+                confidence = _CONFIDENCE_LABELS.get(finding.get("confidence", ""), finding.get("confidence", "未知"))
+                lines.append(f"  [{severity}/{confidence}] {finding.get('title', 'N/A')}")
+                lines.append(f"    规则: {finding.get('rule_id', 'N/A')}")
+                lines.append("")
+
+        return "\n".join(lines)
 
 
 def _dedupe(findings: list[Finding]) -> tuple[list[Finding], int]:
