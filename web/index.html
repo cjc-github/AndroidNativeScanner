@@ -189,6 +189,14 @@
     font-size: 13.5px; white-space: pre-wrap; word-break: break-all;
   }
   #error-box.show { display: block; }
+  /* 中性提示（例如用户主动取消）：不是错误，用信息色而非红色 */
+  #error-box.notice {
+    background: var(--info-bg); border-color: var(--info-border); color: var(--info);
+  }
+
+  #cancel-btn { color: var(--fail); border-color: var(--fail-border); background: var(--fail-bg); }
+  #cancel-btn:hover:not(:disabled) { border-color: var(--fail); }
+  #cancel-btn:disabled { opacity: .5; cursor: default; }
 
   /* ---------- results ---------- */
   #empty-state {
@@ -525,6 +533,7 @@
       <button class="primary" id="run-btn" disabled>
         <span class="spinner" id="run-spinner"></span><span id="run-label">▶ 运行分析</span>
       </button>
+      <button class="small" id="cancel-btn" type="button" hidden>■ 停止分析</button>
       <span id="run-status">请选择目标文件和分析能力</span>
       <span id="elapsed"></span>
     </div>
@@ -551,6 +560,7 @@
             <div class="raw-actions">
               <button class="small" id="copy-json" type="button">复制 JSON</button>
               <button class="small" id="download-json" type="button">下载 JSON</button>
+              <button class="small" id="download-findings" type="button">导出发现项 CSV</button>
             </div>
             <pre id="raw-json"></pre>
           </div>
@@ -704,6 +714,8 @@ var state = {
   capabilities: [],       // 多选的能力 id
   activeTab: "summary",
   running: false,
+  cancelling: false,
+  timeout: 180,           // 服务端单次分析超时上限（/api/health 返回，秒）
   response: null,
   timer: null,
   sym: { q: "", lang: "all", shown: 200 }
@@ -744,6 +756,7 @@ var runBtn = $("run-btn");
 var runSpinner = $("run-spinner");
 var runLabel = $("run-label");
 var runStatus = $("run-status");
+var cancelBtn = $("cancel-btn");
 var elapsedEl = $("elapsed");
 var errorBox = $("error-box");
 var emptyState = $("empty-state");
@@ -761,9 +774,52 @@ var rawJson = $("raw-json");
 
 var EMPTY_TEXT = "分析结果将显示在这里。结果由本机 Python 实算，结构化 JSON 可复制、可下载。";
 
+/* ================= 偏好持久化 ================= */
+
+/* 只记住"选择"（模式 / 勾选的能力 / 服务器路径），不存分析结果。
+   上传的 File 对象无法序列化，所以拖拽选择的文件刷新后需要重选。 */
+var PREFS_KEY = "soinsight.console.prefs.v1";
+
+function loadPrefs() {
+  try {
+    var raw = window.localStorage.getItem(PREFS_KEY);
+    if (!raw) return null;
+    var data = JSON.parse(raw);
+    return data && typeof data === "object" ? data : null;
+  } catch (e) {
+    return null;   // 隐私模式 / JSON 脏数据：静默回退到默认值
+  }
+}
+
+function savePrefs() {
+  try {
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify({
+      mode: state.mode,
+      capabilities: state.capabilities,
+      path: pathInput ? pathInput.value : ""
+    }));
+  } catch (e) { /* 配额满或被禁用：持久化失败不影响分析 */ }
+}
+
+function restorePrefs() {
+  var prefs = loadPrefs();
+  if (!prefs) return;
+  if (prefs.mode === "scan") state.mode = "scan";
+  if (Object.prototype.toString.call(prefs.capabilities) === "[object Array]") {
+    state.capabilities = prefs.capabilities.filter(function (id) {
+      return typeof id === "string" && id;
+    });
+  }
+  if (prefs.path) {
+    pathInput.value = prefs.path;
+    useTypedPath();          // 恢复上次的目标文件（不存在时运行会给出明确报错）
+  }
+}
+
 /* ================= 初始化 ================= */
 
 function init() {
+  restorePrefs();
   buildPresets(null);   // 先用页面内置清单渲染，未连服务时面板也有内容
   renderCapabilityGrid();
   renderCapCount();
@@ -795,6 +851,7 @@ function bindEvents() {
   $("cap-all").addEventListener("click", selectAllCapabilities);
   $("cap-none").addEventListener("click", clearCapabilities);
   runBtn.addEventListener("click", runAnalysis);
+  cancelBtn.addEventListener("click", cancelRun);
   $("retry-health").addEventListener("click", checkHealth);
   resultTabs.addEventListener("click", function (e) {
     var btn = e.target && e.target.closest ? e.target.closest(".tab") : null;
@@ -811,6 +868,8 @@ function bindEvents() {
     copyText(JSON.stringify(state.response, null, 2), e.currentTarget);
   });
   $("download-json").addEventListener("click", downloadJson);
+  $("download-findings").addEventListener("click", exportFindingsCsv);
+  pathInput.addEventListener("change", savePrefs);
 
   document.addEventListener("input", function (e) {
     var role = e.target.dataset ? e.target.dataset.role : "";
@@ -820,6 +879,8 @@ function bindEvents() {
   document.addEventListener("click", function (e) {
     var role = e.target.dataset ? e.target.dataset.role : "";
     if (role === "sym-more") { state.sym.shown += 400; rerenderSymbols(); }
+    if (role === "sym-csv") exportSymbolsCsv();
+    if (role === "finding-csv") exportFindingsCsv();
   });
 }
 
@@ -834,8 +895,9 @@ function checkHealth() {
     .then(function (data) {
       if (!data.ok) throw new Error(data.catalog_error || "服务报告异常");
       state.health = data;
+      state.timeout = Number(data.analysis_timeout_seconds) || state.timeout;
       dot.classList.add("ok");
-      text.textContent = "服务正常 · Python " + data.python;
+      text.textContent = "服务正常 · Python " + data.python + " · 超时上限 " + state.timeout + " s";
       $("version-badge").textContent = "v" + data.version + " · " + data.registered_analyzers.length + " Analyzer";
       banner.classList.remove("show");
       applyAnalyzers(data.registered_analyzers);   // 能力清单以服务端为准
@@ -992,6 +1054,7 @@ function syncCapabilitySelection() {
     card.classList.toggle("dim", !selected && scanMode);
     card.setAttribute("aria-pressed", selected ? "true" : "false");
   });
+  savePrefs();   // 勾选变化即持久化，刷新后自动恢复
 }
 
 function selectAllCapabilities() {
@@ -1028,12 +1091,17 @@ function runAnalysis() {
   clearResults();                       // 每次运行前先清空上一次的分析结果
   emptyState.textContent = "正在分析，请稍候…";
   state.running = true;
+  state.cancelling = false;
   runBtn.disabled = true;
   runSpinner.classList.add("on");
   runLabel.textContent = "分析中…";
+  cancelBtn.hidden = false;
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = "■ 停止分析";
   var startedAt = performance.now();
   state.timer = setInterval(function () {
-    elapsedEl.textContent = "已用 " + ((performance.now() - startedAt) / 1000).toFixed(1) + " s";
+    var secs = ((performance.now() - startedAt) / 1000).toFixed(1);
+    elapsedEl.textContent = "已用 " + secs + " s / 上限 " + state.timeout + " s";
   }, 100);
 
   var params = new URLSearchParams();
@@ -1064,7 +1132,9 @@ function runAnalysis() {
       });
     })
     .catch(function (err) {
-      showError(err && err.message ? err.message : String(err));
+      var message = err && err.message ? err.message : String(err);
+      if (message.indexOf("已取消") >= 0) showNotice("已停止本次分析，服务端子进程已终止。");
+      else showError(message);
       emptyState.textContent = EMPTY_TEXT;
       emptyState.hidden = false;
       resultBody.hidden = true;
@@ -1072,14 +1142,41 @@ function runAnalysis() {
     .then(function () {  // finally（无参 then 总会在其后执行）
       clearInterval(state.timer);
       state.running = false;
+      state.cancelling = false;
       runSpinner.classList.remove("on");
       runLabel.textContent = "▶ 运行分析";
       elapsedEl.textContent = "";
+      cancelBtn.hidden = true;
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = "■ 停止分析";
       updateRunButton();
     });
 }
 
+/* 停止正在跑的分析：服务端会 kill 子进程，请求随即以 "分析已取消" 返回。 */
+function cancelRun() {
+  if (!state.running || state.cancelling) return;
+  state.cancelling = true;
+  cancelBtn.disabled = true;
+  cancelBtn.textContent = "正在停止…";
+  runStatus.textContent = "正在停止分析…";
+  fetch("/api/cancel", { method: "POST" })
+    .then(function (resp) { return resp.json(); })
+    .then(function (data) {
+      // 没有可取消的任务（例如刚好结束）：不改 UI，等 analyze 请求自己收尾
+      if (!data || !data.cancelled) runStatus.textContent = "分析已结束，正在收尾…";
+    })
+    .catch(function () { /* 服务不可达时交给 analyze 请求报错 */ });
+}
+
 function showError(message) {
+  errorBox.classList.remove("notice");
+  errorBox.textContent = message;
+  errorBox.classList.add("show");
+}
+
+function showNotice(message) {
+  errorBox.classList.add("notice");
   errorBox.textContent = message;
   errorBox.classList.add("show");
 }
@@ -1158,7 +1255,8 @@ function buildResultTabs(ids, results) {
   })).concat([{ tab: "raw", label: "原始 JSON" }]);
 
   resultTabs.innerHTML = tabs.map(function (t) {
-    return '<button type="button" class="tab" role="tab" data-tab="' + esc(t.tab) + '"' +
+    return '<button type="button" class="tab" role="tab" aria-selected="false" tabindex="-1"' +
+      ' data-tab="' + esc(t.tab) + '"' +
       (t.cap ? ' title="' + esc(t.cap) + '"' : "") + ">" +
       (t.status ? '<span class="st ' + statusClass(t.status) + '"></span>' : "") +
       "<span>" + esc(t.label) + "</span>" +
@@ -1171,6 +1269,7 @@ function buildResultTabs(ids, results) {
     panel.className = "tab-panel";
     panel.setAttribute("data-tab", id);
     panel.setAttribute("data-kind", "analyzer");
+    panel.setAttribute("role", "tabpanel");
     panel.innerHTML = renderAnalyzerBody(id, results[id]);
     resultPanels.insertBefore(panel, rawPanel);
   });
@@ -1179,7 +1278,11 @@ function buildResultTabs(ids, results) {
 function selectTab(id) {
   state.activeTab = id;
   Array.prototype.forEach.call(resultTabs.querySelectorAll(".tab"), function (btn) {
-    btn.classList.toggle("active", btn.getAttribute("data-tab") === id);
+    var active = btn.getAttribute("data-tab") === id;
+    btn.classList.toggle("active", active);
+    // 键盘与读屏器依赖 aria-selected / roving tabindex，仅切换 class 不够
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    btn.setAttribute("tabindex", active ? "0" : "-1");
   });
   Array.prototype.forEach.call(resultPanels.querySelectorAll(".tab-panel"), function (panel) {
     panel.classList.toggle("active", panel.getAttribute("data-tab") === id);
@@ -1233,7 +1336,7 @@ function clearResults() {
   state.response = null;
   state.activeTab = "summary";
   state.sym = { q: "", lang: "all", shown: 200 };
-  errorBox.classList.remove("show");
+  errorBox.classList.remove("show", "notice");
   errorBox.textContent = "";
   resultMeta.innerHTML = "";
   resultTabs.innerHTML = "";
@@ -1344,7 +1447,9 @@ function renderSymbolsData(d) {
       return '<option value="' + esc(l) + '">' + esc(l) + " (" + langCount[l] + ")</option>";
     }).join("") +
     "</select>" +
-    '<span class="count" data-role="sym-count"></span></div>' +
+    '<span class="count" data-role="sym-count"></span>' +
+    '<button class="small" type="button" data-role="sym-csv" title="导出当前筛选结果的全部符号">导出 CSV</button>' +
+    "</div>" +
     '<div class="table-wrap"><table class="data"><thead><tr>' +
     "<th>符号</th><th>签名 / 语言</th><th>绑定</th><th>可见性</th><th>地址</th><th>大小</th><th>来源</th>" +
     '</tr></thead><tbody data-role="sym-body"></tbody></table></div>' +
@@ -1475,7 +1580,9 @@ function renderFindings(findings) {
       (f.remediation ? '<div class="fix"><b>修复建议：</b>' + esc(f.remediation) + "</div>" : "") +
       "</div>";
   }).join("");
-  findingsSection.innerHTML = '<div class="section-title">发现项 <span class="n">' + findings.length + "</span></div>" + cards;
+  findingsSection.innerHTML = '<div class="section-title">发现项 <span class="n">' + findings.length + "</span>" +
+    '<button class="small" type="button" data-role="finding-csv" style="margin-left:auto">导出 CSV</button>' +
+    "</div>" + cards;
 }
 
 function renderDiagnostic(d) {
@@ -1498,6 +1605,18 @@ function renderDiagnostics(diags) {
 
 /* ---- 符号表交互 ---- */
 
+/* 表格渲染与 CSV 导出共用同一套筛选条件，保证"看到什么就导出什么" */
+function filterSymbols(list) {
+  return (list || []).filter(function (f) {
+    if (state.sym.lang !== "all" && f.language !== state.sym.lang) return false;
+    if (state.sym.q) {
+      var hay = (f.name + " " + (f.signature || "") + " " + (f.namespace || "")).toLowerCase();
+      if (hay.indexOf(state.sym.q) === -1) return false;
+    }
+    return true;
+  });
+}
+
 function rerenderSymbols() {
   var symbolsCard = state.response && state.response.payload
     ? state.response.payload.result.results["basic.symbols"]
@@ -1511,14 +1630,7 @@ function rerenderSymbols() {
   var moreBtn = wrap.querySelector('[data-role="sym-more"]');
   if (!body || !count || !moreBtn) return;
 
-  var filtered = (d.functions || []).filter(function (f) {
-    if (state.sym.lang !== "all" && f.language !== state.sym.lang) return false;
-    if (state.sym.q) {
-      var hay = (f.name + " " + (f.signature || "") + " " + (f.namespace || "")).toLowerCase();
-      if (hay.indexOf(state.sym.q) === -1) return false;
-    }
-    return true;
-  });
+  var filtered = filterSymbols(d.functions);
   var rows = filtered.slice(0, state.sym.shown).map(function (f) {
     return "<tr>" +
       '<td class="wrap"><span class="sym-name" title="' + esc(f.name) + '">' + esc(f.name) + "</span></td>" +
@@ -1537,16 +1649,71 @@ function rerenderSymbols() {
 
 /* ================= 下载 ================= */
 
-function downloadJson() {
-  if (!state.response) return;
-  var blob = new Blob([JSON.stringify(state.response, null, 2)], { type: "application/json" });
+function triggerDownload(blob, filename) {
   var a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = (state.target ? state.target.name : "analysis") + ".soinsight.json";
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+
+function baseFileName() {
+  var name = state.target ? state.target.name : "analysis";
+  return String(name).replace(/[\\/:*?"<>|\s]+/g, "_");
+}
+
+function downloadJson() {
+  if (!state.response) return;
+  var blob = new Blob([JSON.stringify(state.response, null, 2)], { type: "application/json" });
+  triggerDownload(blob, baseFileName() + ".soinsight.json");
+}
+
+/* ---- CSV 导出 ---- */
+
+function csvCell(value) {
+  if (value === null || value === undefined) return "";
+  var text = String(value);
+  // CSV 注入防护：以 = + - @ 开头的单元格会被 Excel/LibreOffice 当公式执行
+  if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+  if (/[",\r\n]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+  return text;
+}
+
+function downloadCsv(filename, header, rows) {
+  var body = [header.map(csvCell).join(",")];
+  rows.forEach(function (row) { body.push(row.map(csvCell).join(",")); });
+  // 带 UTF-8 BOM，Excel 才会正确显示中文
+  var blob = new Blob(["\ufeff" + body.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  triggerDownload(blob, filename);
+}
+
+function analyzerResult(id) {
+  var result = state.response && state.response.payload && state.response.payload.result;
+  return result && result.results ? result.results[id] : null;
+}
+
+function exportSymbolsCsv() {
+  var card = analyzerResult("basic.symbols");
+  if (!card) return;
+  var rows = filterSymbols((card.data || {}).functions).map(function (f) {
+    return [f.name, f.signature || "", f.language, f.bind, f.visibility, f.address, f.size, f.source];
+  });
+  downloadCsv(baseFileName() + ".symbols.csv",
+    ["符号", "签名", "语言", "绑定", "可见性", "地址", "大小", "来源"], rows);
+}
+
+function exportFindingsCsv() {
+  var result = state.response && state.response.payload && state.response.payload.result;
+  if (!result) return;
+  var rows = (result.findings || []).slice().sort(function (a, b) {
+    return sevRank(b.severity) - sevRank(a.severity);
+  }).map(function (f) {
+    return [SEV_LABEL[f.severity] || f.severity, f.title, f.rule_id, f.confidence, f.message, f.remediation || ""];
+  });
+  downloadCsv(baseFileName() + ".findings.csv",
+    ["严重程度", "标题", "规则", "置信度", "说明", "修复建议"], rows);
 }
 
 init();

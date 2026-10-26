@@ -5,13 +5,18 @@ expose the CLI JSON payload, so the tests drive a real analysis of a small
 text target (valid non-ELF) and a synthetic ELF from tests.conftest.
 """
 
+import contextlib
 import json
+import subprocess
+import sys
 import threading
 import time
 import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest import mock
 
 from tests.conftest import build_elf64_with_symbols
 
@@ -207,6 +212,126 @@ class WebAnalyzeMultiModeTests(unittest.TestCase):
         body = json.load(ctx.exception)
         self.assertFalse(body["ok"])
         self.assertIn("bogus.thing", body["error"])
+
+
+class WebStaticRouteTests(unittest.TestCase):
+    """Only real web assets may be served, never the server's own source."""
+
+    httpd: ThreadingHTTPServer
+    base: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def test_serves_console_pages(self):
+        for route in ("/", "/index.html", "/so-scan.html"):
+            with urllib.request.urlopen(self.base + route) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn("SOInsight", response.read().decode("utf-8"))
+
+    def test_never_serves_server_source_or_launcher(self):
+        for route in ("/server.py", "/start-web.bat", "/__pycache__/server.cpython-310.pyc"):
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(self.base + route)
+            self.assertEqual(ctx.exception.code, 404, f"{route} 不应可下载")
+
+    def test_rejects_path_traversal_outside_web_dir(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(self.base + "/../README.md")
+        self.assertIn(ctx.exception.code, (403, 404))
+
+
+class WebCancelTests(unittest.TestCase):
+    """``/api/cancel`` stops the in-flight analysis instead of waiting it out."""
+
+    httpd: ThreadingHTTPServer
+    base: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def test_cancel_endpoint_reports_nothing_running(self):
+        request = urllib.request.Request(self.base + "/api/cancel", data=b"", method="POST")
+        with urllib.request.urlopen(request) as response:
+            self.assertEqual(response.status, 200)
+            payload = json.load(response)
+        self.assertEqual(payload, {"ok": True, "cancelled": False})
+
+    @contextlib.contextmanager
+    def _analysis_with_fake_child(self, timeout: float | None = None):
+        """Run ``_run_analysis`` against a long-sleeping child instead of the CLI.
+
+        Yields ``(thread, holder)``; the holder collects the returned envelope.
+        The patch is always torn down, so a failing assertion cannot leak a
+        patched ``Popen`` into the rest of the suite.
+        """
+        sleep_argv = [sys.executable, "-c", "import time; time.sleep(60)"]
+        real_popen = subprocess.Popen
+        holder: dict[str, dict] = {}
+
+        def fake_popen(_argv, **kwargs):
+            return real_popen(sleep_argv, **kwargs)
+
+        def worker():
+            holder["result"] = server_module._run_analysis(
+                "single", "basic.elf", "", Path("unused-target")
+            )
+
+        patches = [mock.patch.object(server_module.subprocess, "Popen", fake_popen)]
+        if timeout is not None:
+            patches.append(mock.patch.object(server_module, "ANALYSIS_TIMEOUT", timeout))
+        for patch in patches:
+            patch.start()
+        thread = threading.Thread(target=worker, daemon=True)
+        try:
+            thread.start()
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                with server_module._RUN_LOCK:
+                    if server_module._RUN_STATE["proc"] is not None:
+                        break
+                time.sleep(0.02)
+            else:
+                self.fail("分析子进程始终没有启动")
+            yield thread, holder
+        finally:
+            for patch in patches:
+                patch.stop()
+            thread.join(timeout=20)
+
+    def test_cancel_kills_the_running_child(self):
+        with self._analysis_with_fake_child() as (thread, holder):
+            started = time.time()
+            self.assertTrue(server_module.request_cancel())
+            thread.join(timeout=20)
+            elapsed = time.time() - started
+        self.assertFalse(thread.is_alive(), "取消后分析线程仍在阻塞")
+        self.assertFalse(holder["result"]["ok"])
+        self.assertEqual(holder["result"]["error"], "分析已取消")
+        self.assertLess(elapsed, 15, "取消应立刻返回，而不是等子进程自己结束")
+
+    def test_timeout_kills_the_running_child(self):
+        with self._analysis_with_fake_child(timeout=1) as (thread, holder):
+            thread.join(timeout=20)
+        self.assertFalse(thread.is_alive(), "超时后分析线程仍在阻塞")
+        self.assertFalse(holder["result"]["ok"])
+        self.assertIn("超时", holder["result"]["error"])
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -8,9 +8,13 @@
 
 用法::
 
-    python site/server.py              # 启动并自动打开浏览器
-    python site/server.py --no-open    # 只启动服务，不打开浏览器
-    python site/server.py --port 9000  # 指定端口（默认 8765，占用则顺延）
+    python web/server.py              # 启动并自动打开浏览器
+    python web/server.py --no-open    # 只启动服务，不打开浏览器
+    python web/server.py --port 9000  # 指定端口（默认 8765，占用则顺延）
+
+Windows 上推荐 ``py -3 web\\server.py``：若默认的 ``python`` 指向未安装
+PyYAML 的解释器，产品目录会加载失败。Windows 用户也可直接双击
+``web\\start-web.bat``。
 
 API::
 
@@ -34,6 +38,8 @@ API::
     GET  /api/jobs/<id>/result
                            任务完成后取完整 CLI JSON：{ok, exit_code,
                            duration_ms, command, payload}。
+    POST /api/cancel       终止正在运行的 /api/analyze 子进程，返回
+                           {ok, cancelled}；没有在跑的任务时 cancelled=false。
 """
 
 from __future__ import annotations
@@ -66,6 +72,12 @@ SAMPLE_SUFFIXES = {".so", ".elf", ".o", ".dylib"}
 
 ANALYSIS_TIMEOUT = 180
 _ANALYSIS_LOCK = threading.Lock()
+
+# The single in-flight /api/analyze child process. /api/cancel flips
+# ``cancelled`` and kills the process so the waiting request can return early
+# instead of burning the rest of the timeout.
+_RUN_LOCK = threading.Lock()
+_RUN_STATE: dict[str, object] = {"proc": None, "cancelled": False}
 
 MAX_JOBS_KEPT = 8
 _JOBS: dict[str, dict] = {}
@@ -150,6 +162,30 @@ def _list_samples() -> list[dict]:
     return samples
 
 
+def _kill(process: subprocess.Popen) -> None:
+    """Terminate a child process, tolerating one that already exited.
+
+    Deliberately does *not* call ``communicate()``: the analysis thread owns
+    the pipes, and two threads reaping the same process would race. Killing is
+    enough — the waiting ``communicate(timeout=...)`` returns right after.
+    """
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
+def request_cancel() -> bool:
+    """Ask the in-flight analysis to stop. Returns True if something was running."""
+    with _RUN_LOCK:
+        process = _RUN_STATE["proc"]
+        if process is None:
+            return False
+        _RUN_STATE["cancelled"] = True
+    _kill(process)  # type: ignore[arg-type]
+    return True
+
+
 def _run_analysis(
     mode: str,
     capability: str,
@@ -167,28 +203,26 @@ def _run_analysis(
         argv += capability.split(".") + [str(target)]
     argv += ["--format", "json", "--no-cache", "--quiet"]
 
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (str(SRC_DIR), env.get("PYTHONPATH")) if part
-    )
-    env["PYTHONIOENCODING"] = "utf-8"
+    env = _transform_env()
 
     started = time.perf_counter()
+    with _RUN_LOCK:
+        _RUN_STATE["cancelled"] = False
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             argv,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
             env=env,
-            timeout=ANALYSIS_TIMEOUT,
             cwd=str(REPO_ROOT),
         )
-    except subprocess.TimeoutExpired:
+    except OSError as exc:  # pragma: no cover - 环境相关
         return {
             "ok": False,
-            "error": f"分析超时（超过 {ANALYSIS_TIMEOUT} 秒）",
+            "error": f"无法启动分析子进程: {exc}",
             "command": argv,
             "exit_code": None,
             "duration_ms": int((time.perf_counter() - started) * 1000),
@@ -196,35 +230,73 @@ def _run_analysis(
             "stderr_tail": "",
         }
 
+    with _RUN_LOCK:
+        _RUN_STATE["proc"] = process
+    try:
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=0.2)
+                break
+            except subprocess.TimeoutExpired:
+                if time.perf_counter() - started <= ANALYSIS_TIMEOUT:
+                    continue
+                _kill(process)
+                process.communicate()      # 只在本线程收尾，避免与取消请求抢管道
+                return {
+                    "ok": False,
+                    "error": f"分析超时（超过 {ANALYSIS_TIMEOUT} 秒）",
+                    "command": argv,
+                    "exit_code": None,
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                    "payload": None,
+                    "stderr_tail": "",
+                }
+    finally:
+        with _RUN_LOCK:
+            _RUN_STATE["proc"] = None
+            cancelled = bool(_RUN_STATE["cancelled"])
+            _RUN_STATE["cancelled"] = False
+
     duration_ms = int((time.perf_counter() - started) * 1000)
-    stdout = completed.stdout or ""
+    stdout = stdout or ""
     payload = None
     parse_error = None
     try:
         payload = json.loads(stdout) if stdout.strip() else None
     except json.JSONDecodeError as exc:
         parse_error = f"CLI 输出不是有效 JSON: {exc}"
+    # 取消后如果子进程其实已经把完整结果写完，就照常返回结果，别丢掉已完成的分析
+    if cancelled and payload is None:
+        return {
+            "ok": False,
+            "error": "分析已取消",
+            "command": argv,
+            "exit_code": process.returncode,
+            "duration_ms": duration_ms,
+            "payload": None,
+            "stderr_tail": "",
+        }
     if payload is None and parse_error is None:
-        stderr_text = completed.stderr or ""
+        stderr_text = stderr or ""
         if "ModuleNotFoundError" in stderr_text:
             parse_error = (
                 "分析子进程缺少依赖（子进程使用 "
                 f"{sys.executable}）。请用安装了项目依赖的 Python 运行本服务，"
-                "例如项目虚拟环境：.venv\\Scripts\\python site\\server.py"
+                "例如项目虚拟环境：.venv\\Scripts\\python web\\server.py"
             )
         else:
-            parse_error = f"CLI 未产生 JSON 输出（退出码 {completed.returncode}）"
+            parse_error = f"CLI 未产生 JSON 输出（退出码 {process.returncode}）"
     return {
         # A non-zero exit code with a valid payload is still a real analysis
         # result (e.g. an analyzer reporting FAILED); the page renders it.
         "ok": payload is not None,
         "error": parse_error,
         "command": argv,
-        "exit_code": completed.returncode,
+        "exit_code": process.returncode,
         "duration_ms": duration_ms,
         "payload": payload,
         "stdout_tail": stdout[-4000:] if parse_error else "",
-        "stderr_tail": (completed.stderr or "")[-2000:],
+        "stderr_tail": (stderr or "")[-2000:],
     }
 
 
@@ -509,21 +581,31 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _discard_body(self) -> None:
+        """Drain an unused request body so keep-alive connections stay in sync."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if 0 < length <= MAX_UPLOAD_BYTES:
+            self.rfile.read(length)
+
     def _serve_static(self, route: str) -> None:
         relative = route.lstrip("/") or "index.html"
         target = (SITE_DIR / relative).resolve()
         if SITE_DIR != target and SITE_DIR not in target.parents:
             self._send_json({"ok": False, "error": "禁止访问"}, HTTPStatus.FORBIDDEN)
             return
-        if not target.is_file():
+        # Only known web assets may be served. This directory also contains
+        # server.py and start-web.bat; without this allowlist they (and any
+        # __pycache__ artifact) would be downloadable as source code.
+        content_type = CONTENT_TYPES.get(target.suffix.lower())
+        if content_type is None or not target.is_file():
             self._send_json(
                 {"ok": False, "error": f"文件不存在: {route}"}, HTTPStatus.NOT_FOUND
             )
             return
-        self._send_bytes(
-            target.read_bytes(),
-            CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream"),
-        )
+        self._send_bytes(target.read_bytes(), content_type)
 
     # -- routes ----------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
@@ -585,6 +667,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib name
         parsed = urlparse(self.path)
+        if parsed.path == "/api/cancel":
+            self._discard_body()
+            self._send_json({"ok": True, "cancelled": request_cancel()})
+            return
         if parsed.path not in ("/api/analyze", "/api/jobs"):
             self._send_json(
                 {"ok": False, "error": f"未知路径: {parsed.path}"},
@@ -606,7 +692,20 @@ class Handler(BaseHTTPRequestHandler):
         ).strip() or "basic,advanced,security"
         path_param = params.get("path", "").strip()
 
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send_json(
+                {"ok": False, "error": "Content-Length 不是合法整数"},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+        if length < 0:
+            self._send_json(
+                {"ok": False, "error": "Content-Length 不能为负数"},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
         if length > MAX_UPLOAD_BYTES:
             self._send_json(
                 {"ok": False, "error": f"文件超过 {MAX_UPLOAD_BYTES // 1048576} MiB 上限"},

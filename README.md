@@ -92,6 +92,27 @@ soinsight --help
 ./scripts/build_cli.sh --install
 ```
 
+## 本地 Web 控制台
+
+仓库自带一个只绑定回环地址的本地控制台（仅标准库，无需额外依赖）。它把浏览器和 CLI 连起来：页面选文件 → 勾选分析能力 → 后台以子进程跑 `python -m soinsight ... --format json` → 结果按 Analyzer 分 Tab 展示。
+
+```bash
+# Windows：双击 web\start-web.bat，或
+py -3 web/server.py                  # 推荐 py -3：默认 python 可能是没装 PyYAML 的版本
+# Linux / macOS
+python3 web/server.py
+
+python3 web/server.py --port 9000    # 指定端口（默认 8765，被占用则顺延）
+python3 web/server.py --no-open      # 不自动打开浏览器
+python3 web/server.py --timeout 600  # 单次分析超时（默认 180 秒）
+```
+
+- 支持拖拽上传、服务器绝对路径、`in/` 目录样本三种目标来源；上传文件写入临时目录，分析后删除；
+- 分析能力支持任意多选（依赖自动补齐），也可切到「组合扫描」跑全部已实现 Analyzer；
+- 运行中可点「停止分析」终止子进程；结果可复制/下载 JSON，符号表与发现项可导出 CSV；
+- `web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时日志 + 结果摘要；
+- 包内另有旧的 `soinsight web` 子命令（端口 8080，简易上传页），日常请使用 `web/server.py`。
+
 ## 当前仓库结构
 
 ```text
@@ -118,6 +139,7 @@ AndroidNativeScanner/
 │       │   └── dwarf/            # 纯 Python DWARF 调试信息解析
 │       └── compatibility/        # V1 兼容适配预留
 ├── tests/                        # V2 单元与集成测试
+├── web/                          # 本地 Web 控制台：server.py / index.html / so-scan.html / start-web.bat
 ├── scripts/build_cli.sh          # Wheel 构建与入口校验
 ├── docs/                         # 使用与开发文档
 └── design/                       # V2 主设计、V3 占位与 V1 历史规划

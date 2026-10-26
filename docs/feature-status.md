@@ -69,19 +69,21 @@
 
 ### 5. Web 控制台（最新提交）
 
-- [x] `web/server.py`：stdlib HTTP 服务，`/api/health`、`/api/modules`、`/api/samples`、`/api/analyze`；单能力（`capability=`）、多选能力（`mode=multi` + `capabilities=a,b,c`，映射 CLI `scan --enable`）与组合（`modules=`）三种模式；服务器路径（traversal 校验）或二进制上传（`X-Filename`）；子进程调用 `python -m soinsight --format json` 并回传 ScanResult；另提供异步任务接口 `POST /api/jobs` + `GET /api/jobs/<id>/log?offset=`（实时轮询日志）+ `GET /api/jobs/<id>/result`（完整 JSON），供深度分析台页面使用
-- [x] `web/index.html`：拖拽上传/样本下拉/服务器路径三种目标来源；能力清单由 `/api/health` 的 `registered_analyzers` 动态生成（中文名映射见 `CAP_META`，未知 id 回退显示原名），支持任意多选 + 全选/清空，另带一个组合 scan 开关；结果区为横向 Tab（概览 / 每个 Analyzer 一页 / 原始 JSON），Tab 标签用中文名 + Analyzer ID，两端 `‹ ›` 箭头与 ←/→ 键切换，重跑前自动清空上一次结果；每个 Analyzer 面板内附「文本化结果」折叠块
+- [x] `web/server.py`：stdlib HTTP 服务，`/api/health`、`/api/modules`、`/api/samples`、`/api/analyze`；单能力（`capability=`）、多选能力（`mode=multi` + `capabilities=a,b,c`，映射 CLI `scan --enable`）与组合（`modules=`）三种模式；服务器路径（traversal 校验）或二进制上传（`X-Filename`）；子进程调用 `python -m soinsight --format json` 并回传 ScanResult；`POST /api/cancel` 可终止正在运行的子进程（返回 `分析已取消` 而非等满超时），超时上限由 `--timeout` 控制并在 `/api/health` 的 `analysis_timeout_seconds` 暴露；另提供异步任务接口 `POST /api/jobs` + `GET /api/jobs/<id>/log?offset=`（实时轮询日志）+ `GET /api/jobs/<id>/result`（完整 JSON），供深度分析台页面使用
+- [x] 静态资源白名单：`_serve_static` 只放行 `CONTENT_TYPES` 里的扩展名，`server.py` / `start-web.bat` / `__pycache__/*.pyc` 等文件返回 404（此前可被直接下载源码）
+- [x] `web/index.html`：拖拽上传/样本下拉/服务器路径三种目标来源；能力清单由 `/api/health` 的 `registered_analyzers` 动态生成（中文名映射见 `CAP_META`，未知 id 回退显示原名），支持任意多选 + 全选/清空，另带一个组合 scan 开关；结果区为横向 Tab（概览 / 每个 Analyzer 一页 / 原始 JSON），Tab 标签用中文名 + Analyzer ID，两端 `‹ ›` 箭头与 ←/→ 键切换，`aria-selected` 与 roving tabindex 同步；重跑前自动清空上一次结果；运行中可点「停止分析」取消；计时显示「已用 X s / 上限 Y s」，超时与取消分别给出明确提示；勾选的能力与服务器路径写入 `localStorage`，刷新后自动恢复；每个 Analyzer 面板内附「文本化结果」折叠块
+- [x] 结果导出：符号表（按当前搜索/语言筛选）与发现项可一键导出 CSV（UTF-8 BOM，Excel 直接打开不乱码；以 `= + - @` 开头的单元格做公式注入转义）
 
 - [x] `web/so-scan.html`：独立"深度分析台"页面——选择 .so 文件（点击/拖拽）→ 一键启动全量 scan → 实时滚动日志 → 结果摘要（退出码/耗时/风险分档/发现项计数/8 能力状态 chips + 文件/ELF/符号/字符串/风险/发现项分区 + 每个 Analyzer 的「文本化结果」区块）→ 下载 JSON；控制台头部提供入口链接
 - [x] `web/start-web.bat` Windows 启动脚本；云端适配（`PORT`/`0.0.0.0` + `requirements.txt`）
 
-本地集成测试通过：上传、路径安全、非 ELF（exit 5 `INVALID_ELF`）、错误 400/403/404 等均覆盖。
+本地集成测试通过：上传、路径安全、静态资源白名单（源码不可下载）、非 ELF（exit 5 `INVALID_ELF`）、错误 400/403/404、取消与超时终止子进程等均覆盖。
 
 ### 6. 构建、脚本与测试
 
 - [x] 可编辑安装（`setup.py`/`setup.cfg`）与 console script；Wheel 构建脚本 `scripts/build_cli.sh`（`--install` 一键）
 - [x] 辅助脚本：`categorise_real_sos.py`（真实库 demangle 全量比对）、`audit_export_coverage.py`（pyelftools 基准导出覆盖率审计）、`crosscheck_sample_demangle.py`、`demangle_gap_summary.py`、`find_dwarf.py`
-- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**405 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境为 **332 passed, 1 skipped**（`test_demangler_oracle.py` 整模块不收集；`PYTHONPATH=src pytest` 可直接跑）
+- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**468 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
 - [x] 文档守卫测试 `test_documentation_status.py`（防止文档与实现漂移）
 
 ---
