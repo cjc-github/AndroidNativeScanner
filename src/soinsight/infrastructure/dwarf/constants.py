@@ -33,6 +33,8 @@ DW_TAG_unspecified_parameters = 0x18
 DW_TAG_variant = 0x19
 DW_TAG_common_block = 0x1A
 DW_TAG_namespace = 0x39
+DW_TAG_inheritance = 0x1C
+DW_TAG_enumerator = 0x28
 DW_TAG_inlined_subroutine = 0x1D
 DW_TAG_subprogram = 0x2E
 DW_TAG_variable = 0x34
@@ -66,6 +68,9 @@ DW_AT_linkage_name = 0x6E
 DW_AT_decl_file = 0x58
 DW_AT_decl_line = 0x59
 DW_AT_ranges = 0x55
+DW_AT_accessibility = 0x32
+DW_AT_external = 0x3F
+DW_AT_virtuality = 0x6B
 
 # DWARF forms.
 DW_FORM_addr = 0x01
@@ -137,6 +142,10 @@ DW_TAG_NAMES = {
     DW_TAG_typedef: "typedef",
     DW_TAG_union_type: "union_type",
     DW_TAG_variable: "variable",
+    DW_TAG_member: "member",
+    DW_TAG_inheritance: "inheritance",
+    DW_TAG_enumerator: "enumerator",
+    DW_TAG_namespace: "namespace",
     DW_TAG_volatile_type: "volatile_type",
 }
 
@@ -153,4 +162,9 @@ DW_AT_NAMES = {
     DW_AT_comp_dir: "comp_dir",
     DW_AT_stmt_list: "stmt_list",
     DW_AT_byte_size: "byte_size",
+    DW_AT_accessibility: "accessibility",
+    DW_AT_external: "external",
+    DW_AT_virtuality: "virtuality",
+    DW_AT_data_member_location: "data_member_location",
+    DW_AT_const_value: "const_value",
 }

@@ -68,7 +68,7 @@ class BasicDwarfAnalyzer(Analyzer):
                 analyzer_id=ANALYZER_ID,
                 analyzer_version=self.metadata.version,
                 status=AnalysisStatus.SUCCESS,
-                data={"has_debug_info": False, "functions": []},
+                data={"has_debug_info": False, "functions": [], "types": [], "variables": []},
                 diagnostics=[
                     Diagnostic(
                         code="DWARF_UNREADABLE",
@@ -89,6 +89,8 @@ class BasicDwarfAnalyzer(Analyzer):
             "version": info.version,
             "units": list(info.units),
             "functions": [_function_record(function) for function in functions],
+            "types": [_type_record(type_) for type_ in info.types],
+            "variables": [_variable_record(variable) for variable in info.variables],
             "truncated": truncated,
         }
         if not info.has_debug_info:
@@ -153,6 +155,52 @@ class BasicDwarfAnalyzer(Analyzer):
                 lines.append(f"  ... 以及另外 {len(functions) - 20} 个函数")
 
         return "\n".join(lines)
+
+
+
+def _type_record(type_) -> dict:
+    return {
+        "name": type_.name,
+        "kind": type_.kind,
+        "byte_size": type_.byte_size,
+        "decl_file": type_.decl_file,
+        "decl_line": type_.decl_line,
+        "unit_name": type_.unit_name,
+        "members": [
+            {
+                "name": member.name,
+                "type_name": member.type_name,
+                "offset": member.offset,
+                "accessibility": member.accessibility,
+                "static": member.static,
+            }
+            for member in type_.members
+        ],
+        "bases": [
+            {
+                "name": base.name,
+                "offset": base.offset,
+                "accessibility": base.accessibility,
+                "virtual": base.virtual,
+            }
+            for base in type_.bases
+        ],
+        "enumerators": [
+            {"name": enum.name, "value": enum.value}
+            for enum in type_.enumerators
+        ],
+    }
+
+
+def _variable_record(variable) -> dict:
+    return {
+        "name": variable.name,
+        "type_name": variable.type_name,
+        "decl_file": variable.decl_file,
+        "decl_line": variable.decl_line,
+        "external": variable.external,
+        "unit_name": variable.unit_name,
+    }
 
 
 def _function_record(function) -> dict:

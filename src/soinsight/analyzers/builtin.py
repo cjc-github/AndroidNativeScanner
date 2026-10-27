@@ -11,6 +11,7 @@ from .security import (
     SecurityVulnerabilityAnalyzer,
 )
 from .symbols import BasicSymbolsAnalyzer
+from .types import BasicTypesAnalyzer
 
 
 def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
@@ -18,6 +19,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicElfAnalyzer())
     registry.register(BasicSymbolsAnalyzer())
     registry.register(BasicDwarfAnalyzer())
+    registry.register(BasicTypesAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDangerousApiAnalyzer())

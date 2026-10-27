@@ -402,3 +402,138 @@ def build_elf64_with_dwarf(sections: dict[str, bytes]) -> bytes:
 def elf64_with_dwarf() -> bytes:
     """A minimal ELF64 image carrying valid DWARF 4 debug information."""
     return build_elf64_with_dwarf(build_dwarf_sections())
+
+
+# --- DWARF: rich types / inheritance / variables ----------------------------
+
+DW_TAG_member = 0x0D
+DW_TAG_inheritance = 0x1C
+DW_TAG_enumerator = 0x28
+DW_TAG_variable = 0x34
+DW_TAG_enumeration_type = 0x04
+
+DW_AT_accessibility = 0x32
+DW_AT_external = 0x3F
+DW_AT_data_member_location = 0x38
+DW_AT_const_value = 0x1C
+DW_AT_virtuality = 0x6B
+DW_AT_byte_size = 0x0B
+
+DW_FORM_sdata = 0x0D
+DW_FORM_flag_present = 0x19
+
+
+def build_rich_dwarf_sections() -> dict[str, bytes]:
+    """Build DWARF 4 sections with members, inheritance, enum and a variable.
+
+    The compilation unit describes:
+
+    * ``int`` base type;
+    * ``Base`` (byte_size 8) holding a virtual method ``Base::f`` and an
+      ``int`` member at offset 8;
+    * ``Derived`` (byte_size 16) deriving publicly from ``Base`` (offset 0)
+      and holding an ``int`` member at offset 8;
+    * ``Color`` enum with ``RED``/``GREEN`` enumerators;
+    * a global variable ``g_count`` of type ``int``.
+    """
+    abbrev = bytearray()
+    # 1: compile_unit (children)
+    abbrev += _dwarf_uleb(1) + _dwarf_uleb(DW_TAG_compile_unit) + bytes([1])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_comp_dir) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_stmt_list) + _dwarf_uleb(DW_FORM_sec_offset)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 2: base_type
+    abbrev += _dwarf_uleb(2) + _dwarf_uleb(DW_TAG_base_type) + bytes([0])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_byte_size) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 3: class_type (children)
+    abbrev += _dwarf_uleb(3) + _dwarf_uleb(DW_TAG_class_type) + bytes([1])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_byte_size) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 4: subprogram (children)
+    abbrev += _dwarf_uleb(4) + _dwarf_uleb(DW_TAG_subprogram) + bytes([1])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_linkage_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_low_pc) + _dwarf_uleb(DW_FORM_addr)
+    abbrev += _dwarf_uleb(DW_AT_decl_line) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(DW_AT_virtuality) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 5: member
+    abbrev += _dwarf_uleb(5) + _dwarf_uleb(DW_TAG_member) + bytes([0])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_type) + _dwarf_uleb(DW_FORM_ref4)
+    abbrev += _dwarf_uleb(DW_AT_data_member_location) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 6: inheritance
+    abbrev += _dwarf_uleb(6) + _dwarf_uleb(DW_TAG_inheritance) + bytes([0])
+    abbrev += _dwarf_uleb(DW_AT_type) + _dwarf_uleb(DW_FORM_ref4)
+    abbrev += _dwarf_uleb(DW_AT_data_member_location) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 7: variable
+    abbrev += _dwarf_uleb(7) + _dwarf_uleb(DW_TAG_variable) + bytes([0])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_type) + _dwarf_uleb(DW_FORM_ref4)
+    abbrev += _dwarf_uleb(DW_AT_external) + _dwarf_uleb(DW_FORM_flag_present)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 8: enumeration_type (children)
+    abbrev += _dwarf_uleb(8) + _dwarf_uleb(DW_TAG_enumeration_type) + bytes([1])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_byte_size) + _dwarf_uleb(DW_FORM_data1)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    # 9: enumerator
+    abbrev += _dwarf_uleb(9) + _dwarf_uleb(DW_TAG_enumerator) + bytes([0])
+    abbrev += _dwarf_uleb(DW_AT_name) + _dwarf_uleb(DW_FORM_string)
+    abbrev += _dwarf_uleb(DW_AT_const_value) + _dwarf_uleb(DW_FORM_sdata)
+    abbrev += _dwarf_uleb(0) + _dwarf_uleb(0)
+    abbrev += _dwarf_uleb(0)  # end of table
+
+    cu_die = _dwarf_uleb(1) + b"rich.cpp\x00" + b"/work\x00" + struct.pack("<I", 0)
+    die_base = 4 + 2 + 4 + 1 + len(cu_die)
+
+    body = bytearray()
+    int_ref = die_base + len(body)
+    body += _dwarf_uleb(2) + b"int\x00" + bytes([4])
+
+    # class Base { virtual void f(); int b; }
+    base_ref = die_base + len(body)
+    body += _dwarf_uleb(3) + b"Base\x00" + bytes([8])
+    vf_ref = die_base + len(body)
+    body += _dwarf_uleb(4) + b"f\x00" + b"_ZN4Base1fEv\x00"
+    body += struct.pack("<Q", 0x1000) + bytes([2, 1])
+    body += _dwarf_uleb(0)  # end of subprogram children
+    body += _dwarf_uleb(5) + b"b\x00" + struct.pack("<I", int_ref) + bytes([8])
+    body += _dwarf_uleb(0)  # end of class Base children
+
+    # class Derived : public Base { int x; }
+    derived_ref = die_base + len(body)
+    body += _dwarf_uleb(3) + b"Derived\x00" + bytes([16])
+    body += _dwarf_uleb(6) + struct.pack("<I", base_ref) + bytes([0])
+    body += _dwarf_uleb(5) + b"x\x00" + struct.pack("<I", int_ref) + bytes([8])
+    body += _dwarf_uleb(0)  # end of class Derived children
+
+    # enum Color { RED=0, GREEN=1 }
+    enum_ref = die_base + len(body)
+    body += _dwarf_uleb(8) + b"Color\x00" + bytes([4])
+    body += _dwarf_uleb(9) + b"RED\x00" + bytes([0])
+    body += _dwarf_uleb(9) + b"GREEN\x00" + bytes([1])
+    body += _dwarf_uleb(0)  # end of enum children
+
+    # int g_count; (external global)
+    body += _dwarf_uleb(7) + b"g_count\x00" + struct.pack("<I", int_ref)
+
+    body += _dwarf_uleb(0)  # end of CU children
+
+    cu_body = bytearray()
+    cu_body += struct.pack("<H", 4)      # DWARF version
+    cu_body += struct.pack("<I", 0)      # debug_abbrev_offset
+    cu_body += bytes([8])                # address_size
+    cu_body += cu_die + bytes(body)
+    debug_info = struct.pack("<I", len(cu_body)) + bytes(cu_body)
+
+    return {
+        ".debug_abbrev": bytes(abbrev),
+        ".debug_info": debug_info,
+    }

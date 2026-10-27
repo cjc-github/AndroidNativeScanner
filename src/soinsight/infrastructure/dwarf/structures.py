@@ -29,6 +29,7 @@ class DwarfFunction:
     decl_line: int | None = None
     parameters: tuple[DwarfParameter, ...] = ()
     unit_name: str = ""
+    virtual: bool = False
 
     @property
     def signature(self) -> str:
@@ -45,10 +46,68 @@ class DwarfFunction:
 
 
 @dataclass(frozen=True)
+class DwarfMember:
+    """One data member of a composite type."""
+
+    name: str
+    type_name: str | None = None
+    offset: int | None = None
+    accessibility: str | None = None
+    static: bool = False
+
+
+@dataclass(frozen=True)
+class DwarfBase:
+    """One direct base class of a class or struct type."""
+
+    name: str
+    offset: int | None = None
+    accessibility: str | None = None
+    virtual: bool = False
+
+
+@dataclass(frozen=True)
+class DwarfEnumValue:
+    """One enumerator of an enumeration type."""
+
+    name: str
+    value: int | None = None
+
+
+@dataclass(frozen=True)
+class DwarfType:
+    """A composite (class, struct, union or enum) type recovered from DWARF."""
+
+    name: str
+    kind: str  # class / struct / union / enum
+    byte_size: int | None = None
+    members: tuple[DwarfMember, ...] = ()
+    bases: tuple[DwarfBase, ...] = ()
+    enumerators: tuple[DwarfEnumValue, ...] = ()
+    decl_file: str | None = None
+    decl_line: int | None = None
+    unit_name: str = ""
+
+
+@dataclass(frozen=True)
+class DwarfVariable:
+    """A global or static variable described by debug information."""
+
+    name: str
+    type_name: str | None = None
+    decl_file: str | None = None
+    decl_line: int | None = None
+    external: bool | None = None
+    unit_name: str = ""
+
+
+@dataclass(frozen=True)
 class DwarfInfo:
     """Debug information recovered from one ELF image."""
 
     functions: tuple[DwarfFunction, ...] = ()
+    types: tuple[DwarfType, ...] = ()
+    variables: tuple[DwarfVariable, ...] = ()
     units: tuple[str, ...] = ()
     version: int | None = None
     has_debug_info: bool = False
@@ -59,4 +118,14 @@ class DwarfInfo:
         for function in self.functions:
             if function.linkage_name and function.linkage_name not in index:
                 index[function.linkage_name] = function
+        return index
+
+    def types_by_name(self) -> dict[tuple[str, str], DwarfType]:
+        """Index composite types by ``(name, kind)``; the first entry wins."""
+        index: dict[tuple[str, str], DwarfType] = {}
+        for type_ in self.types:
+            if type_.name:
+                key = (type_.name, type_.kind)
+                if key not in index:
+                    index[key] = type_
         return index

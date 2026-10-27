@@ -22,15 +22,21 @@ from .constants import (
     _NAMESPACE_TAGS,
     DW_AT_abstract_origin,
     DW_AT_comp_dir,
+    DW_AT_byte_size,
+    DW_AT_accessibility,
+    DW_AT_data_member_location,
+    DW_AT_const_value,
     DW_AT_decl_file,
     DW_AT_decl_line,
     DW_AT_high_pc,
     DW_AT_linkage_name,
     DW_AT_low_pc,
     DW_AT_name,
+    DW_AT_external,
     DW_AT_specification,
     DW_AT_stmt_list,
     DW_AT_type,
+    DW_AT_virtuality,
     DW_FORM_addr,
     DW_FORM_addrx,
     DW_FORM_addrx1,
@@ -73,19 +79,33 @@ from .constants import (
     DW_TAG_compile_unit,
     DW_TAG_const_type,
     DW_TAG_enumeration_type,
+    DW_TAG_enumerator,
     DW_TAG_formal_parameter,
+    DW_TAG_inheritance,
+    DW_TAG_inlined_subroutine,
+    DW_TAG_lexical_block,
     DW_TAG_pointer_type,
     DW_TAG_reference_type,
     DW_TAG_restrict_type,
     DW_TAG_structure_type,
     DW_TAG_subprogram,
     DW_TAG_subroutine_type,
+    DW_TAG_member,
     DW_TAG_typedef,
     DW_TAG_union_type,
     DW_TAG_variable,
     DW_TAG_volatile_type,
 )
-from .structures import DwarfFunction, DwarfInfo, DwarfParameter
+from .structures import (
+    DwarfBase,
+    DwarfEnumValue,
+    DwarfFunction,
+    DwarfInfo,
+    DwarfMember,
+    DwarfParameter,
+    DwarfType,
+    DwarfVariable,
+)
 
 _MAX_DIES = 2_000_000
 _MAX_TYPE_DEPTH = 12
@@ -752,9 +772,227 @@ def _extract_functions(units: list[_Unit]) -> tuple[DwarfFunction, ...]:
                     decl_line=die.get(DW_AT_decl_line),
                     parameters=tuple(parameters),
                     unit_name=unit_name,
+                    virtual=_function_is_virtual(die),
                 )
             )
     return tuple(functions)
+
+
+def _function_is_virtual(die: _Die) -> bool:
+    """True when a subprogram DIE is declared virtual by DW_AT_virtuality.
+
+    DW_AT_virtuality is emitted by compilers for C++ methods in the class
+    definition; a value other than ``none`` means the method overrides or
+    introduces a virtual dispatch slot.
+    """
+    virtuality = die.get(DW_AT_virtuality)
+    return isinstance(virtuality, int) and virtuality != 0
+
+
+_COMPOSITE_KINDS = {
+    DW_TAG_class_type: "class",
+    DW_TAG_structure_type: "struct",
+    DW_TAG_union_type: "union",
+    DW_TAG_enumeration_type: "enum",
+}
+
+_ACCESSIBILITY_NAMES = {0: "private", 1: "protected", 2: "public"}
+
+# DW_OP_plus_uconst inside DW_AT_data_member_location expression.
+_DW_OP_plus_uconst = 0x23
+
+
+def _index_dies(units: list[_Unit]) -> dict[int, _Die]:
+    """Index every DIE by its offset, so references can be followed."""
+    dies_by_offset: dict[int, _Die] = {}
+    for unit in units:
+        for die in _walk(unit.dies):
+            dies_by_offset.setdefault(die.offset, die)
+    return dies_by_offset
+
+
+def _unit_name(unit: _Unit) -> str:
+    if unit.dies and isinstance(unit.dies[0].get(DW_AT_name), str):
+        return unit.dies[0].get(DW_AT_name)
+    return ""
+
+
+def _qualified_type_name(die: _Die, name: str) -> str:
+    """Qualify a composite type with its enclosing namespaces and classes."""
+    if not name or "::" in name:
+        return name
+    enclosing = die.enclosing_names()
+    return "::".join((*enclosing, name)) if enclosing else name
+
+
+def _is_local_variable(die: _Die) -> bool:
+    """True when a variable DIE is scoped inside a function or block."""
+    parent = die.parent
+    while parent is not None:
+        if parent.tag in (
+            DW_TAG_subprogram,
+            DW_TAG_lexical_block,
+            DW_TAG_inlined_subroutine,
+        ):
+            return True
+        parent = parent.parent
+    return False
+
+
+def _decode_member_offset(value: object) -> int | None:
+    """Decode a data-member location to a constant byte offset.
+
+    DWARF 4 often stores a plain integer; DWARF 5 compilers emit a
+    ``DW_OP_plus_uconst`` expression for members placed after a vtable
+    pointer. Everything else is left as unknown rather than guessed.
+    """
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, bytes):
+        return None
+    if len(value) >= 2 and value[0] == _DW_OP_plus_uconst:
+        result = 0
+        shift = 0
+        for byte in value[1:]:
+            result |= (byte & 0x7F) << shift
+            shift += 7
+            if not byte & 0x80:
+                return result
+    return None
+
+
+def _extract_members(
+    die: _Die, dies_by_offset: dict[int, _Die], unit: _Unit
+) -> tuple[DwarfMember, ...]:
+    members: list[DwarfMember] = []
+    for child in die.children_with_tag(DW_TAG_member):
+        name = child.get(DW_AT_name)
+        if not isinstance(name, str):
+            continue
+        type_name = _type_name(child.get(DW_AT_type), dies_by_offset, unit.offset)
+        location = child.get(DW_AT_data_member_location)
+        accessibility = _ACCESSIBILITY_NAMES.get(
+            child.get(DW_AT_accessibility)
+        ) if isinstance(child.get(DW_AT_accessibility), int) else None
+        members.append(
+            DwarfMember(
+                name=name,
+                type_name=type_name,
+                offset=_decode_member_offset(location),
+                accessibility=accessibility,
+                static=location is None,
+            )
+        )
+    return tuple(members)
+
+
+def _extract_bases(
+    die: _Die, dies_by_offset: dict[int, _Die], unit: _Unit
+) -> tuple[DwarfBase, ...]:
+    bases: list[DwarfBase] = []
+    for child in die.children_with_tag(DW_TAG_inheritance):
+        name = _type_name(child.get(DW_AT_type), dies_by_offset, unit.offset)
+        if name is None:
+            continue
+        virtuality = child.get(DW_AT_virtuality)
+        accessibility = _ACCESSIBILITY_NAMES.get(
+            child.get(DW_AT_accessibility)
+        ) if isinstance(child.get(DW_AT_accessibility), int) else None
+        bases.append(
+            DwarfBase(
+                name=name,
+                offset=_decode_member_offset(child.get(DW_AT_data_member_location)),
+                accessibility=accessibility,
+                virtual=isinstance(virtuality, int) and virtuality == 1,
+            )
+        )
+    return tuple(bases)
+
+
+def _extract_enumerators(die: _Die, unit: _Unit) -> tuple[DwarfEnumValue, ...]:
+    del unit
+    enumerators: list[DwarfEnumValue] = []
+    for child in die.children_with_tag(DW_TAG_enumerator):
+        name = child.get(DW_AT_name)
+        if not isinstance(name, str):
+            continue
+        value = child.get(DW_AT_const_value)
+        enumerators.append(
+            DwarfEnumValue(
+                name=name,
+                value=value if isinstance(value, int) else None,
+            )
+        )
+    return tuple(enumerators)
+
+
+def _extract_types(units: list[_Unit]) -> tuple[DwarfType, ...]:
+    dies_by_offset = _index_dies(units)
+    types: list[DwarfType] = []
+    seen: set[tuple[str, str]] = set()
+    for unit in units:
+        unit_name = _unit_name(unit)
+        for die in _walk(unit.dies):
+            kind = _COMPOSITE_KINDS.get(die.tag)
+            if kind is None:
+                continue
+            raw_name = die.get(DW_AT_name)
+            if not isinstance(raw_name, str) or not raw_name:
+                continue
+            name = _qualified_type_name(die, raw_name)
+            key = (name, kind)
+            if key in seen:
+                continue
+            seen.add(key)
+            types.append(
+                DwarfType(
+                    name=name,
+                    kind=kind,
+                    byte_size=die.get(DW_AT_byte_size)
+                    if isinstance(die.get(DW_AT_byte_size), int)
+                    else None,
+                    members=_extract_members(die, dies_by_offset, unit),
+                    bases=_extract_bases(die, dies_by_offset, unit),
+                    enumerators=_extract_enumerators(die, unit),
+                    decl_file=_decl_file(die, unit),
+                    decl_line=die.get(DW_AT_decl_line),
+                    unit_name=unit_name,
+                )
+            )
+    return tuple(types)
+
+
+def _extract_variables(units: list[_Unit]) -> tuple[DwarfVariable, ...]:
+    dies_by_offset = _index_dies(units)
+    variables: list[DwarfVariable] = []
+    seen: set[str] = set()
+    for unit in units:
+        unit_name = _unit_name(unit)
+        for die in _walk(unit.dies):
+            if die.tag != DW_TAG_variable:
+                continue
+            name = die.get(DW_AT_name)
+            if not isinstance(name, str) or not name:
+                continue
+            if _is_local_variable(die):
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            external = die.get(DW_AT_external)
+            variables.append(
+                DwarfVariable(
+                    name=name,
+                    type_name=_type_name(
+                        die.get(DW_AT_type), dies_by_offset, unit.offset
+                    ),
+                    decl_file=_decl_file(die, unit),
+                    decl_line=die.get(DW_AT_decl_line),
+                    external=external if isinstance(external, bool) else None,
+                    unit_name=unit_name,
+                )
+            )
+    return tuple(variables)
 
 
 def _qualified_function_name(die: _Die, name: str) -> str:
@@ -823,8 +1061,12 @@ def parse_dwarf(path: Path) -> DwarfInfo:
 
     units = _parse_units(data, abbrev_data, debug_str, debug_line_str, line_data)
     functions = _extract_functions(units)
+    types = _extract_types(units)
+    variables = _extract_variables(units)
     return DwarfInfo(
         functions=functions,
+        types=types,
+        variables=variables,
         units=tuple(
             unit.dies[0].get(DW_AT_name)
             for unit in units
