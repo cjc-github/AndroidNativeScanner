@@ -221,7 +221,7 @@ Scheduler 产生 `success`、`failed`、`skipped`、`timeout`、`cancelled`、`c
 | 扩展点 | 用途 | 当前状态 |
 |---|---|---|
 | Module Catalog | 产品模块与能力发现 | 已实现六大模块 |
-| Analyzer | 提取/转换事实 | SDK 可用；6 个内置 Analyzer（file/elf/symbols/dwarf/hardening/dangerous-api） |
+| Analyzer | 提取/转换事实 | SDK 可用；9 个内置 Analyzer（file/elf/symbols/dwarf/strings/hardening/dangerous-api/vulnerability/risk） |
 | Rule | 从事实形成 Finding | SDK 和 Runtime 可用 |
 | Profile | 组合能力 | Registry 可用，内置 `quick`/`security` |
 | Renderer | 输出格式 | Text/JSON/Markdown/HTML/SARIF 已实现 |
@@ -251,7 +251,7 @@ core 不依赖 cli/modules/具体 analyzer
 
 ## 10. 当前差距
 
-1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 6/42 项能力已接入）；
+1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 9/42 项能力已接入）；
 2. 支持双目标、多样本、结果集等复杂输入模型；
 3. 内置 deep/ci Profile（`quick`/`security` 已实现）；
 4. Artifact Store 接入 Runtime；

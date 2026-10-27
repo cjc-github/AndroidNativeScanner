@@ -565,6 +565,200 @@ class SecurityRiskAnalyzer(Analyzer):
         return "\n".join(lines)
 
 
+# --- vulnerability pattern classification ----------------------------------
+# A dangerous linkage reports a reachable capability, not a call site with
+# attacker-controlled data. Each inferred vulnerability therefore carries
+# MEDIUM confidence and is emitted once per (CWE, canonical API).
+
+# APIs whose primary hazard differs from their broad category (format strings
+# are a write primitive, not a buffer copy).
+_VULN_CWE_BY_API = {
+    "sprintf": ("CWE-134", "Use of Externally-Controlled Format String"),
+    "vsprintf": ("CWE-134", "Use of Externally-Controlled Format String"),
+}
+
+_VULN_CWE_BY_CATEGORY = {
+    "命令执行": ("CWE-78", "OS Command Injection"),
+    "动态加载": ("CWE-829", "Untrusted Search Path"),
+    "内存破坏": ("CWE-120", "Buffer Copy without Checking Size"),
+    "权限操作": ("CWE-266", "Incorrect Permission Assignment or Authorization"),
+    "注入/反调试": ("CWE-749", "Exposed Dangerous Method or Function"),
+    "内存保护修改": ("CWE-732", "Incorrect Permission Assignment for Critical Resource"),
+    "内存映射": ("CWE-770", "Allocation of Resources Without Limits"),
+    "进程创建": ("CWE-250", "Execution with Unnecessary Privileges"),
+    "网络通信": ("CWE-300", "Channel Accessible by Non-Endpoint"),
+    "文件操作": ("CWE-73", "External Control of File Name or Path"),
+}
+
+
+class SecurityVulnerabilityAnalyzer(Analyzer):
+    """Infer vulnerability classes from dangerous linkage facts.
+
+    Consumes ``security.dangerous-api`` and maps each matched API to the
+    CWE its broad category suggests. This is a pattern layer on top of the
+    symbol-matching detector: linkage proves the capability is reachable,
+    nothing more, so the confidence is deliberately MEDIUM.
+    """
+
+    metadata = AnalyzerMetadata(
+        id="security.vulnerability",
+        name="Vulnerability Pattern Analyzer",
+        version="1.0.0",
+        description="Infer vulnerability classes from dangerous linkage facts.",
+        kind=AnalyzerKind.DETECTOR,
+        requires=("security.dangerous-api",),
+    )
+
+    def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
+        del target
+        dangerous = context.require("security.dangerous-api")
+        findings: list[Finding] = []
+        patterns: dict[str, int] = {}
+        counts_by_cwe: dict[str, int] = {}
+        counts_by_severity: dict[str, int] = {}
+        seen: set[tuple[str, str]] = set()
+
+        for source in dangerous.findings:
+            canonical = _canonical_of(source)
+            category = _category_of(source)
+            cwe, title = _cwe_for(canonical, category)
+            if cwe is None:
+                continue
+            key = (cwe, canonical)
+            if key in seen:
+                continue
+            seen.add(key)
+            severity = source.severity.value
+            patterns[title] = patterns.get(title, 0) + 1
+            counts_by_cwe[cwe] = counts_by_cwe.get(cwe, 0) + 1
+            counts_by_severity[severity] = counts_by_severity.get(severity, 0) + 1
+            findings.append(
+                Finding(
+                    rule_id=f"security.vulnerability.{cwe}",
+                    rule_version=self.metadata.version,
+                    title=f"Potential {title} via {canonical}()",
+                    category="vulnerability",
+                    severity=source.severity,
+                    confidence=Confidence.MEDIUM,
+                    message=(
+                        f"The library can reach '{canonical}' ({category}); this "
+                        f"matches {cwe}. The use is inferred from linkage only, "
+                        f"not from a call site with attacker-controlled data."
+                    ),
+                    fingerprint=f"vuln:{cwe}:{canonical}",
+                    evidence=[
+                        {
+                            "cwe": cwe,
+                            "api": canonical,
+                            "api_category": category,
+                            "usage": _usage_of(source),
+                            "source_analyzer": "security.dangerous-api",
+                        }
+                    ],
+                    remediation=source.remediation,
+                )
+            )
+
+        return AnalysisResult(
+            analyzer_id=self.metadata.id,
+            analyzer_version=self.metadata.version,
+            status=AnalysisStatus.SUCCESS,
+            data={
+                "vulnerability_count": len(findings),
+                "vulnerability_patterns": patterns,
+                "counts_by_cwe": counts_by_cwe,
+                "counts_by_severity": counts_by_severity,
+                "hardening_findings": _hardening_finding_count(context),
+                "string_indicators": _string_summary(context),
+            },
+            findings=findings,
+        )
+
+    def format_text(self, result: AnalysisResult) -> Optional[str]:
+        """Format vulnerability analysis result as text."""
+        if result.status != AnalysisStatus.SUCCESS:
+            return None
+
+        data = result.data
+        counts_by_cwe = data.get("counts_by_cwe", {})
+        counts_by_severity = data.get("counts_by_severity", {})
+        hardening = data.get("hardening_findings", 0)
+
+        lines = [
+            "=== 漏洞模式识别 ===",
+            f"推断出的漏洞类: {data.get('vulnerability_count', 0)}",
+            f"关联的加固发现项: {hardening}",
+            "",
+        ]
+
+        if counts_by_cwe:
+            lines.append("=== 按 CWE 分布 ===")
+            for cwe, count in sorted(counts_by_cwe.items()):
+                lines.append(f"  {cwe}: {count}")
+            lines.append("")
+
+        if counts_by_severity:
+            lines.append("=== 按严重度分布 ===")
+            for severity in ["critical", "high", "medium", "low"]:
+                count = counts_by_severity.get(severity, 0)
+                if count > 0:
+                    lines.append(f"  {_SEVERITY_LABELS.get(severity, severity)}: {count}")
+            lines.append("")
+
+        if result.findings:
+            lines.append("=== 推断的漏洞模式 ===")
+            for finding in result.findings[:15]:
+                severity = _SEVERITY_LABELS.get(finding.severity.value, finding.severity.value)
+                lines.append(f"  [{severity}] {finding.title}")
+                if finding.remediation:
+                    lines.append(f"    修复建议: {finding.remediation}")
+                lines.append("")
+
+        return "\n".join(lines)
+
+
+def _canonical_of(finding: Finding) -> str:
+    """Recover the canonical symbol name from a dangerous-API finding."""
+    if finding.evidence:
+        canonical = finding.evidence[0].get("canonical_symbol", "")
+        if canonical:
+            return canonical
+    return finding.rule_id.rsplit(".", 1)[-1]
+
+
+def _category_of(finding: Finding) -> str:
+    return finding.evidence[0].get("api_category", "") if finding.evidence else ""
+
+
+def _usage_of(finding: Finding) -> str:
+    return finding.evidence[0].get("usage", "") if finding.evidence else ""
+
+
+def _cwe_for(canonical: str, category: str) -> tuple[str, str] | None:
+    if canonical in _VULN_CWE_BY_API:
+        return _VULN_CWE_BY_API[canonical]
+    return _VULN_CWE_BY_CATEGORY.get(category)
+
+
+def _hardening_finding_count(context) -> int:
+    hardening = context.optional("security.hardening")
+    if hardening is None:
+        return 0
+    return len(hardening.findings)
+
+
+def _string_summary(context) -> dict[str, int]:
+    strings = context.optional("advanced.strings")
+    if strings is None:
+        return {}
+    classified = strings.data.get("classified", {})
+    return {
+        "url_count": int(classified.get("url", {}).get("count", 0) or 0),
+        "sensitive_count": int(classified.get("sensitive", {}).get("count", 0) or 0),
+        "base64_count": int(classified.get("base64", {}).get("count", 0) or 0),
+    }
+
+
 def _dedupe(findings: list[Finding]) -> tuple[list[Finding], int]:
     unique: dict[tuple[str, ...], Finding] = {}
     for finding in findings:

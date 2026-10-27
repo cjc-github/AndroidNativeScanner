@@ -166,7 +166,7 @@ automation.harness
 - `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
 - 单目标能力到 Runtime 的路由；
 - 开发期旧扁平命令隐藏兼容别名；
-- 6 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`security.hardening`、`security.dangerous-api`。
+- 9 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
 
 未实现：
 

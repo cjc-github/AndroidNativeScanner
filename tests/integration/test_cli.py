@@ -174,7 +174,7 @@ def test_cli_lists_product_modules_with_status_column():
         "MODULE      NAME      CAPABILITIES  STATUS",
         "basic       基础分析            10  partial",
         "advanced    高级分析             8  partial",
-        "security    安全分析             4  partial",
+        "security    安全分析             4  implemented",
         "dynamic     动态分析             5  catalog-only",
         "ai          AI 分析              8  catalog-only",
         "automation  自动化               7  catalog-only",
@@ -271,6 +271,7 @@ def test_cli_lists_plugins_as_table():
         "security.dangerous-api 1.0.0   detector    yes     Dangerous API Detection",
         "security.hardening     1.0.0   collector   yes     Hardening Analyzer",
         "security.risk          1.0.0   transformer yes     Risk Analyzer",
+        "security.vulnerability 1.0.0   detector    yes     Vulnerability Pattern Analyzer",
     ]
 
 
@@ -349,7 +350,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   8\n" in output
+    assert "  Registered analyzers   9\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output

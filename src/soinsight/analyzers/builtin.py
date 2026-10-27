@@ -8,6 +8,7 @@ from .security import (
     SecurityDangerousApiAnalyzer,
     SecurityHardeningAnalyzer,
     SecurityRiskAnalyzer,
+    SecurityVulnerabilityAnalyzer,
 )
 from .symbols import BasicSymbolsAnalyzer
 
@@ -21,3 +22,4 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDangerousApiAnalyzer())
     registry.register(SecurityRiskAnalyzer())
+    registry.register(SecurityVulnerabilityAnalyzer())

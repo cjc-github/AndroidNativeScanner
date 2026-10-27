@@ -40,7 +40,7 @@
 - [x] CLI 输出规范：状态列、分组 help、`doctor`、`--quiet`、TTY 颜色、窄终端自适应、`report` 二次渲染
 - [x] 退出码与错误语义：能力未实现 → `ANALYSIS_PLAN_ERROR`（预期外壳行为）
 
-### 3. V2 已实现的真正 Analyzer 与 Rule（8/42 能力）
+### 3. V2 已实现的真正 Analyzer 与 Rule（9/42 能力）
 
 | 能力 ID | 内容 | 位置 |
 |---|---|---|
@@ -52,6 +52,7 @@
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值） | `analyzers/security.py` |
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
 | `security.risk` | 三源聚合去重 + 严重度/置信度/类别计数 + V1 权重字符串指标 + 风险分档（权重可配） | `analyzers/security.py` |
+| `security.vulnerability` | 把 `security.dangerous-api` 命中映射到 CWE（命令注入/缓冲区/格式串/权限等）并生成漏洞模式 Finding | `analyzers/security.py` |
 
 内置 Rule（随规则引擎默认启用，依赖缺失时静默跳过）：`security.sensitive-string`、
 `security.hardcoded-url`、`security.encoded-payload`（`rules/string_rules.py`，指纹格式
@@ -92,20 +93,20 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 34/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 33/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
 | `basic`（6/10） | `basic.types`（类型恢复）、`basic.cpp`（RTTI/vtable/继承）、`basic.disasm`（反汇编）、`basic.cfg`（CFG）、`basic.callgraph`（Call Graph）、`basic.dataflow`（Data Flow） |
 | `advanced`（7/8） | `advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
-| `security`（1/4） | `security.vulnerability`（漏洞模式识别） |
+| `security`（0/4） | — |
 | `dynamic`（5/5） | `dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（全部） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
 | `automation`（7/7） | `automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow`（全部） |
 
-`advanced.strings`、`security.risk` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
-下一步建议是 `security.vulnerability`（消费现有 `security.*` 结果做模式匹配），
-以及 `basic.types`/`basic.cpp`（依赖符号与 DWARF 事实）。
+`advanced.strings`、`security.risk`、`security.vulnerability` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
+下一步建议是 `basic.types`/`basic.cpp`（依赖符号与 DWARF 事实），
+然后是 `basic.disasm` 及其衍生的 cfg/callgraph/dataflow（需反汇编层）。
 
 ### 2. 框架层缺口（外壳已建，实现不完整）
 

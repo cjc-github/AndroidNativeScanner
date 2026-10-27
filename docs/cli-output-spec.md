@@ -72,7 +72,7 @@ Use:
 MODULE      NAME      CAPABILITIES  STATUS
 basic       基础分析            10  partial
 advanced    高级分析             8  catalog-only
-security    安全分析             4  catalog-only
+security    安全分析             4  implemented
 dynamic     动态分析             5  catalog-only
 ai          AI 分析              8  catalog-only
 automation  自动化               7  catalog-only
