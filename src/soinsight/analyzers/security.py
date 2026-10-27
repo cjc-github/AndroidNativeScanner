@@ -69,6 +69,52 @@ class SecurityHardeningAnalyzer(Analyzer):
                     message="No PT_GNU_RELRO segment found; relocation hardening may be absent.",
                 )
             )
+        if elf_data.get("has_stack_canary") is False:
+            findings.append(
+                Finding(
+                    rule_id="security.hardening.missing-stack-canary",
+                    rule_version="1.0.0",
+                    title="Stack canary protection is not detected",
+                    category="hardening",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.MEDIUM,
+                    message=(
+                        "Neither __stack_chk_fail nor __stack_chk_guard is "
+                        "referenced; -fstack-protector may be disabled."
+                    ),
+                )
+            )
+        if elf_data.get("has_cfi") is False:
+            findings.append(
+                Finding(
+                    rule_id="security.hardening.missing-cfi",
+                    rule_version="1.0.0",
+                    title="Control Flow Integrity is not detected",
+                    category="hardening",
+                    severity=Severity.HIGH,
+                    confidence=Confidence.MEDIUM,
+                    message=(
+                        "No __cfi_slowpath/__cfi_check runtime support is "
+                        "referenced; an indirect call target may be unchecked."
+                    ),
+                )
+            )
+        if _missing_pac(elf_data):
+            findings.append(
+                Finding(
+                    rule_id="security.hardening.missing-pac",
+                    rule_version="1.0.0",
+                    title="AArch64 pointer authentication is not enabled",
+                    category="hardening",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.MEDIUM,
+                    message=(
+                        "The GNU property note does not declare "
+                        "GNU_PROPERTY_AARCH64_FEATURE_1_PAC; return addresses "
+                        "and pointers are not authenticated."
+                    ),
+                )
+            )
         return AnalysisResult(
             analyzer_id=self.metadata.id,
             analyzer_version=self.metadata.version,
@@ -597,6 +643,13 @@ def _default_thresholds_for(weights: dict[str, int]) -> tuple[tuple[int, str], .
     up to three is ``medium``, up to six is ``high``, beyond is ``critical``."""
     unit = max(1, weights["high"])
     return ((unit, "low"), (unit * 3, "medium"), (unit * 6, "high"))
+
+
+def _missing_pac(elf_data: dict) -> bool:
+    """True only when the target is AArch64 and its property note omits PAC."""
+    if elf_data.get("machine") != "AArch64":
+        return False
+    return elf_data.get("has_pac") is False
 
 
 def _stripped_diagnostic(analyzer_id: str, symbols) -> list[Diagnostic]:

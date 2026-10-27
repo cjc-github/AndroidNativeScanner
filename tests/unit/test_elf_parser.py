@@ -7,6 +7,16 @@ import pytest
 from soinsight.infrastructure.elf import ElfFormatError, parse_bytes, parse_elf
 
 
+def _all_unknown_hardening() -> dict:
+    return {
+        "has_gnu_relro": None,
+        "executable_stack": None,
+        "has_stack_canary": None,
+        "has_cfi": None,
+        "has_pac": None,
+    }
+
+
 def _write(tmp_path: Path, data: bytes, name: str = "libsample.so") -> Path:
     sample = tmp_path / name
     sample.write_bytes(data)
@@ -47,7 +57,7 @@ def test_parse_elf_accepts_header_only_image(tmp_path, minimal_elf64_little):
     assert elf.sections == ()
     assert elf.symbols == ()
     assert elf.is_stripped is True
-    assert elf.hardening_facts() == {"has_gnu_relro": None, "executable_stack": None}
+    assert elf.hardening_facts() == _all_unknown_hardening()
 
 
 def test_parse_elf_reads_program_headers(tmp_path):
@@ -81,6 +91,9 @@ def test_parse_elf_reads_program_headers(tmp_path):
     assert elf.hardening_facts() == {
         "has_gnu_relro": True,
         "executable_stack": True,
+        "has_stack_canary": None,
+        "has_cfi": None,
+        "has_pac": None,
     }
 
 
@@ -105,10 +118,7 @@ def test_parse_elf_reports_unknown_hardening_when_phdrs_truncated(tmp_path):
     elf = parse_elf(_write(tmp_path, ident + header + phdr[:6]))
 
     assert elf.program_headers == ()
-    assert elf.hardening_facts() == {
-        "has_gnu_relro": None,
-        "executable_stack": None,
-    }
+    assert elf.hardening_facts() == _all_unknown_hardening()
 
 
 def test_parse_elf_reads_sections_and_symbols(tmp_path, elf64_with_symbols):
@@ -193,3 +203,62 @@ def test_parse_elf_reads_elf32_image(tmp_path):
     assert elf.header.elf_class == "ELF32"
     assert elf.header.is_64bit is False
     assert elf.header.machine == "x86"
+
+
+def _gnu_property_aarch64_note(mask: int) -> bytes:
+    """Build a ``.note.gnu.property`` owning an AArch64 feature-1 property."""
+    import struct
+
+    feature = (
+        struct.pack("<II", 0xC0000000, 4)  # GNU_PROPERTY_AARCH64_FEATURE_1_AND
+        + struct.pack("<I", mask)
+    )
+    # GNU_PROPERTY_TYPE_0 (0) terminates the descriptor.
+    descriptor = feature + struct.pack("<II", 0, 0)
+    header = struct.pack("<III", 4, len(descriptor), 0)  # namesz, descsz, type
+    return header + b"GNU\x00" + descriptor
+
+
+def _elf_with_symbols(names_with_extra, *, note_mask=None):
+    from tests.conftest import build_elf64_with_symbols
+
+    extras = None
+    if note_mask is not None:
+        extras = {".note.gnu.property": (7, _gnu_property_aarch64_note(note_mask))}
+    symbols = [("", 0, 3, 0xFFF1, 0, 0), ("printf", 1, 0, 0, 0, 0)]
+    symbols.extend(
+        (name, 1, 2, 0, 0, 0) for name in names_with_extra  # undefined FUNC
+    )
+    return build_elf64_with_symbols(symbols, extra_sections=extras)
+
+
+def test_hardening_reports_missing_canary_no_symbols(tmp_path):
+    from tests.conftest import build_elf64_with_symbols
+
+    elf = parse_elf(_write(tmp_path, build_elf64_with_symbols([])))
+    assert elf.hardening_facts()["has_stack_canary"] is None
+
+
+def test_hardening_detects_stack_canary(tmp_path):
+    elf = parse_elf(_write(tmp_path, _elf_with_symbols(["__stack_chk_fail"])))
+    assert elf.hardening_facts()["has_stack_canary"] is True
+
+
+def test_hardening_detects_cfi(tmp_path):
+    elf = parse_elf(_write(tmp_path, _elf_with_symbols(["__cfi_slowpath"])))
+    assert elf.hardening_facts()["has_cfi"] is True
+
+
+def test_hardening_pac_unknown_without_property_note(tmp_path):
+    elf = parse_elf(_write(tmp_path, _elf_with_symbols([])))
+    assert elf.hardening_facts()["has_pac"] is None
+
+
+def test_hardening_detects_pac_from_gnu_property(tmp_path):
+    elf = parse_elf(_write(tmp_path, _elf_with_symbols([], note_mask=0x02)))
+    assert elf.hardening_facts()["has_pac"] is True
+
+
+def test_hardening_distinguishes_bti_without_pac(tmp_path):
+    elf = parse_elf(_write(tmp_path, _elf_with_symbols([], note_mask=0x01)))
+    assert elf.hardening_facts()["has_pac"] is False

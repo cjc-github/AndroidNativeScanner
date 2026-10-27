@@ -182,3 +182,19 @@ PF_R = 0x4
 SECTION_DYNSYM = ".dynsym"
 SECTION_SYMTAB = ".symtab"
 SECTION_SHSTRTAB = ".shstrtab"
+
+# GNU property note (PT_GNU_PROPERTY / .note.gnu.property) constants used to
+# expose AArch64 Branch Target Identification and Pointer Authentication.
+# Values follow the generic ELF gABI plus the AArch64 ELF ABI addendum.
+PT_GNU_PROPERTY = 0x6474E553
+SECTION_NOTE_GNU_PROPERTY = ".note.gnu.property"
+
+# Property types inside a GNU_PROPERTY_TYPE_0 descriptor.
+GNU_PROPERTY_TYPE_0 = 0
+GNU_PROPERTY_AARCH64_FEATURE_1_AND = 0xC0000000
+
+# Feature bits of GNU_PROPERTY_AARCH64_FEATURE_1_AND.
+GNU_PROPERTY_AARCH64_FEATURE_1_BTI = 0x01
+GNU_PROPERTY_AARCH64_FEATURE_1_PAC = 0x02
+
+SHT_NOTE = 7

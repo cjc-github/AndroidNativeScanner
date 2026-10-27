@@ -58,6 +58,10 @@ class BasicFileAnalyzer(Analyzer):
         return "\n".join(lines)
 
 
+def _elf_type_machine_is_aarch64(data: dict) -> bool:
+    return data.get("machine") == "AArch64"
+
+
 def _read_magic(path, length: int = 8) -> bytes:
     with open(path, "rb") as stream:
         return stream.read(length)
@@ -123,6 +127,9 @@ class BasicElfAnalyzer(Analyzer):
                 "section_header_count": header.section_header_count,
                 "has_gnu_relro": hardening["has_gnu_relro"],
                 "executable_stack": hardening["executable_stack"],
+                "has_stack_canary": hardening["has_stack_canary"],
+                "has_cfi": hardening["has_cfi"],
+                "has_pac": hardening["has_pac"],
             },
         )
 
@@ -149,5 +156,11 @@ class BasicElfAnalyzer(Analyzer):
             "=== 安全加固 ===",
             f"GNU RELRO: {'是' if data.get('has_gnu_relro') else '否'}",
             f"栈可执行: {'是' if data.get('executable_stack') else '否'}",
+            f"栈保护(Canary): {'是' if data.get('has_stack_canary') else '否/未知'}",
+            f"CFI: {'是' if data.get('has_cfi') else '否/未知'}",
         ]
+        if _elf_type_machine_is_aarch64(data):
+            lines.append(f"AArch64 PAC: {'是' if data.get('has_pac') else '否/未知'}")
+        else:
+            lines.append("AArch64 PAC: 不适用（非 AArch64 目标）")
         return "\n".join(lines)

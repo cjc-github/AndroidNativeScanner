@@ -37,7 +37,7 @@
 - [x] 纯 Python ELF 解析基础设施 `infrastructure/elf`（Header/Section/Symbol 表，无外部工具依赖）；
 - [x] Itanium C++ ABI 符号 demangler（嵌套名、模板与替换、操作符、构造析构、local name、vtable/typeinfo/thunk）；
 - [x] JNI  native 方法名解码器（包名/类名/方法名 + 重载参数类型）；
-- [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR 事实生成 PIE/NX/RELRO Finding）；
+- [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR/符号表/GNU 属性事实生成 PIE/NX/RELRO、Canary、CFI、AArch64 PAC Finding）；
 - [x] 内置 `basic.dwarf` Analyzer（DWARF 2-5 参数名/参数类型/返回类型/声明位置 + 限定名还原）；
 - [x] 纯 Python DWARF 解析基础设施 `infrastructure/dwarf`（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str`/`.debug_line`，无外部工具依赖）；
 - [x] 内置 `security.dangerous-api` Analyzer（符号名精确匹配 + FORTIFY 归一化 + 严重度阈值）；

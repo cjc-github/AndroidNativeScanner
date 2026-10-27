@@ -125,7 +125,16 @@ class WebJobConsoleTests(unittest.TestCase):
         self.assertIn("security.sensitive-string.password-token", rule_ids)
 
     def test_job_from_elf_target_scores_risk(self):
-        blob = build_elf64_with_symbols([("", 0, 3, 0xFFF1, 0, 0)], with_symtab=False)
+        # A hardened, benign shared object: stack canary and CFI runtime support
+        # are present in the dynamic symbol table, so hardening flags nothing.
+        blob = build_elf64_with_symbols(
+            [
+                ("", 0, 3, 0xFFF1, 0, 0),
+                ("__stack_chk_fail", 1, 2, 0, 0, 0),
+                ("__cfi_slowpath", 1, 2, 0, 0, 0),
+            ],
+            with_symtab=False,
+        )
         job_id = self._start_job(blob, "libsample.so")
 
         log = self._wait_done(job_id)

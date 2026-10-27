@@ -8,8 +8,18 @@ def _cstr(text: str) -> bytes:
     return text.encode() + b"\x00"
 
 
+def _section_blob(value: bytes | tuple[int, bytes]) -> tuple[int, bytes]:
+    """Resolve an ``extra_sections`` value to ``(section_type, data)``."""
+    if isinstance(value, bytes):
+        return 1, value  # SHT_PROGBITS
+    return value
+
+
 def build_elf64_with_symbols(
-    symbols, *, with_symtab: bool = True, extra_sections: dict[str, bytes] | None = None
+    symbols,
+    *,
+    with_symtab: bool = True,
+    extra_sections: dict[str, bytes | tuple[int, bytes]] | None = None,
 ) -> bytes:
     """Build a minimal ELF64 little-endian image carrying symbol tables.
 
@@ -18,7 +28,9 @@ def build_elf64_with_symbols(
     ``shndx`` is the 1-based section index (0 means undefined).
 
     ``extra_sections`` appends arbitrary named sections, which is how debug
-    information is attached to the same image.
+    information is attached to the same image. A value may be either the raw
+    bytes (``SHT_PROGBITS``) or a ``(section_type, bytes)`` tuple for sections
+    whose type the caller must control (for example ``SHT_NOTE``).
     """
     dynstr = bytearray(b"\x00")
     dynstr_offsets: dict[str, int] = {}
@@ -78,8 +90,9 @@ def build_elf64_with_symbols(
         sections.append((".symtab", SHT_SYMTAB, 0, 0, 0, len(symtab), 6, 1, 8, 24))
         sections.append((".strtab", SHT_STRTAB, 0, 0, 0, len(strtab), 0, 0, 1, 0))
     if extra_sections:
-        for name, blob in extra_sections.items():
-            sections.append((name, SHT_PROGBITS, 0, 0, 0, len(blob), 0, 0, 1, 0))
+        for name, value in extra_sections.items():
+            section_type, blob = _section_blob(value)
+            sections.append((name, section_type, 0, 0, 0, len(blob), 0, 0, 1, 0))
     sections.append((".shstrtab", SHT_STRTAB, 0, 0, 0, len(shstrtab_bytes), 0, 0, 1, 0))
     shstrndx = len(sections) - 1
 
@@ -102,7 +115,8 @@ def build_elf64_with_symbols(
         placement[".symtab"] = place(symtab)
         placement[".strtab"] = place(strtab)
     if extra_sections:
-        for name, blob in extra_sections.items():
+        for name, value in extra_sections.items():
+            _, blob = _section_blob(value)
             placement[name] = place(blob)
     placement[".shstrtab"] = place(shstrtab_bytes)
 

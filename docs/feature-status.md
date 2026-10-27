@@ -48,7 +48,7 @@
 | `basic.elf` | ELF 类、字节序、类型、机器、入口、段表计数 | `analyzers/basic.py` |
 | `basic.symbols` | `.dynsym`/`.symtab` 导出枚举 + C++ demangle + JNI 签名恢复 | `analyzers/symbols.py` |
 | `basic.dwarf` | DWARF 2-5 参数名/类型/返回类型/声明位置，渲染层与 symbols 联合 | `analyzers/dwarf.py` |
-| `security.hardening` | PIE/NX/RELRO（基于 ELF/PHDR 事实） | `analyzers/security.py` |
+| `security.hardening` | PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC（基于 ELF/PHDR/符号表/GNU 属性） | `analyzers/security.py` |
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值） | `analyzers/security.py` |
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
 | `security.risk` | 三源聚合去重 + 严重度/置信度/类别计数 + V1 权重字符串指标 + 风险分档（权重可配） | `analyzers/security.py` |
@@ -135,7 +135,7 @@
 
 - `basic.symbols` 无法为 stripped 二进制恢复参数名/DWARF 类型（mangled name 之外的类型信息不存在）；
 - `basic.dwarf` 只在有调试信息的二进制上有意义；
-- `security.hardening` 目前只覆盖 PIE/NX/RELRO，Canary/CFI/PAC 等项尚未实现（能力描述中列出）；
+- `security.hardening` 已覆盖 PIE/NX/RELRO、Canary、CFI 与 AArch64 PAC；Canary/CFI 通过对符号表是否存在 `__stack_chk_fail`/`__cfi_*` 引用进行检测（未引用即视为缺失），PAC 通过 `.note.gnu.property` 的 `GNU_PROPERTY_AARCH64_FEATURE_1_AND` 位检测；
 - `security.dangerous-api` 按符号名精确匹配，不含调用点上下文证据；
 - 未实现能力在 `scan` 严格模式（`--module`）下整域报错，属框架阶段预期行为。
 

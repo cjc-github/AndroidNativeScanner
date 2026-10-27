@@ -40,6 +40,9 @@ def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path, minimal_elf64_
         "section_header_count": 12,
         "has_gnu_relro": None,
         "executable_stack": None,
+        "has_stack_canary": None,
+        "has_cfi": None,
+        "has_pac": None,
     }
 
 

@@ -17,7 +17,7 @@ import mmap
 import struct
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Iterable, Union
 
 from . import constants as elf
 from .structures import ElfHeader, ProgramHeader, SectionHeader, Symbol
@@ -56,6 +56,7 @@ class ElfFile:
     program_headers: tuple[ProgramHeader, ...]
     sections: tuple[SectionHeader, ...]
     symbols: tuple[Symbol, ...]
+    aarch64_feature_1: int | None = None
 
     @property
     def is_64bit(self) -> bool:
@@ -89,21 +90,43 @@ class ElfFile:
         return not self.has_section(elf.SECTION_SYMTAB)
 
     def hardening_facts(self) -> dict[str, bool | None]:
-        """Return NX/RELRO facts derived from the program header table.
+        """Return linker/compiler hardening facts derived from the image.
 
-        ``None`` means "unknown": the table is absent or truncated, which must
-        never be reported as the absence of a feature.
+        The program-header facts come from ``PT_GNU_RELRO`` / ``PT_GNU_STACK``;
+        the compiler facts come from the symbol table (stack canary, CFI) and
+        the ``GNU_PROPERTY`` note (AArch64 PAC). ``None`` means "unknown": the
+        relevant table or note is absent or truncated, which must never be
+        reported as the absence of a feature.
         """
-        if not self.program_headers:
-            return {"has_gnu_relro": None, "executable_stack": None}
-        has_relro: bool | None = False
+        facts: dict[str, bool | None] = {
+            "has_gnu_relro": None,
+            "executable_stack": None,
+            "has_stack_canary": None,
+            "has_cfi": None,
+            "has_pac": None,
+        }
+        has_relro: bool | None = None
         executable_stack: bool | None = None
+        if self.program_headers:
+            has_relro = False
         for program_header in self.program_headers:
             if program_header.type == "GNU_RELRO":
                 has_relro = True
             elif program_header.type == "GNU_STACK":
                 executable_stack = program_header.is_executable
-        return {"has_gnu_relro": has_relro, "executable_stack": executable_stack}
+        facts["has_gnu_relro"] = has_relro
+        facts["executable_stack"] = executable_stack
+
+        if self.symbol_tables:
+            facts["has_stack_canary"] = _references_any(
+                self.symbols, ("__stack_chk_fail", "__stack_chk_guard")
+            )
+            facts["has_cfi"] = _references_prefix(self.symbols, ("__cfi_slowpath", "__cfi_check"))
+        if self.aarch64_feature_1 is not None:
+            facts["has_pac"] = bool(
+                self.aarch64_feature_1 & elf.GNU_PROPERTY_AARCH64_FEATURE_1_PAC
+            )
+        return facts
 
 
 def parse_elf(path: Path) -> ElfFile:
@@ -191,6 +214,9 @@ def parse_bytes(data: _BytesLike) -> ElfFile:
         program_headers=program_headers,
         sections=sections,
         symbols=symbols,
+        aarch64_feature_1=_parse_aarch64_feature_1(
+            data, prefix, program_headers, sections
+        ),
     )
 
 
@@ -429,3 +455,109 @@ def _string_at(table: bytes, offset: int) -> str:
     if end == -1:
         end = len(table)
     return table[offset:end].decode("utf-8", errors="replace")
+
+
+def _references_any(symbols: tuple[Symbol, ...], names: tuple[str, ...]) -> bool:
+    """True when the symbol table references any of ``names``."""
+    wanted = set(names)
+    return any(symbol.name in wanted for symbol in symbols)
+
+
+def _references_prefix(symbols: tuple[Symbol, ...], prefixes: tuple[str, ...]) -> bool:
+    """True when the symbol table references a symbol with any prefix."""
+    return any(
+        symbol.name.startswith(prefix)
+        for symbol in symbols
+        for prefix in prefixes
+    )
+
+
+def _parse_aarch64_feature_1(
+    data: _BytesLike,
+    prefix: str,
+    program_headers: tuple[ProgramHeader, ...],
+    sections: tuple[SectionHeader, ...],
+) -> int | None:
+    """Return the AArch64 feature-1 mask from a GNU_PROPERTY note.
+
+    ``None`` means no GNU property note was found, so the presence of PAC must
+    be reported as unknown instead of as a negative answer.
+    """
+    region = _gnu_property_region(data, program_headers, sections)
+    if region is None:
+        return None
+    offset, size = region
+    for description, note_type in _iter_notes(data, prefix, offset, size):
+        if note_type != elf.GNU_PROPERTY_TYPE_0:
+            continue
+        feature = _parse_property(
+            description, prefix, elf.GNU_PROPERTY_AARCH64_FEATURE_1_AND
+        )
+        if feature is not None:
+            return feature
+    return None
+
+
+def _gnu_property_region(
+    data: _BytesLike,
+    program_headers: tuple[ProgramHeader, ...],
+    sections: tuple[SectionHeader, ...],
+) -> tuple[int, int] | None:
+    """Locate the GNU property note in a program header or a section."""
+    for program_header in program_headers:
+        if program_header.type != elf.PT_NAMES[elf.PT_GNU_PROPERTY]:
+            continue
+        if _in_range(data, program_header.offset, program_header.file_size):
+            return program_header.offset, program_header.file_size
+    for section in sections:
+        if section.type_value != elf.SHT_NOTE:
+            continue
+        if not (
+            section.name == elf.SECTION_NOTE_GNU_PROPERTY
+            or section.name.startswith(".note.gnu")
+        ):
+            continue
+        if _in_range(data, section.offset, section.size):
+            return section.offset, section.size
+    return None
+
+
+def _iter_notes(
+    data: _BytesLike, prefix: str, offset: int, size: int
+) -> Iterable[tuple[bytes, int]]:
+    """Yield ``(description, type)`` for each note inside an aligned region."""
+    end = offset + size
+    position = offset
+    note_format = prefix + "III"
+    while position + 12 <= end:
+        namesz, descsz, note_type = struct.unpack_from(note_format, data, position)
+        if namesz > end - position - 12:
+            return
+        description_offset = position + 12 + namesz
+        # GNU notes round name/description up to a 4-byte word boundary.
+        description_offset = (description_offset + 3) & ~3
+        if descsz > end - description_offset:
+            return
+        description = bytes(data[description_offset : description_offset + descsz])
+        yield description, note_type
+        position = description_offset + descsz
+        position = (position + 3) & ~3
+
+
+def _parse_property(
+    description: bytes, prefix: str, target_type: int
+) -> int | None:
+    """Return the 4-byte value of ``target_type`` inside a property list."""
+    end = len(description)
+    position = 0
+    pair_format = prefix + "II"
+    while position + 8 <= end:
+        prop_type, data_size = struct.unpack_from(pair_format, description, position)
+        data_offset = position + 8
+        if data_size > end - data_offset:
+            return None
+        if prop_type == target_type and data_size >= 4:
+            return struct.unpack_from(prefix + "I", description, data_offset)[0]
+        position = data_offset + data_size
+        position = (position + 3) & ~3
+    return None
