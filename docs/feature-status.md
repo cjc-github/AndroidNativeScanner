@@ -50,6 +50,7 @@
 | `basic.dwarf` | DWARF 2-5 参数名/类型/返回类型/声明位置，渲染层与 symbols 联合 | `analyzers/dwarf.py` |
 | `basic.types` | 合并 ELF+DWARF 恢复函数签名、全局变量和 class/struct/union/enum 复合类型（含成员/基类/枚举值） | `analyzers/types.py` |
 | `basic.cpp` | RTTI/vtable/typeinfo 符号 + 构造/析构克隆码 + 虚方法/继承（DWARF 基类与 RTTI 互证）；仅定义符号产生类证据，纯 C 结构不入清单 | `analyzers/cpp.py` |
+| `basic.disasm` | 可执行分节拆分、函数边界（符号优先 + x86-64/AArch64 序言扫描补齐）与 Capstone 指令解码；解码器缺失/架构不支持时降级为边界事实 | `analyzers/disasm.py` + `infrastructure/disasm.py` |
 | `security.hardening` | PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC（基于 ELF/PHDR/符号表/GNU 属性） | `analyzers/security.py` |
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值） | `analyzers/security.py` |
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
@@ -60,7 +61,7 @@
 `security.hardcoded-url`、`security.encoded-payload`（`rules/string_rules.py`，指纹格式
 `sensitive:<label>:<value>` / `url:<value>` / `base64:<value>`）。
 
-支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）（`DwarfType`/`DwarfMember`/`DwarfBase`/`DwarfEnumValue`/`DwarfVariable` 与复合类型/变量索引）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）。
+支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）（`DwarfType`/`DwarfMember`/`DwarfBase`/`DwarfEnumValue`/`DwarfVariable` 与复合类型/变量索引）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）、`infrastructure/disasm`（Capstone 指令解码与函数边界恢复；Capstone 为可选依赖，缺失时仅保留边界事实）。
 
 已验证事实（见 `project-status.md` §真实共享库验证）：5 个真实 C++ 共享库 2943 导出函数全覆盖，1895 个 C++ 符号 0 解码失败、0 类型差异。
 
@@ -95,19 +96,19 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 32/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 31/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
-| `basic`（5/10） | `basic.cpp`（RTTI/vtable/继承）、`basic.disasm`（反汇编）、`basic.cfg`（CFG）、`basic.callgraph`（Call Graph）、`basic.dataflow`（Data Flow） |
+| `basic`（4/10） | `basic.cfg`（CFG）、`basic.callgraph`（Call Graph）、`basic.dataflow`（Data Flow）——`basic.disasm` 已实现，为这三项提供前置 |
 | `advanced`（7/8） | `advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
 | `security`（0/4） | — |
 | `dynamic`（5/5） | `dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（全部） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
 | `automation`（7/7） | `automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow`（全部） |
 
-`advanced.strings`、`security.risk`、`security.vulnerability`、`basic.cpp` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
-下一步建议是 `basic.disasm` 及其衍生的 cfg/callgraph/dataflow（需反汇编层）。
+`advanced.strings`、`security.risk`、`security.vulnerability`、`basic.cpp`、`basic.disasm` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
+下一步建议是 `basic.disasm` 衍生的 cfg/callgraph/dataflow（反汇编层已就绪）。
 
 完整清单与实现顺序见 [未完成分析能力与技术债](pending-capabilities.md)。
 

@@ -2,21 +2,15 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 11/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 12/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 4/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **31/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 3/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **30/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
-## 1. 基础分析（basic，4 项外壳）
+## 1. 基础分析（basic，3 项外壳）
 
-### `basic.disasm`（反汇编：指令/函数边界/代码区域）
-
-- **现状**：无反汇编层，这是 `cfg`/`callgraph`/`dataflow` 三项的共同前置。
-- **需要什么**：指令解码器。需要先做依赖策略决策：引入 Capstone（Python 包依赖，符合"无外部工具依赖"原则但新增第三方依赖），还是自研最小解码器（x86-64/ARM/AArch64/ARM64 至少覆盖常用指令子集）。无论哪种，函数边界恢复都从已有事实出发：符号表给出已知函数地址区间，无符号区间用序言扫描（push rbp/mov rbp,sp、stp x29,x30 等）与对齐启发式补充。
-- **建议事实形态**：`functions`（地址、长度、arch/mode）、`instructions`（分页/按函数聚合，不做全量数组）、`code_regions`（可执行段拆分）。
-- **依赖**：`basic.elf`（Program Header 定位可执行段）+ `basic.symbols`（函数边界）。
-- **风险**：反汇编是最大的新增基础设施，建议先支持 ELF 机器类型 `EM_AARCH64` 与 `EM_X86_64`（Android 两大主流架构）。
+`basic.disasm` 已实现（指令解码 + 符号/序言函数边界 + 代码区域），以下三项建立在它之上。
 
 ### `basic.cfg`（CFG：基本块/边/控制流结构）
 
@@ -138,7 +132,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 
 ```text
 1. 软依赖 D1        —— 解锁聚合类 Analyzer 降级语义（Phase 4 前置）
-2. 反汇编底座决策   —— Capstone vs 自研；然后 basic.disasm → basic.cfg
+2. 反汇编族         —— ✅ 底座决策与 basic.disasm；接着 basic.cfg
                        → basic.callgraph → basic.dataflow（Phase 3 主体）
 3. advanced.family  —— constants/algorithm/file-format/library/compiler 先行，
                        protocol 次之，obfuscation 依赖 CFG 放最后（Phase 3 收尾）
@@ -149,7 +143,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）
 ```
 
-理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编族是单点最大的基础设施投入，决策越早越好；动态与 AI 都有共同底座，逐能力散做会重复付费。
+理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编底座已选定 Capstone 作为可选依赖（缺失时降级为边界事实），剩余三项直接复用其指令与边界事实；动态与 AI 都有共同底座，逐能力散做会重复付费。
 
 ---
 

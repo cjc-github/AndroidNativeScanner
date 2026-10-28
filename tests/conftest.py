@@ -20,6 +20,8 @@ def build_elf64_with_symbols(
     *,
     with_symtab: bool = True,
     extra_sections: dict[str, bytes | tuple[int, bytes]] | None = None,
+    machine: int = 62,
+    text_bytes: bytes = b"\x90" * 0x100,
 ) -> bytes:
     """Build a minimal ELF64 little-endian image carrying symbol tables.
 
@@ -31,6 +33,10 @@ def build_elf64_with_symbols(
     information is attached to the same image. A value may be either the raw
     bytes (``SHT_PROGBITS``) or a ``(section_type, bytes)`` tuple for sections
     whose type the caller must control (for example ``SHT_NOTE``).
+
+    ``machine`` selects ``e_machine`` (62 = EM_X86_64, 183 = EM_AARCH64) and
+    ``text_bytes`` supplies the ``.text`` payload, so code-shape tests can
+    place real instructions and prologues in the executable section.
     """
     dynstr = bytearray(b"\x00")
     dynstr_offsets: dict[str, int] = {}
@@ -81,7 +87,7 @@ def build_elf64_with_symbols(
     SHT_PROGBITS, SHT_SYMTAB, SHT_STRTAB, SHT_DYNSYM = 1, 2, 3, 11
     sections = [
         ("", 0, 0, 0, 0, 0, 0, 0, 0, 0),
-        (".text", SHT_PROGBITS, 0x6, 0x1000, 0, 0x100, 0, 0, 16, 0),
+        (".text", SHT_PROGBITS, 0x6, 0x1000, 0, len(text_bytes), 0, 0, 16, 0),
         (".data", SHT_PROGBITS, 0x3, 0x2000, 0, 8, 0, 0, 8, 0),
         (".dynsym", SHT_DYNSYM, 0x2, 0, 0, len(dynsym), 4, 1, 8, 24),
         (".dynstr", SHT_STRTAB, 0x2, 0, 0, len(dynstr), 0, 0, 1, 0),
@@ -106,7 +112,7 @@ def build_elf64_with_symbols(
     # Placement is keyed by section name so that dropping the regular symbol
     # table does not shift the offsets of the sections that remain.
     placement = {
-        ".text": place(b"\x90" * 0x100),
+        ".text": place(text_bytes),
         ".data": place(b"\x00" * 8),
         ".dynsym": place(dynsym),
         ".dynstr": place(dynstr),
@@ -135,7 +141,7 @@ def build_elf64_with_symbols(
         struct.pack(
             "<HHIQQQIHHHHHH",
             3,        # e_type: ET_DYN
-            62,       # e_machine: EM_X86_64
+            machine,  # e_machine
             1,        # e_version
             0x1040,   # e_entry
             0,        # e_phoff

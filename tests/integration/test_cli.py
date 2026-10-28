@@ -64,8 +64,10 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.dwarf",
         "basic.types",
         "basic.cpp",
+        "basic.disasm",
     ]
     assert payload["result"]["resolved_analyzers"] == [
+        "basic.disasm",
         "basic.file",
         "basic.elf",
         "basic.dwarf",
@@ -271,6 +273,7 @@ def test_cli_lists_plugins_as_table():
         "ID                     VERSION KIND        DEFAULT NAME",
         "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
         "basic.cpp              1.0.0   collector   yes     C++ Recovery Analyzer",
+        "basic.disasm           1.0.0   collector   yes     Disassembly Analyzer",
         "basic.dwarf            1.0.0   collector   yes     DWARF Analyzer",
         "basic.elf              1.0.0   collector   yes     ELF Header Analyzer",
         "basic.file             1.0.0   collector   yes     File Analyzer",
@@ -358,7 +361,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   11\n" in output
+    assert "  Registered analyzers   12\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
