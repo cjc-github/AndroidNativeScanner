@@ -66,8 +66,10 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.cpp",
         "basic.disasm",
         "basic.cfg",
+        "basic.callgraph",
     ]
     assert payload["result"]["resolved_analyzers"] == [
+        "basic.callgraph",
         "basic.cfg",
         "basic.disasm",
         "basic.file",
@@ -274,6 +276,7 @@ def test_cli_lists_plugins_as_table():
     assert stdout.getvalue().splitlines() == [
         "ID                     VERSION KIND        DEFAULT NAME",
         "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
+        "basic.callgraph        1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg              1.0.0   collector   yes     CFG Analyzer",
         "basic.cpp              1.0.0   collector   yes     C++ Recovery Analyzer",
         "basic.disasm           1.0.0   collector   yes     Disassembly Analyzer",
@@ -364,7 +367,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   13\n" in output
+    assert "  Registered analyzers   14\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -772,17 +775,17 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "callgraph", str(target)], stdout=stdout)
+    exit_code = main(["basic", "dataflow", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.callgraph",
+        "  basic.dataflow",
         "",
         "Reason:",
-        "  Analyzer not found: basic.callgraph",
+        "  Analyzer not found: basic.dataflow",
         "",
         "Try:",
         "  soinsight modules show basic",
@@ -797,12 +800,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "callgraph", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["basic", "dataflow", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.callgraph" in payload["diagnostics"][0]["message"]
+    assert "basic.dataflow" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -995,7 +998,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "callgraph", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["basic", "dataflow", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
