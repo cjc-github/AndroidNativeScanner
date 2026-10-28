@@ -49,6 +49,11 @@ VECTORS = [
     ("_ZN1AD0Ev", "A::~A()", "destructor"),
     ("_ZN1AD1Ev", "A::~A()", "destructor"),
     ("_ZN1AD2Ev", "A::~A()", "destructor"),
+    # GCC 12+ clone codes (also emitted in DWARF by GCC 11).
+    ("_ZN1AC4Ev", "A::A()", "constructor"),
+    ("_ZN1AD4Ev", "A::~A()", "destructor"),
+    ("_ZN1AC5Ev", "A::A()", "constructor"),
+    ("_ZN1AD5Ev", "A::~A()", "destructor"),
     ("_ZNSaIiEC1Ev", "std::allocator<int>::allocator()", "constructor"),
     ("_ZNSaIiED1Ev", "std::allocator<int>::~allocator()", "destructor"),
     ("_ZN7android7IBinderD2Ev", "android::IBinder::~IBinder()", "destructor"),

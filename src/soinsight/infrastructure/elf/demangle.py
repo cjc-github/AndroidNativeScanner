@@ -176,9 +176,13 @@ _CTOR_DTOR = {
     "C1": KIND_CONSTRUCTOR,
     "C2": KIND_CONSTRUCTOR,
     "C3": KIND_CONSTRUCTOR,
+    "C4": KIND_CONSTRUCTOR,
+    "C5": KIND_CONSTRUCTOR,
     "D0": KIND_DESTRUCTOR,
     "D1": KIND_DESTRUCTOR,
     "D2": KIND_DESTRUCTOR,
+    "D4": KIND_DESTRUCTOR,
+    "D5": KIND_DESTRUCTOR,
 }
 
 _CV_SUFFIX = {"K": " const", "V": " volatile", "r": " restrict"}
