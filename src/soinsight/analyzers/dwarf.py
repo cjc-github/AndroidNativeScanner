@@ -217,6 +217,7 @@ def _function_record(function) -> dict:
         "decl_line": function.decl_line,
         "low_pc": hex(function.low_pc) if function.low_pc is not None else None,
         "unit_name": function.unit_name,
+        "virtual": function.virtual,
     }
 
 

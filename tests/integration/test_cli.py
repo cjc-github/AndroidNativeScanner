@@ -60,12 +60,16 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.elf",
         "basic.symbols",
         "basic.dwarf",
+        "basic.types",
+        "basic.cpp",
     ]
     assert payload["result"]["resolved_analyzers"] == [
         "basic.file",
         "basic.elf",
         "basic.dwarf",
         "basic.symbols",
+        "basic.types",
+        "basic.cpp",
     ]
     assert payload["result"]["results"]["basic.file"]["data"]["format"] == "elf"
     assert payload["result"]["results"]["basic.elf"]["data"]["type"] == "DYN"
@@ -264,10 +268,12 @@ def test_cli_lists_plugins_as_table():
     assert stdout.getvalue().splitlines() == [
         "ID                     VERSION KIND        DEFAULT NAME",
         "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
+        "basic.cpp              1.0.0   collector   yes     C++ Recovery Analyzer",
         "basic.dwarf            1.0.0   collector   yes     DWARF Analyzer",
         "basic.elf              1.0.0   collector   yes     ELF Header Analyzer",
         "basic.file             1.0.0   collector   yes     File Analyzer",
         "basic.symbols          1.0.0   collector   yes     Symbol Analyzer",
+        "basic.types            1.0.0   collector   yes     Type Recovery Analyzer",
         "security.dangerous-api 1.0.0   detector    yes     Dangerous API Detection",
         "security.hardening     1.0.0   collector   yes     Hardening Analyzer",
         "security.risk          1.0.0   transformer yes     Risk Analyzer",
@@ -350,7 +356,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   9\n" in output
+    assert "  Registered analyzers   11\n" in output
     assert "\nExternal tools:\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -565,9 +571,16 @@ def test_cli_risk_aggregates_reachable_chain(tmp_path, elf64_with_symbols):
     ]
     risk = result["results"]["security.risk"]
     assert risk["status"] == "success"
-    # The fixture binary carries no hardening/API findings: the score stays 0.
-    assert risk["data"]["risk_score"] == 0
-    assert risk["data"]["risk_level"] == "low"
+    # The fixture has a symbol table but no canary/CFI references, so the
+    # hardening analyzer reports both features as missing and the score
+    # reflects exactly those two aggregated findings.
+    rule_ids = [finding["rule_id"] for finding in result["findings"]]
+    assert set(rule_ids) == {
+        "security.hardening.missing-stack-canary",
+        "security.hardening.missing-cfi",
+    }
+    # One medium (canary) plus one high (CFI) severity finding aggregate to 13.
+    assert risk["data"]["risk_score"] == 13
 
 
 def test_cli_writes_progress_to_stderr_not_stdout(tmp_path, elf64_with_symbols, capsys):
@@ -681,17 +694,17 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "types", str(target)], stdout=stdout)
+    exit_code = main(["basic", "callgraph", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.types",
+        "  basic.callgraph",
         "",
         "Reason:",
-        "  Analyzer not found: basic.types",
+        "  Analyzer not found: basic.callgraph",
         "",
         "Try:",
         "  soinsight modules show basic",
@@ -706,12 +719,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "types", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["basic", "callgraph", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.types" in payload["diagnostics"][0]["message"]
+    assert "basic.callgraph" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -904,7 +917,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "types", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["basic", "callgraph", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
