@@ -1,6 +1,8 @@
 """File-backed analyzer result cache."""
 
+import hashlib
 import json
+from pathlib import Path
 
 from ...infrastructure.config import RuntimeConfig
 from ...infrastructure.serialization import to_primitive
@@ -15,6 +17,27 @@ from ..models import (
     Severity,
 )
 from ..models.result import RESULT_SCHEMA_VERSION
+
+_CODE_VERSION: str | None = None
+
+
+def code_version() -> str:
+    """Fingerprint of the running code, stable within one code state.
+
+    Every ``.py`` file of the package feeds the digest, so any source change
+    (fix, edit, re-install) moves the fingerprint and invalidates cached
+    results. Cached entries live in a per-version directory; entries from
+    other versions become unreachable instead of silently reused.
+    """
+    global _CODE_VERSION
+    if _CODE_VERSION is None:
+        digest = hashlib.sha256()
+        package_root = Path(__file__).resolve().parents[2]
+        for path in sorted(package_root.rglob("*.py")):
+            digest.update(str(path.relative_to(package_root)).encode("utf-8"))
+            digest.update(path.read_bytes())
+        _CODE_VERSION = digest.hexdigest()[:16]
+    return _CODE_VERSION
 
 
 def _reconstruct_finding(item: dict) -> Finding:
@@ -57,9 +80,14 @@ class RuntimeCache:
 
     def _path(
         self, target: AnalysisTarget, analyzer_id: str, analyzer_version: str
-    ) -> str:
+    ) -> Path:
         safe_id = analyzer_id.replace(".", "_")
-        return self.config.cache_dir / target.sha256 / f"{safe_id}-{analyzer_version}.json"
+        return (
+            self.config.cache_dir
+            / code_version()
+            / target.sha256
+            / f"{safe_id}-{analyzer_version}.json"
+        )
 
     def get(
         self, target: AnalysisTarget, analyzer_id: str, analyzer_version: str

@@ -14,7 +14,7 @@ from soinsight.core.models import (
     Severity,
 )
 from soinsight.core.runtime import AnalysisRuntime
-from soinsight.core.runtime.cache import RuntimeCache
+from soinsight.core.runtime.cache import RuntimeCache, code_version
 from soinsight.infrastructure.config import RuntimeConfig
 
 
@@ -150,6 +150,37 @@ def test_runtime_caches_and_hits_result_with_findings(tmp_path):
     assert (
         second.results["security.hardening"].findings[0].rule_id
         == "security.hardening.executable-elf"
+    )
+
+
+def test_cache_entries_are_scoped_by_code_version(tmp_path, monkeypatch):
+    """A code change moves the fingerprint, so old entries miss instead of
+    serving stale results."""
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+    target = AnalysisTarget(target_file, target_file.resolve(), "sample.so", 6, "sha")
+    cache = RuntimeCache(RuntimeConfig(cache_dir=tmp_path / "cache"))
+    result = AnalysisResult(
+        analyzer_id="basic.file",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"size": 6},
+    )
+
+    cache.put(target, result)
+    assert cache.get(target, "basic.file", "1.0.0") is not None
+
+    version_dirs = [p.name for p in (tmp_path / "cache").iterdir() if p.is_dir()]
+    assert version_dirs == [code_version()]
+    assert len(code_version()) == 16
+
+    import soinsight.core.runtime.cache as cache_module
+
+    monkeypatch.setattr(cache_module, "_CODE_VERSION", "deadbeefdeadbeef")
+    assert cache.get(target, "basic.file", "1.0.0") is None
+    assert (
+        cache._path(target, "basic.file", "1.0.0").parts[-3]
+        == "deadbeefdeadbeef"
     )
 
 
