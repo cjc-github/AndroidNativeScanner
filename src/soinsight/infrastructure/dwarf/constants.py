@@ -70,6 +70,7 @@ DW_AT_decl_line = 0x3B
 DW_AT_ranges = 0x55
 DW_AT_accessibility = 0x32
 DW_AT_external = 0x3F
+DW_AT_artificial = 0x34
 DW_AT_virtuality = 0x4C
 DW_AT_containing_type = 0x1D
 DW_AT_vtable_elem_location = 0x4D
@@ -168,9 +169,11 @@ DW_AT_NAMES = {
     DW_AT_byte_size: "byte_size",
     DW_AT_accessibility: "accessibility",
     DW_AT_external: "external",
+    DW_AT_artificial: "artificial",
     DW_AT_virtuality: "virtuality",
     DW_AT_containing_type: "containing_type",
     DW_AT_vtable_elem_location: "vtable_elem_location",
+    DW_AT_object_pointer: "object_pointer",
     DW_AT_data_member_location: "data_member_location",
     DW_AT_const_value: "const_value",
 }

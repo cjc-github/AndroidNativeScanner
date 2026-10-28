@@ -71,11 +71,27 @@ def test_definition_inherits_declaration_attributes(tmp_path):
     abbrev += _uleb(0x3B) + _uleb(0x0B)        # decl_line
     abbrev += _uleb(DW_AT_virtuality) + _uleb(0x0B)
     abbrev += _uleb(0) + _uleb(0)
-    # 4: subprogram definition (no children)
-    abbrev += _uleb(4) + _uleb(0x2E) + bytes([0])
+    # 4: subprogram definition (children)
+    abbrev += _uleb(4) + _uleb(0x2E) + bytes([1])
     abbrev += _uleb(DW_AT_specification) + _uleb(0x13)   # specification, ref4
     abbrev += _uleb(0x6E) + _uleb(0x08)        # linkage_name
     abbrev += _uleb(0x11) + _uleb(0x01)        # low_pc, addr
+    abbrev += _uleb(0) + _uleb(0)
+    # 5: artificial formal parameter (this)
+    abbrev += _uleb(5) + _uleb(0x05) + bytes([0])
+    abbrev += _uleb(0x03) + _uleb(0x08)        # name
+    abbrev += _uleb(0x49) + _uleb(0x13)        # type
+    abbrev += _uleb(0x34) + _uleb(0x19)        # artificial, flag_present
+    abbrev += _uleb(0) + _uleb(0)
+    # 6: regular formal parameter
+    abbrev += _uleb(6) + _uleb(0x05) + bytes([0])
+    abbrev += _uleb(0x03) + _uleb(0x08)        # name
+    abbrev += _uleb(0x49) + _uleb(0x13)        # type
+    abbrev += _uleb(0) + _uleb(0)
+    # 7: base_type
+    abbrev += _uleb(7) + _uleb(0x24) + bytes([0])
+    abbrev += _uleb(0x03) + _uleb(0x08)        # name
+    abbrev += _uleb(0x0B) + _uleb(0x0B)        # byte_size
     abbrev += _uleb(0) + _uleb(0)
     abbrev += _uleb(0)
 
@@ -83,6 +99,8 @@ def test_definition_inherits_declaration_attributes(tmp_path):
     die_base = 4 + 2 + 4 + 1 + len(cu_die)
 
     body = bytearray()
+    int_ref = die_base + len(body)
+    body += _uleb(7) + b"int\x00" + bytes([4])
     body += _uleb(2) + b"Base\x00"             # class_type
     decl_ref = die_base + len(body)
     body += _uleb(3)
@@ -92,6 +110,9 @@ def test_definition_inherits_declaration_attributes(tmp_path):
     body += _uleb(4) + struct.pack("<I", decl_ref)
     body += b"_ZN4demo4Base7computeEi\x00"
     body += struct.pack("<Q", 0x1000)
+    body += _uleb(5) + b"this\x00" + struct.pack("<I", int_ref)
+    body += _uleb(6) + b"x\x00" + struct.pack("<I", int_ref)
+    body += _uleb(0)                           # end of definition children
     body += _uleb(0)                           # end of CU children
 
     cu_body = bytearray()
@@ -122,6 +143,8 @@ def test_definition_inherits_declaration_attributes(tmp_path):
     assert function.low_pc == 0x1000
     assert function.decl_file == "/work/spec.cpp"
     assert function.decl_line == 7
+    # Artificial parameters (this) are filtered from the parameter list.
+    assert [(p.name, p.type_name) for p in function.parameters] == [("x", "int")]
 
 
 def test_dwarf5_line_table_resolves_declaration_files(tmp_path):

@@ -94,7 +94,7 @@ V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要�
 
 `infrastructure/dwarf` 解析调试信息：
 
-- `parser.py`：`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头，支持 DWARF 2-5（含 DWARF64 与 DWARF5 的 `unit_type` 布局差异），提取 `DW_TAG_subprogram` 的形式参数、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；类外定义沿 `DW_AT_specification`/`DW_AT_abstract_origin` 链继承声明属性（限定名、virtuality、声明位置），同一符号的声明/定义双记录按 linkage 合并；
+- `parser.py`：`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头，支持 DWARF 2-5（含 DWARF64 与 DWARF5 的 `unit_type` 布局差异），提取 `DW_TAG_subprogram` 的形式参数（跳过 `DW_AT_artificial` 人工参数如 this）、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；类外定义沿 `DW_AT_specification`/`DW_AT_abstract_origin` 链继承声明属性（限定名、virtuality、声明位置），同一符号的声明/定义双记录按 linkage 合并；
 - 未知 form、越界引用、缺失字符串表都降级为 `None` 而不是猜测；`.debug_info` 畸形时记 `DWARF_UNREADABLE` 警告，不影响其余分析。
 
 该层不依赖 `readelf`/`nm`/`objdump` 等外部工具，也不执行被分析文件。验证方式见[项目状态](project-status.md)的“真实共享库验证”。

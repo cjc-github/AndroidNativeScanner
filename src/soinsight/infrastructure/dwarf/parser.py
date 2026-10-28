@@ -24,6 +24,7 @@ from .constants import (
     DW_AT_comp_dir,
     DW_AT_byte_size,
     DW_AT_accessibility,
+    DW_AT_artificial,
     DW_AT_data_member_location,
     DW_AT_const_value,
     DW_AT_decl_file,
@@ -747,6 +748,10 @@ def _extract_functions(units: list[_Unit]) -> tuple[DwarfFunction, ...]:
             qualified = _qualified_function_name(qualification_die, name)
             parameters: list[DwarfParameter] = []
             for child in die.children_with_tag(DW_TAG_formal_parameter):
+                if child.get(DW_AT_artificial):
+                    # Artificial parameters (this, __in_chrg, __object, ...)
+                    # are compiler plumbing, not source-level parameters.
+                    continue
                 param_name = child.get(DW_AT_name)
                 param_type = _type_name(
                     child.get(DW_AT_type), dies_by_offset, unit.offset
