@@ -17,6 +17,7 @@ from ..core.analyzer import AnalyzerRegistry, CancellationToken
 from ..core.models import Diagnostic, DiagnosticLevel
 from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
 from ..core.runtime import AnalysisRuntime, ProgressEvent, ProgressObserver
+from ..core.runtime.cache import code_version
 from ..infrastructure.config import AnalysisConfig, ConfigLoader, YamlConfigStore
 from ..infrastructure.plugins import PluginLoader
 from ..modules import ModuleCatalog, create_builtin_module_catalog
@@ -225,8 +226,16 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
     doctor.add_argument("--format", choices=("text", "json"), default="text")
     doctor.set_defaults(handler="doctor")
 
-    cache = subparsers.add_parser("cache", help="Inspect the configured cache location")
-    cache.add_argument("action", choices=("info",), nargs="?", default="info")
+    cache = subparsers.add_parser(
+        "cache", help="Inspect or maintain the analysis result cache"
+    )
+    cache.add_argument(
+        "action",
+        choices=("info", "clean", "prune"),
+        nargs="?",
+        default="info",
+        help="info: show location; clean: remove everything; prune: remove entries from other code versions",
+    )
     cache.add_argument("--cache-dir", default=".soinsight/cache")
     cache.set_defaults(handler="cache")
 
@@ -833,6 +842,79 @@ def _handle_plugins(
     return 0
 
 
+def _handle_cache(args: argparse.Namespace, stdout: TextIO) -> int:
+    """Show or maintain the file-backed analyzer result cache.
+
+    Cache entries are scoped by a fingerprint of the running code, so entries
+    from other code versions (or from a legacy flat layout) are stale; ``clean``
+    removes everything and ``prune`` removes only those stale entries.
+    """
+    cache_dir = Path(args.cache_dir).resolve()
+    active_version = code_version()
+    if args.action == "info":
+        stdout.write(f"Cache directory: {cache_dir}\n")
+        stdout.write(f"Code version:     {active_version}\n")
+        if cache_dir.exists():
+            entries = _cache_stats(cache_dir)
+            active = entries.get(active_version, (0, 0))
+            stdout.write(
+                f"Entries:          {active[0]} active / "
+                f"{sum(count for count, _ in entries.values())} total\n"
+            )
+            stale = sum(1 for version in entries if version != active_version)
+            if stale:
+                stdout.write(f"Stale versions:   {stale} (prune to remove)\n")
+        return 0
+
+    if args.action == "clean":
+        files, size = _remove_tree(cache_dir)
+        stdout.write(
+            f"Removed cache directory {cache_dir}: {files} files, {size} bytes\n"
+        )
+        return 0
+
+    pruned_files = pruned_size = 0
+    pruned_versions = 0
+    if cache_dir.exists():
+        for child in sorted(cache_dir.iterdir()):
+            if not child.is_dir() or child.name == active_version:
+                continue
+            files, size = _remove_tree(child)
+            pruned_files += files
+            pruned_size += size
+            pruned_versions += 1
+    stdout.write(
+        f"Pruned {pruned_versions} stale version(s): "
+        f"{pruned_files} files, {pruned_size} bytes\n"
+    )
+    return 0
+
+
+def _cache_stats(cache_dir: Path) -> dict[str, tuple[int, int]]:
+    """Count cache payload files and bytes per top-level version directory."""
+    stats: dict[str, tuple[int, int]] = {}
+    for child in cache_dir.iterdir():
+        if not child.is_dir():
+            continue
+        files = size = 0
+        for path in child.rglob("*.json"):
+            files += 1
+            size += path.stat().st_size
+        stats[child.name] = (files, size)
+    return stats
+
+
+def _remove_tree(directory: Path) -> tuple[int, int]:
+    """Delete a directory tree, returning the file count and byte size removed."""
+    files = size = 0
+    for path in sorted(directory.rglob("*"), reverse=True):
+        if path.is_file():
+            files += 1
+            size += path.stat().st_size
+    shutil.rmtree(directory, ignore_errors=True)
+    return files, size
+
+
 def _handle_doctor(
     args: argparse.Namespace,
     registry: AnalyzerRegistry,
@@ -1048,8 +1130,7 @@ def main(
     if args.handler == "report":
         return _handle_report(args, output_stream)
     if args.handler == "cache":
-        output_stream.write(f"Cache directory: {Path(args.cache_dir).resolve()}\n")
-        return 0
+        return _handle_cache(args, output_stream)
     if args.handler == "web":
         return _handle_web(args, output_stream)
     if args.handler == "config":

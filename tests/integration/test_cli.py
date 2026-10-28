@@ -7,6 +7,7 @@ import pytest
 from soinsight.cli.main import _display_width, main
 from soinsight.core.analyzer import Analyzer, AnalyzerMetadata, AnalyzerRegistry
 from soinsight.core.models import AnalysisResult, AnalysisStatus
+from soinsight.core.runtime.cache import code_version
 
 
 @dataclass
@@ -365,6 +366,57 @@ def test_cli_doctor_outputs_grouped_health_check():
     # directly, so the status line depends only on the host toolchain.
     assert "\nStatus:\n  " in output
     assert output.splitlines()[-1] in ("  ok", "  Install binutils: sudo apt-get install binutils")
+
+
+def test_cli_cache_info_reports_version_scoping(tmp_path):
+    cache_dir = tmp_path / "cache"
+    active = code_version()
+    (cache_dir / active / "sha").mkdir(parents=True)
+    (cache_dir / active / "sha" / "keep.json").write_text("{}")
+    (cache_dir / ("0" * 16) / "sha").mkdir(parents=True)
+    (cache_dir / ("0" * 16) / "sha" / "stale.json").write_text("{}")
+    stdout = StringIO()
+
+    exit_code = main(["cache", "info", "--cache-dir", str(cache_dir)], stdout=stdout)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert f"Cache directory: {cache_dir.resolve()}" in output
+    assert f"Code version:     {active}" in output
+    assert "Entries:          1 active / 2 total" in output
+    assert "Stale versions:   1 (prune to remove)" in output
+
+
+def test_cli_cache_clean_removes_everything(tmp_path):
+    cache_dir = tmp_path / "cache"
+    (cache_dir / code_version() / "sha").mkdir(parents=True)
+    (cache_dir / code_version() / "sha" / "x.json").write_text("0123456789")
+    stdout = StringIO()
+
+    exit_code = main(["cache", "clean", "--cache-dir", str(cache_dir)], stdout=stdout)
+
+    assert exit_code == 0
+    assert not cache_dir.exists()
+    assert "1 files" in stdout.getvalue()
+    assert "10 bytes" in stdout.getvalue()
+
+
+def test_cli_cache_prune_keeps_active_version_only(tmp_path):
+    cache_dir = tmp_path / "cache"
+    active = code_version()
+    (cache_dir / active / "sha").mkdir(parents=True)
+    (cache_dir / active / "sha" / "keep.json").write_text("{}")
+    stale = cache_dir / "deadbeefdeadbeef"
+    (stale / "sha").mkdir(parents=True)
+    (stale / "sha" / "drop.json").write_text("{}")
+    stdout = StringIO()
+
+    exit_code = main(["cache", "prune", "--cache-dir", str(cache_dir)], stdout=stdout)
+
+    assert exit_code == 0
+    assert (cache_dir / active / "sha" / "keep.json").exists()
+    assert not stale.exists()
+    assert "Pruned 1 stale version(s): 1 files" in stdout.getvalue()
 
 
 @dataclass
