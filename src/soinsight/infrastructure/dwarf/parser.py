@@ -258,7 +258,8 @@ def _parse_abbreviations(data: bytes, offset: int) -> dict[int, _Abbrev]:
 
 
 def _parse_line_file_names(
-    data: bytes, offset: int, version: int, offset_size: int
+    data: bytes, offset: int, version: int, offset_size: int,
+    debug_line_str: bytes = b"",
 ) -> tuple[tuple[str, ...], int]:
     """Read the file-name table from a ``.debug_line`` unit header.
 
@@ -267,7 +268,7 @@ def _parse_line_file_names(
     """
     try:
         if version >= 5:
-            return _parse_line_header_v5(data, offset, offset_size)
+            return _parse_line_header_v5(data, offset, offset_size, debug_line_str)
         return _parse_line_header_v4(data, offset, offset_size)
     except (DwarfFormatError, struct.error, IndexError):
         # A missing file table must not lose the parameters: the caller falls
@@ -320,7 +321,7 @@ def _parse_line_header_v4(
 
 
 def _parse_line_header_v5(
-    data: bytes, offset: int, offset_size: int
+    data: bytes, offset: int, offset_size: int, debug_line_str: bytes
 ) -> tuple[tuple[str, ...], int]:
     _unit_length, offset, _dwarf64 = _read_initial_length(data, offset)
     (version,) = struct.unpack_from("<H", data, offset)
@@ -337,45 +338,52 @@ def _parse_line_header_v5(
     opcode_base = data[offset - 1]
     offset += opcode_base - 1  # standard_opcode_lengths
 
+    formats, dir_count, offset = _read_line_entry_table(data, offset)
     directories: list[str] = []
-    dir_count, offset = _read_uleb(data, offset)
-    format_count = data[offset]
-    offset += 1
+    for _ in range(dir_count):
+        parts: dict[int, object] = {}
+        for content_type, form in formats:
+            parts[content_type], offset = _read_form_value(
+                data, offset, form, offset_size, 5, b"", debug_line_str, 0
+            )
+        directories.append(str(parts.get(1, "")))
+
+    formats, file_count, offset = _read_line_entry_table(data, offset)
+    files: list[str] = []
+    for _ in range(file_count):
+        parts = {}
+        for content_type, form in formats:
+            parts[content_type], offset = _read_form_value(
+                data, offset, form, offset_size, 5, b"", debug_line_str, 0
+            )
+        name = str(parts.get(1, ""))
+        dir_index = parts.get(2, 0)
+        prefix = ""
+        # DWARF5 directory indices are 0-based; index 0 is the compilation dir.
+        if isinstance(dir_index, int) and 0 <= dir_index < len(directories):
+            if directories[dir_index]:
+                prefix = directories[dir_index] + "/"
+        files.append(f"{prefix}{name}")
+    return tuple(files), offset
+
+
+def _read_line_entry_table(
+    data: bytes, offset: int
+) -> tuple[list[tuple[int, int]], int]:
+    """Read one DWARF5 line-table entry table header.
+
+    The layout is ``format_count`` ULEB, that many ``(content_type, form)``
+    ULEB pairs, then the entry count as a ULEB. Returns the formats, the
+    count, and the offset just past the table header.
+    """
+    format_count, offset = _read_uleb(data, offset)
     formats: list[tuple[int, int]] = []
     for _ in range(format_count):
         content_type, offset = _read_uleb(data, offset)
         form, offset = _read_uleb(data, offset)
         formats.append((content_type, form))
-    for _ in range(dir_count):
-        parts: dict[int, object] = {}
-        for content_type, form in formats:
-            parts[content_type], offset = _read_form_value(
-                data, offset, form, offset_size, 5, b"", b"", 0
-            )
-        directories.append(str(parts.get(1, "")))
-
-    files: list[str] = []
-    file_count, offset = _read_uleb(data, offset)
-    format_count = data[offset]
-    offset += 1
-    formats = []
-    for _ in range(format_count):
-        content_type, offset = _read_uleb(data, offset)
-        form, offset = _read_uleb(data, offset)
-        formats.append((content_type, form))
-    for _ in range(file_count):
-        parts = {}
-        for content_type, form in formats:
-            parts[content_type], offset = _read_form_value(
-                data, offset, form, offset_size, 5, b"", b"", 0
-            )
-        name = str(parts.get(1, ""))
-        dir_index = parts.get(2, 0)
-        prefix = ""
-        if isinstance(dir_index, int) and 0 < dir_index <= len(directories):
-            prefix = directories[dir_index - 1] + "/"
-        files.append(f"{prefix}{name}")
-    return tuple(files), offset
+    count, offset = _read_uleb(data, offset)
+    return formats, count, offset
 
 
 def _read_initial_length(data: bytes, offset: int) -> tuple[int, int, bool]:
@@ -510,7 +518,7 @@ def _read_form_value(
 
 
 def _string_at(table: bytes, offset: int) -> str:
-    if offset <= 0 or offset >= len(table):
+    if offset < 0 or offset >= len(table):
         return ""
     end = table.find(b"\x00", offset)
     if end == -1:
@@ -638,7 +646,7 @@ def _parse_units(
             stmt_list = cu.get(DW_AT_stmt_list)
             if isinstance(stmt_list, int) and line_data:
                 line_files, _ = _parse_line_file_names(
-                    line_data, stmt_list, version, offset_size
+                    line_data, stmt_list, version, offset_size, debug_line_str
                 )
         units.append(
             _Unit(
@@ -730,7 +738,13 @@ def _extract_functions(units: list[_Unit]) -> tuple[DwarfFunction, ...]:
             name, linkage_name = _function_names(die, dies_by_offset, unit.offset)
             if not name and not linkage_name:
                 continue
-            qualified = _qualified_function_name(die, name)
+            spec_die = _specification_target(die, dies_by_offset, unit.offset)
+            qualification_die = spec_die if spec_die is not None else die
+            if not name and spec_die is not None:
+                name = spec_die.get(DW_AT_name)
+                if not isinstance(name, str):
+                    name = ""
+            qualified = _qualified_function_name(qualification_die, name)
             parameters: list[DwarfParameter] = []
             for child in die.children_with_tag(DW_TAG_formal_parameter):
                 param_name = child.get(DW_AT_name)
@@ -759,6 +773,16 @@ def _extract_functions(units: list[_Unit]) -> tuple[DwarfFunction, ...]:
             unit_name = ""
             if unit.dies and isinstance(unit.dies[0].get(DW_AT_name), str):
                 unit_name = unit.dies[0].get(DW_AT_name)
+            decl_file = _decl_file(die, unit)
+            decl_line = die.get(DW_AT_decl_line)
+            if spec_die is not None:
+                # Definition DIEs inherit declaration attributes from the
+                # referenced specification DIE (qualified name, virtuality,
+                # declaration position).
+                if decl_file is None:
+                    decl_file = _decl_file(spec_die, unit)
+                if decl_line is None:
+                    decl_line = spec_die.get(DW_AT_decl_line)
             functions.append(
                 DwarfFunction(
                     name=qualified,
@@ -768,14 +792,76 @@ def _extract_functions(units: list[_Unit]) -> tuple[DwarfFunction, ...]:
                     return_type=_type_name(
                         die.get(DW_AT_type), dies_by_offset, unit.offset
                     ),
-                    decl_file=_decl_file(die, unit),
-                    decl_line=die.get(DW_AT_decl_line),
+                    decl_file=decl_file,
+                    decl_line=decl_line if isinstance(decl_line, int) else None,
                     parameters=tuple(parameters),
                     unit_name=unit_name,
-                    virtual=_function_is_virtual(die),
+                    virtual=_function_is_virtual(die)
+                    or (spec_die is not None and _function_is_virtual(spec_die)),
                 )
             )
-    return tuple(functions)
+    merged: dict[str, DwarfFunction] = {}
+    for record in functions:
+        key = record.linkage_name or (
+            f"{record.name}|{record.decl_file}|{record.decl_line}|{record.unit_name}"
+        )
+        existing = merged.get(key)
+        merged[key] = (
+            record if existing is None else _merge_function_records(existing, record)
+        )
+    return tuple(merged.values())
+
+
+def _specification_target(
+    die: _Die, dies_by_offset: dict[int, _Die], unit_offset: int
+) -> _Die | None:
+    """Return the declaration DIE a subprogram definition points at.
+
+    Out-of-class definitions reference their in-class declaration via
+    ``DW_AT_specification``; GCC clone declarations chain further through
+    ``DW_AT_abstract_origin``. Follow the chain to the DIE that carries the
+    declaration attributes (qualification, virtuality, declaration position).
+    """
+    seen = {die.offset}
+    current = die
+    while True:
+        target = None
+        for attribute in (DW_AT_specification, DW_AT_abstract_origin):
+            reference = current.get(attribute)
+            if not isinstance(reference, int):
+                continue
+            candidate = dies_by_offset.get(unit_offset + reference)
+            if candidate is not None and candidate.tag == DW_TAG_subprogram:
+                target = candidate
+                break
+        if target is None or target.offset in seen:
+            return None if current is die else current
+        seen.add(target.offset)
+        current = target
+
+
+def _merge_function_records(
+    existing: DwarfFunction, new: DwarfFunction
+) -> DwarfFunction:
+    """Merge two records that describe the same function.
+
+    Declaration DIEs carry qualification, virtuality and declaration
+    positions; definition DIEs carry addresses and usually parameter names.
+    Fields are unioned, with the first occurrence winning.
+    """
+    qualified = next((name for name in (existing.name, new.name) if "::" in name), "")
+    return DwarfFunction(
+        name=qualified or existing.name or new.name,
+        linkage_name=existing.linkage_name or new.linkage_name,
+        low_pc=existing.low_pc if existing.low_pc is not None else new.low_pc,
+        high_pc=existing.high_pc if existing.high_pc is not None else new.high_pc,
+        return_type=existing.return_type if existing.return_type else new.return_type,
+        decl_file=existing.decl_file if existing.decl_file is not None else new.decl_file,
+        decl_line=existing.decl_line if existing.decl_line is not None else new.decl_line,
+        parameters=existing.parameters or new.parameters,
+        unit_name=existing.unit_name or new.unit_name,
+        virtual=existing.virtual or new.virtual,
+    )
 
 
 def _function_is_virtual(die: _Die) -> bool:
@@ -1033,8 +1119,10 @@ def _decl_file(die: _Die, unit: _Unit) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, int):
-        if 0 < value <= len(unit.line_files):
-            return unit.line_files[value - 1]
+        # DWARF5 file indices are 0-based; earlier versions are 1-based.
+        base = 0 if unit.version >= 5 else 1
+        if base <= value < base + len(unit.line_files):
+            return unit.line_files[value - base]
         return f"<file#{value}>"
     return None
 
