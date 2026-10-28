@@ -25,8 +25,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic elf` | `basic.elf` | ELF 解析 | 已实现 |
 | `basic symbols` | `basic.symbols` | Symbol 解析 | 已实现 |
 | `basic dwarf` | `basic.dwarf` | DWARF 解析 | 已实现 |
-| `basic types` | `basic.types` | 类型恢复 | 外壳 |
-| `basic cpp` | `basic.cpp` | C++ 恢复 | 外壳 |
+| `basic types` | `basic.types` | 类型恢复 | 已实现 |
+| `basic cpp` | `basic.cpp` | C++ 恢复 | 已实现 |
 | `basic disasm` | `basic.disasm` | 反汇编 | 外壳 |
 | `basic cfg` | `basic.cfg` | CFG 恢复 | 外壳 |
 | `basic callgraph` | `basic.callgraph` | Call Graph 恢复 | 外壳 |
@@ -34,7 +34,11 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 
 `basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
 
-`basic.dwarf` 解析 DWARF 2-5 调试信息（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头），提取 `DW_TAG_subprogram` 的参数名、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名。其依赖链为 `basic.file → basic.elf → basic.dwarf`；调试信息缺失记为事实（`has_debug_info: false`），畸形记 `DWARF_UNREADABLE` 警告，不影响其余分析。渲染层会把 DWARF 参数名按 mangled name 联合回 `basic.symbols` 的签名。
+`basic.dwarf` 解析 DWARF 2-5 调试信息（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头），提取 `DW_TAG_subprogram` 的参数名、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；类外定义沿 `DW_AT_specification`/`DW_AT_abstract_origin` 链继承声明属性，同一符号的声明/定义记录按 linkage 合并（DWARF5 的行号表格式与 0 基文件/目录索引按规范处理）。其依赖链为 `basic.file → basic.elf → basic.dwarf`；调试信息缺失记为事实（`has_debug_info: false`），畸形记 `DWARF_UNREADABLE` 警告，不影响其余分析。渲染层会把 DWARF 参数名按 mangled name 联合回 `basic.symbols` 的签名。
+
+`basic.types` 把 ELF 符号表和 DWARF 调试信息合并成轻量类型模型：函数签名、全局变量，以及 class/struct/union/enum 复合类型（含成员、基类、枚举值）。它按 `linkage_name` 把 DWARF 函数/变量事实与 `basic.symbols` 合并（DWARF 优先），stripped 或缺少调试信息时仍保留符号表事实并标记类型未知（`unknown`），不做猜测。其依赖链为 `basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`；数据结构见 `infrastructure/dwarf/structures.py`。
+
+`basic.cpp` 把链接层证据恢复成 C++ 结构事实：`_ZTV*`/`_ZTI*`/`_ZTS*`/`_ZTT*` 符号给出 vtable/typeinfo/typeinfo name/VTT 及所属类，`_ZTC*` 记为构造 vtable 清单，`_ZTh*`/`_ZTv*` thunk 作为扁平证据记录（不在类记录中映射回类）；构造/析构函数由 demangler 的 constructor/destructor kind 归类（支持 C1/C2/C3/C4/C5 与 D0/D1/D2/D4/D5 克隆码），虚方法与继承来自 DWARF（基类、offset、accessibility、virtuality）。类记录标注证据来源（`dwarf`/`rtti`/`symbols`）并三方互证；只有本镜像定义的符号产生证据（导入的 `__cxxabiv1` 运行时符号不算），纯 C 结构（无基类/特殊成员/vtable/RTTI 证据）不进入类清单。其依赖链为 `basic.file → basic.elf → basic.dwarf → basic.types → basic.cpp`；能力边界是链接层恢复：不含调用点证据，无法还原源码语义。
 
 ### 2.2 高级分析
 
@@ -61,8 +65,13 @@ URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS
 |---|---|---|---|
 | `security hardening` | `security.hardening` | 安全保护检测 | 已实现 |
 | `security dangerous-api` | `security.dangerous-api` | 危险 API 检测 | 已实现 |
-| `security vulnerability` | `security.vulnerability` | 漏洞模式识别 | 外壳 |
+| `security vulnerability` | `security.vulnerability` | 漏洞模式识别 | 已实现 |
 | `security risk` | `security.risk` | 风险评分/评估 | 已实现 |
+
+`security.vulnerability` 依赖 `security.dangerous-api`，把危险 API 链接事实按符号名映射到
+CWE 类别（命令注入/缓冲区溢出/格式化字符串/路径/权限等），生成带证据链的漏洞模式
+Finding，并输出 `counts_by_cwe`/`counts_by_severity` 计数。它基于链接级事实推断，不含
+调用点上下文证据——`basic.callgraph`/`basic.dataflow` 实现后可提升证据等级。
 
 `security.risk` 聚合 `security.hardening`、`security.dangerous-api` 的发现项与
 `advanced.strings` 分类事实：按指纹（缺失指纹时按 `rule:message`）去重统计
@@ -166,7 +175,7 @@ automation.harness
 - `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
 - 单目标能力到 Runtime 的路由；
 - 开发期旧扁平命令隐藏兼容别名；
-- 9 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
+- 11 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
 
 未实现：
 

@@ -127,7 +127,7 @@ soinsight doctor --format json
   "python_version": "3.10.12",
   "python_executable": "/usr/bin/python3",
   "product_modules": 6,
-  "registered_analyzers": 9,
+  "registered_analyzers": 11,
   "legacy_tools": {
     "readelf": "/usr/bin/readelf",
     "nm": "/usr/bin/nm",
@@ -136,7 +136,7 @@ soinsight doctor --format json
 }
 ```
 
-当前注册的 9 个 Analyzer 为 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
+当前注册的 11 个 Analyzer 为 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
 
 ## 7. P2 text-only behavior
 

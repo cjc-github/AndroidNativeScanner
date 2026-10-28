@@ -94,7 +94,7 @@ V2 使用“**领域化产品结构 + 模块化单体技术内核**”。需要�
 
 `infrastructure/dwarf` 解析调试信息：
 
-- `parser.py`：`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头，支持 DWARF 2-5（含 DWARF64 与 DWARF5 的 `unit_type` 布局差异），提取 `DW_TAG_subprogram` 的形式参数、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；
+- `parser.py`：`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str` 与 `.debug_line` 行号表头，支持 DWARF 2-5（含 DWARF64 与 DWARF5 的 `unit_type` 布局差异），提取 `DW_TAG_subprogram` 的形式参数、参数类型、返回类型与 `DW_AT_decl_file`/`DW_AT_decl_line`，并按父 DIE 链还原类/命名空间限定名；类外定义沿 `DW_AT_specification`/`DW_AT_abstract_origin` 链继承声明属性（限定名、virtuality、声明位置），同一符号的声明/定义双记录按 linkage 合并；
 - 未知 form、越界引用、缺失字符串表都降级为 `None` 而不是猜测；`.debug_info` 畸形时记 `DWARF_UNREADABLE` 警告，不影响其余分析。
 
 该层不依赖 `readelf`/`nm`/`objdump` 等外部工具，也不执行被分析文件。验证方式见[项目状态](project-status.md)的“真实共享库验证”。
@@ -221,7 +221,7 @@ Scheduler 产生 `success`、`failed`、`skipped`、`timeout`、`cancelled`、`c
 | 扩展点 | 用途 | 当前状态 |
 |---|---|---|
 | Module Catalog | 产品模块与能力发现 | 已实现六大模块 |
-| Analyzer | 提取/转换事实 | SDK 可用；9 个内置 Analyzer（file/elf/symbols/dwarf/strings/hardening/dangerous-api/vulnerability/risk） |
+| Analyzer | 提取/转换事实 | SDK 可用；11 个内置 Analyzer（file/elf/symbols/dwarf/types/cpp/strings/hardening/dangerous-api/vulnerability/risk） |
 | Rule | 从事实形成 Finding | SDK 和 Runtime 可用 |
 | Profile | 组合能力 | Registry 可用，内置 `quick`/`security` |
 | Renderer | 输出格式 | Text/JSON/Markdown/HTML/SARIF 已实现 |
@@ -251,7 +251,7 @@ core 不依赖 cli/modules/具体 analyzer
 
 ## 10. 当前差距
 
-1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 9/42 项能力已接入）；
+1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 10/42 项能力已接入）；
 2. 支持双目标、多样本、结果集等复杂输入模型；
 3. 内置 deep/ci Profile（`quick`/`security` 已实现）；
 4. Artifact Store 接入 Runtime；

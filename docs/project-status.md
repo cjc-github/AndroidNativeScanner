@@ -1,12 +1,12 @@
 # SOInsight V2 项目状态与路线图
 
-**状态日期：2026-10-24**
+**状态日期：2026-10-28**
 
 ## 1. 当前里程碑
 
-> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
+> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`advanced.strings`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`advanced.strings`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -39,6 +39,8 @@
 - [x] JNI  native 方法名解码器（包名/类名/方法名 + 重载参数类型）；
 - [x] 内置 `security.hardening` Analyzer（基于 ELF/PHDR/符号表/GNU 属性事实生成 PIE/NX/RELRO、Canary、CFI、AArch64 PAC Finding）；
 - [x] 内置 `basic.dwarf` Analyzer（DWARF 2-5 参数名/参数类型/返回类型/声明位置 + 限定名还原）；
+- [x] 内置 `basic.types` Analyzer（ELF+DWARF 函数签名/全局变量/复合类型恢复 + DWARF 类型、成员、基类、枚举值、变量索引）；
+- [x] 内置 `basic.cpp` Analyzer（RTTI/vtable/typeinfo/VTT/构造 vtable/thunk + 构造析构克隆码 + DWARF 继承/虚方法，仅定义符号产生类证据）；
 - [x] 纯 Python DWARF 解析基础设施 `infrastructure/dwarf`（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str`/`.debug_line`，无外部工具依赖）；
 - [x] 内置 `security.dangerous-api` Analyzer（符号名精确匹配 + FORTIFY 归一化 + 严重度阈值）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
@@ -80,7 +82,7 @@
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，pyelftools 可用、`cpp_demangle` 未装）：
-`332 passed, 1 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
+`393 passed, 1 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
 （`pip install -e '.[dev]'`）后该模块以及参考 demangler 比对用例会恢复收集。
 
 ### 真实共享库验证
@@ -116,7 +118,7 @@
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | `basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`security.hardening`/`security.dangerous-api` 之外的 Analyzer/Rule/Provider |
+| 六大模块 | Catalog、CLI、ID | `basic.cpp`/反汇编族/高级分析/动态/AI/Automation 等其余 Analyzer/Rule/Provider |
 | `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file`、内置 Profile（`quick`/`security`） | 无 |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |

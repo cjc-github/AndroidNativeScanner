@@ -728,9 +728,12 @@ var CAP_META = {
   "basic.elf":           { name: "ELF 头",   desc: "类 / 端序 / 类型 / 机器 / 入口 / 段表 + RELRO、NX" },
   "basic.symbols":       { name: "符号表",   desc: "导出函数、导入符号、C++ demangle、JNI 解码" },
   "basic.dwarf":         { name: "DWARF",    desc: "调试信息函数与参数（stripped 时如实报告）" },
+  "basic.types":         { name: "类型恢复", desc: "函数签名 / 全局变量 / class·struct·union·enum 复合类型" },
+  "basic.cpp":           { name: "C++ 恢复", desc: "RTTI / vtable / typeinfo、构造析构、虚方法与继承" },
   "advanced.strings":    { name: "字符串分析", desc: "可打印字符串提取、偏移定位与 URL / 敏感信息 / Base64 分类" },
   "security.hardening":  { name: "加固检查", desc: "PIE / NX / RELRO 事实核查" },
   "security.dangerous-api": { name: "危险 API", desc: "导入 / 导出中的危险函数与修复建议" },
+  "security.vulnerability": { name: "漏洞模式", desc: "把危险 API 命中映射到 CWE 漏洞模式" },
   "security.risk":       { name: "风险汇总", desc: "Findings 去重、严重度 / 置信度汇总与加权评分" }
 };
 /* 离线兜底顺序（health 拿不到清单时用） */

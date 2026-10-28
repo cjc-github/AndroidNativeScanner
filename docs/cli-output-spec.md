@@ -151,7 +151,7 @@ Core:
 
 Capabilities:
   Product modules        6
-  Registered analyzers   1
+  Registered analyzers   11
 
 External tools:
   readelf               ok       /usr/bin/readelf
@@ -220,10 +220,10 @@ JSON 输出继续保持当前结构化 `ApplicationResponse` / `ScanResult` / `A
 Error: capability is not implemented
 
 Capability:
-  basic.types
+  basic.callgraph
 
 Reason:
-  Analyzer not found: basic.types
+  Analyzer not found: basic.callgraph
 
 Try:
   soinsight modules show basic

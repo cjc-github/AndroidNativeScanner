@@ -1,6 +1,6 @@
 # 功能实现状态清单
 
-**快照日期：2026-10-26**（基于代码与文档核实；对应 master 最新提交 3135bf5）
+**快照日期：2026-10-28**（基于代码与文档核实；`basic.types` 已提交（31965a7），`basic.cpp` 本次一并提交）
 
 本文档把项目「已实现」与「可能未实现」的功能点整理为一页清单，便于交接与规划。详细路线图见 `project-status.md`，能力定义见 `module-system.md`。
 
@@ -40,7 +40,7 @@
 - [x] CLI 输出规范：状态列、分组 help、`doctor`、`--quiet`、TTY 颜色、窄终端自适应、`report` 二次渲染
 - [x] 退出码与错误语义：能力未实现 → `ANALYSIS_PLAN_ERROR`（预期外壳行为）
 
-### 3. V2 已实现的真正 Analyzer 与 Rule（9/42 能力）
+### 3. V2 已实现的真正 Analyzer 与 Rule（10/42 能力）
 
 | 能力 ID | 内容 | 位置 |
 |---|---|---|
@@ -48,6 +48,8 @@
 | `basic.elf` | ELF 类、字节序、类型、机器、入口、段表计数 | `analyzers/basic.py` |
 | `basic.symbols` | `.dynsym`/`.symtab` 导出枚举 + C++ demangle + JNI 签名恢复 | `analyzers/symbols.py` |
 | `basic.dwarf` | DWARF 2-5 参数名/类型/返回类型/声明位置，渲染层与 symbols 联合 | `analyzers/dwarf.py` |
+| `basic.types` | 合并 ELF+DWARF 恢复函数签名、全局变量和 class/struct/union/enum 复合类型（含成员/基类/枚举值） | `analyzers/types.py` |
+| `basic.cpp` | RTTI/vtable/typeinfo 符号 + 构造/析构克隆码 + 虚方法/继承（DWARF 基类与 RTTI 互证）；仅定义符号产生类证据，纯 C 结构不入清单 | `analyzers/cpp.py` |
 | `security.hardening` | PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC（基于 ELF/PHDR/符号表/GNU 属性） | `analyzers/security.py` |
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值） | `analyzers/security.py` |
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
@@ -58,7 +60,7 @@
 `security.hardcoded-url`、`security.encoded-payload`（`rules/string_rules.py`，指纹格式
 `sensitive:<label>:<value>` / `url:<value>` / `base64:<value>`）。
 
-支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）。
+支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）（`DwarfType`/`DwarfMember`/`DwarfBase`/`DwarfEnumValue`/`DwarfVariable` 与复合类型/变量索引）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）。
 
 已验证事实（见 `project-status.md` §真实共享库验证）：5 个真实 C++ 共享库 2943 导出函数全覆盖，1895 个 C++ 符号 0 解码失败、0 类型差异。
 
@@ -75,7 +77,7 @@
 - [x] `web/index.html`：拖拽上传/样本下拉/服务器路径三种目标来源；能力清单由 `/api/health` 的 `registered_analyzers` 动态生成（中文名映射见 `CAP_META`，未知 id 回退显示原名），支持任意多选 + 全选/清空，另带一个组合 scan 开关；结果区为横向 Tab（概览 / 每个 Analyzer 一页 / 原始 JSON），Tab 标签用中文名 + Analyzer ID，两端 `‹ ›` 箭头与 ←/→ 键切换，`aria-selected` 与 roving tabindex 同步；重跑前自动清空上一次结果；运行中可点「停止分析」取消；计时显示「已用 X s / 上限 Y s」，超时与取消分别给出明确提示；勾选的能力与服务器路径写入 `localStorage`，刷新后自动恢复；每个 Analyzer 面板内附「文本化结果」折叠块
 - [x] 结果导出：符号表（按当前搜索/语言筛选）与发现项可一键导出 CSV（UTF-8 BOM，Excel 直接打开不乱码；以 `= + - @` 开头的单元格做公式注入转义）
 
-- [x] `web/so-scan.html`：独立"深度分析台"页面——选择 .so 文件（点击/拖拽）→ 一键启动全量 scan → 实时滚动日志 → 结果摘要（退出码/耗时/风险分档/发现项计数/8 能力状态 chips + 文件/ELF/符号/字符串/风险/发现项分区 + 每个 Analyzer 的「文本化结果」区块）→ 下载 JSON；控制台头部提供入口链接
+- [x] `web/so-scan.html`：独立"深度分析台"页面——选择 .so 文件（点击/拖拽）→ 一键启动全量 scan → 实时滚动日志 → 结果摘要（退出码/耗时/风险分档/发现项计数/能力状态 chips（按结果动态生成）+ 文件/ELF/符号/字符串/风险/发现项分区 + 每个 Analyzer 的「文本化结果」区块）→ 下载 JSON；控制台头部提供入口链接
 - [x] `web/start-web.bat` Windows 启动脚本；云端适配（`PORT`/`0.0.0.0` + `requirements.txt`）
 
 本地集成测试通过：上传、路径安全、静态资源白名单（源码不可下载）、非 ELF（exit 5 `INVALID_ELF`）、错误 400/403/404、取消与超时终止子进程等均覆盖。
@@ -84,7 +86,7 @@
 
 - [x] 可编辑安装（`setup.py`/`setup.cfg`）与 console script；Wheel 构建脚本 `scripts/build_cli.sh`（`--install` 一键）
 - [x] 辅助脚本：`categorise_real_sos.py`（真实库 demangle 全量比对）、`audit_export_coverage.py`（pyelftools 基准导出覆盖率审计）、`crosscheck_sample_demangle.py`、`demangle_gap_summary.py`、`find_dwarf.py`
-- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**468 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
+- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**508 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
 - [x] 文档守卫测试 `test_documentation_status.py`（防止文档与实现漂移）
 
 ---
@@ -93,20 +95,21 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 33/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 32/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
-| `basic`（6/10） | `basic.types`（类型恢复）、`basic.cpp`（RTTI/vtable/继承）、`basic.disasm`（反汇编）、`basic.cfg`（CFG）、`basic.callgraph`（Call Graph）、`basic.dataflow`（Data Flow） |
+| `basic`（5/10） | `basic.cpp`（RTTI/vtable/继承）、`basic.disasm`（反汇编）、`basic.cfg`（CFG）、`basic.callgraph`（Call Graph）、`basic.dataflow`（Data Flow） |
 | `advanced`（7/8） | `advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
 | `security`（0/4） | — |
 | `dynamic`（5/5） | `dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（全部） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
 | `automation`（7/7） | `automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow`（全部） |
 
-`advanced.strings`、`security.risk`、`security.vulnerability` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
-下一步建议是 `basic.types`/`basic.cpp`（依赖符号与 DWARF 事实），
-然后是 `basic.disasm` 及其衍生的 cfg/callgraph/dataflow（需反汇编层）。
+`advanced.strings`、`security.risk`、`security.vulnerability`、`basic.cpp` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
+下一步建议是 `basic.disasm` 及其衍生的 cfg/callgraph/dataflow（需反汇编层）。
+
+完整清单与实现顺序见 [未完成分析能力与技术债](pending-capabilities.md)。
 
 ### 2. 框架层缺口（外壳已建，实现不完整）
 
@@ -120,7 +123,7 @@
 - [ ] **报告 Schema**：无机器可校验的 JSON Schema（`docs/cli-output-schema.md` 只是文档描述，未提供 `.schema.json` 与兼容测试）
 - [ ] **并行资源预算**：stage 内并发有，跨阶段总资源/内存预算无
 - [ ] **目录扫描**：V2 TargetResolver 只接受单文件（`target_resolver.py` 报 "expects a single file"）；目录批量扫描仅 V1 有
-- [ ] **doctor 误报**：无 binutils 的机器上仍报 warning，但六项已实现 Analyzer 均为纯 Python，仅 V1 需要外部工具（分级未做）
+- [ ] **doctor 误报**：无 binutils 的机器上仍报 warning，但十一项已实现 Analyzer 均为纯 Python，仅 V1 需要外部工具（分级未做）
 
 ### 3. 工程化缺口
 
