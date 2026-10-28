@@ -208,7 +208,7 @@ def elf64_stripped_symbols() -> bytes:
 DW_TAG_compile_unit = 0x11
 DW_TAG_base_type = 0x24
 DW_TAG_pointer_type = 0x0F
-DW_TAG_const_type = 0x38
+DW_TAG_const_type = 0x26
 DW_TAG_subprogram = 0x2E
 DW_TAG_formal_parameter = 0x05
 DW_TAG_class_type = 0x02
@@ -220,8 +220,8 @@ DW_AT_low_pc = 0x11
 DW_AT_comp_dir = 0x1B
 DW_AT_type = 0x49
 DW_AT_linkage_name = 0x6E
-DW_AT_decl_file = 0x58
-DW_AT_decl_line = 0x59
+DW_AT_decl_file = 0x3A
+DW_AT_decl_line = 0x3B
 
 DW_FORM_addr = 0x01
 DW_FORM_data1 = 0x0B
@@ -416,7 +416,7 @@ DW_AT_accessibility = 0x32
 DW_AT_external = 0x3F
 DW_AT_data_member_location = 0x38
 DW_AT_const_value = 0x1C
-DW_AT_virtuality = 0x6B
+DW_AT_virtuality = 0x4C
 DW_AT_byte_size = 0x0B
 
 DW_FORM_sdata = 0x0D

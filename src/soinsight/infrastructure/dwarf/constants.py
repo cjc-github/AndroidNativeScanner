@@ -41,7 +41,7 @@ DW_TAG_variable = 0x34
 DW_TAG_volatile_type = 0x35
 DW_TAG_restrict_type = 0x37
 DW_TAG_atomic_type = 0x47
-DW_TAG_const_type = 0x38
+DW_TAG_const_type = 0x26
 
 # Tags whose DW_AT_name qualifies an enclosed function.
 _NAMESPACE_TAGS = frozenset(
@@ -65,12 +65,16 @@ DW_AT_specification = 0x47
 DW_AT_type = 0x49
 DW_AT_data_member_location = 0x38
 DW_AT_linkage_name = 0x6E
-DW_AT_decl_file = 0x58
-DW_AT_decl_line = 0x59
+DW_AT_decl_file = 0x3A
+DW_AT_decl_line = 0x3B
 DW_AT_ranges = 0x55
 DW_AT_accessibility = 0x32
 DW_AT_external = 0x3F
-DW_AT_virtuality = 0x6B
+DW_AT_virtuality = 0x4C
+DW_AT_containing_type = 0x1D
+DW_AT_vtable_elem_location = 0x4D
+DW_AT_object_pointer = 0x64
+DW_AT_data_bit_offset = 0x6B
 
 # DWARF forms.
 DW_FORM_addr = 0x01
@@ -165,6 +169,8 @@ DW_AT_NAMES = {
     DW_AT_accessibility: "accessibility",
     DW_AT_external: "external",
     DW_AT_virtuality: "virtuality",
+    DW_AT_containing_type: "containing_type",
+    DW_AT_vtable_elem_location: "vtable_elem_location",
     DW_AT_data_member_location: "data_member_location",
     DW_AT_const_value: "const_value",
 }
