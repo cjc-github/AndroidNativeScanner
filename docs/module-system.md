@@ -53,7 +53,7 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | 命令 | 稳定能力 ID | 能力 | 状态 |
 |---|---|---|---|
 | `advanced strings` | `advanced.strings` | 字符串分析 | 已实现 |
-| `advanced constants` | `advanced.constants` | 常量分析 | 外壳 |
+| `advanced constants` | `advanced.constants` | 常量分析 | 已实现 |
 | `advanced algorithm` | `advanced.algorithm` | 算法识别 | 外壳 |
 | `advanced protocol` | `advanced.protocol` | 协议识别 | 外壳 |
 | `advanced file-format` | `advanced.file-format` | 文件格式识别 | 外壳 |
@@ -66,6 +66,8 @@ URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS
 `STRINGS_INPUT_TRUNCATED` 诊断，规模上限通过能力选项
 （`min_length`/`max_strings`/`max_hits_per_category`/`max_scan_bytes`/`classify`）
 控制。
+
+`advanced.constants` 扫描数据段中的已知算法常量表（AES S-box、MD5/SHA 初值、CRC32 多项式、zlib deflate 基表、Base64 字母表、ChaCha20 sigma 等）。签名要求**所有**特征字都出现才算命中，单个巧合字不产生结论；命中记录首个特征字的文件偏移与所属分节。它同样对任意文件可用（非 ELF 目标没有分节归属，记为 `null` 而不是失败），输入超过 `max_scan_bytes` 时报 `CONSTANTS_INPUT_TRUNCATED` 并说明尾部未扫描；每算法命中数由 `max_hits_per_algorithm` 限制。这里只报告"常量表存在"这一事实，算法判定与用途推断由 `advanced.algorithm` 负责。数据结构见 `infrastructure/constants.py`。
 
 ### 2.3 安全分析
 

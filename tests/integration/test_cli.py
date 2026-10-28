@@ -278,6 +278,7 @@ def test_cli_lists_plugins_as_table():
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
         "ID                     VERSION KIND        DEFAULT NAME",
+        "advanced.constants     1.0.0   collector   yes     Constants Analyzer",
         "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
         "basic.callgraph        1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg              1.0.0   collector   yes     CFG Analyzer",
@@ -371,7 +372,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   15\n" in output
+    assert "  Registered analyzers   16\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -779,17 +780,17 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "constants", str(target)], stdout=stdout)
+    exit_code = main(["advanced", "protocol", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  advanced.constants",
+        "  advanced.protocol",
         "",
         "Reason:",
-        "  Analyzer not found: advanced.constants",
+        "  Analyzer not found: advanced.protocol",
         "",
         "Try:",
         "  soinsight modules show advanced",
@@ -804,12 +805,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "constants", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["advanced", "protocol", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "advanced.constants" in payload["diagnostics"][0]["message"]
+    assert "advanced.protocol" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -1002,7 +1003,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "constants", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["advanced", "protocol", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
