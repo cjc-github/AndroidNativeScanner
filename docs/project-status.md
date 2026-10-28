@@ -47,7 +47,7 @@
 - [x] 第二条真实跨域链路：`basic.file → basic.elf → basic.symbols`；
 - [x] 第三条真实跨域链路：`basic.file → basic.elf → basic.dwarf`（渲染层与 `basic.symbols` 联合）；
 - [x] 内置 `quick`（`basic.file`/`basic.elf`）和 `security`（`security.hardening`）Profile；
-- [x] Runtime 文件缓存（按目标 sha256 + analyzer 版本命中/写入）；
+- [x] Runtime 文件缓存（按“代码指纹 / 目标 sha256 / analyzer 版本”命中/写入，代码变更自动失效）；
 - [x] DAG stage 并发执行（`jobs > 1` 时同 stage Analyzer 并行）；
 - [x] Analyzer 超时看门狗、外部取消令牌和进度观察者；
 - [x] Python entry point 插件发现（组 `soinsight.analyzers`）；

@@ -32,7 +32,7 @@
 - [x] 异常隔离、依赖跳过、结果聚合（`aggregator.py`）
 - [x] Analyzer 执行计划 Planner（`planner.py`）
 - [x] 运行时控制：超时看门狗（daemon 线程）、SIGINT 取消令牌（二次信号立即中止）、进度观察者（stderr 进度行、`--quiet` 关闭）（`core/runtime/runtime.py`、`progress.py`）
-- [x] 文件缓存：按目标 sha256 + analyzer 版本命中/写入；`--no-cache`、`--cache-dir`、`cache info`（`core/runtime/cache.py`）
+- [x] 文件缓存：按“代码指纹 / 目标 sha256 / analyzer 版本”三层命中/写入，代码变更自动失效；`--no-cache`、`--cache-dir`、`cache info/clean/prune`（`core/runtime/cache.py`）
 - [x] ToolRunner、FileArtifactStore、PluginLoader 边界（`infrastructure/tools/`、`infrastructure/storage/`、`infrastructure/plugins/`）
 - [x] entry point 插件自动发现（组名 `soinsight.analyzers`，`plugins list`）
 - [x] YAML 配置体系：Schema、`config create/list/show/validate/use/current/clear/set/unset`、托管目录 + 活动配置、模块/能力选择、排除、runtime/output/capability options 合并（`infrastructure/config/`）
@@ -86,7 +86,7 @@
 
 - [x] 可编辑安装（`setup.py`/`setup.cfg`）与 console script；Wheel 构建脚本 `scripts/build_cli.sh`（`--install` 一键）
 - [x] 辅助脚本：`categorise_real_sos.py`（真实库 demangle 全量比对）、`audit_export_coverage.py`（pyelftools 基准导出覆盖率审计）、`crosscheck_sample_demangle.py`、`demangle_gap_summary.py`、`find_dwarf.py`
-- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**508 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
+- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**513 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
 - [x] 文档守卫测试 `test_documentation_status.py`（防止文档与实现漂移）
 
 ---
@@ -118,12 +118,12 @@
 - [ ] **AI 分析**：无 Provider 抽象（本地优先策略）、隐私防护、证据引用、模型版本与成本治理
 - [ ] **Automation**：无 Workflow、CI Gate、Fuzz 编排器、批处理流水线
 - [ ] **软依赖（order-only dependency）**：调度器的 `requires` 既是排序依据也是跳过闸门；聚合类 Analyzer（`security.risk`、未来的 `security.vulnerability`）需要"仅保证顺序、上游缺席时降级为空集"的可选依赖。当前 `security.risk` 在非 ELF 目标上随链跳过是有意行为（规则报告仍在，缺风险分档）
-- [ ] **缓存治理**：有命中/写入，无失效策略与清理命令（`cache` 只有 `info`）
+- [ ] ~~缓存治理~~：✅ 已解决——缓存键加入代码指纹（源码变更自动失效），`cache info/clean/prune` 可清理旧版本条目
 - [ ] **插件协议**：entry point 发现已实现，但与外部插件的兼容协议未定义
 - [ ] **报告 Schema**：无机器可校验的 JSON Schema（`docs/cli-output-schema.md` 只是文档描述，未提供 `.schema.json` 与兼容测试）
 - [ ] **并行资源预算**：stage 内并发有，跨阶段总资源/内存预算无
 - [ ] **目录扫描**：V2 TargetResolver 只接受单文件（`target_resolver.py` 报 "expects a single file"）；目录批量扫描仅 V1 有
-- [ ] **doctor 误报**：无 binutils 的机器上仍报 warning，但十一项已实现 Analyzer 均为纯 Python，仅 V1 需要外部工具（分级未做）
+- [ ] ~~doctor 误报~~：✅ 已解决——缺 binutils 报 info 而非 warning（binutils 仅 V1 legacy 管线需要，十一项已实现 Analyzer 均为纯 Python）
 
 ### 3. 工程化缺口
 

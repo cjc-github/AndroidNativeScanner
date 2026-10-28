@@ -173,7 +173,7 @@ V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`bas
 - `security.risk` 聚合 hardening/dangerous-api 发现项与字符串指标，按指纹去重计分并分档（权重可通过能力选项覆盖）；
 - 三条内置规则 `security.sensitive-string` / `security.hardcoded-url` / `security.encoded-payload` 随规则引擎自动把字符串事实转为可复核的发现项。
 
-V2 尚未具备其他具体业务 Analyzer（反汇编/CFG/Call Graph/Data Flow、动态/AI/Automation、高级分析其余能力）、真实缓存治理、外部插件协议、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)与[未完成分析能力与技术债](docs/pending-capabilities.md)。
+V2 尚未具备其他具体业务 Analyzer（反汇编/CFG/Call Graph/Data Flow、动态/AI/Automation、高级分析其余能力）、外部插件协议、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)与[未完成分析能力与技术债](docs/pending-capabilities.md)。
 
 ## 开发原则
 

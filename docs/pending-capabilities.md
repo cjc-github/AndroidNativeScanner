@@ -119,12 +119,12 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 | 编号 | 债项 | 现状 | 需要什么 |
 |---|---|---|---|
 | D1 | 软依赖（仅排序的可选依赖） | `requires` 既是排序依据也是跳过闸门 | 调度器新增 `order_only`/软依赖语义：上游缺席时降级为空集。规划与 `security.risk` 非 ELF 降级、`security.vulnerability` 聚合一起落地 |
-| D2 | 缓存治理 | 有命中/写入，`cache` 只有 `info` | 失效策略与 `cache clean/prune` |
+| D2 | 缓存治理 | 命中/写入按“代码指纹 / 目标 sha256 / analyzer 版本”三层隔离，`cache info/clean/prune` 可用 | （无遗留：随代码变更自动失效，`prune` 清理旧版本条目） |
 | D3 | 插件兼容协议 | entry point 发现已实现 | 与外部插件的兼容协议定义 |
 | D4 | 报告 Schema | `docs/cli-output-schema.md` 只是文档 | 机器可校验 `.schema.json` + 兼容性测试 |
 | D5 | 并行资源预算 | stage 内并发已实现 | 跨阶段总资源/内存预算 |
 | D6 | 目录扫描 | V2 TargetResolver 只接受单文件 | 多目标 Request 模型（与 D8 同源） |
-| D7 | doctor 分级 | 无 binutils 机器报 warning，但十项已实现 Analyzer 均为纯 Python | 按已注册 Analyzer 实际依赖分级报健康状态 |
+| D7 | doctor 分级 | 缺 binutils 报 info 而非 warning，并注明 binutils 仅 V1 legacy 管线需要、V2 Analyzer 均为纯 Python | （无遗留） |
 | D8 | 多目标 Request 与 Diff 引擎 | 只有双目标命令形态 | 统一 Request 模型 + Diff 本体（支撑 binary-diff/目录扫描/批处理） |
 | D9 | 动态执行底座 | 无 | 授权门、沙箱执行器、采集器（dynamic 五项共同前置） |
 | D10 | AI Provider 抽象 | 无 | 本地优先策略、隐私防护、证据引用、模型版本与成本治理 |
