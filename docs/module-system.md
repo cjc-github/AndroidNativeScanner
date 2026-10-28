@@ -30,7 +30,7 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic disasm` | `basic.disasm` | 反汇编 | 已实现 |
 | `basic cfg` | `basic.cfg` | CFG 恢复 | 已实现 |
 | `basic callgraph` | `basic.callgraph` | Call Graph 恢复 | 已实现 |
-| `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 外壳 |
+| `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 已实现 |
 
 `basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
 
@@ -45,6 +45,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 `basic.cfg` 在 `basic.disasm` 的指令流之上按函数构建控制流图：基本块由「入口、直接跳转目标、终结指令的下一条」三类 leader 切分，边按终结指令分类为 `branch`/`cond`/`call`/`call_indirect`/`jump_indirect`/`fallthrough`。间接跳转与间接调用不猜目标，只记 `*_indirect` 边；`call` 的返回边记到 fall-through 块，被调方作为调用图事实由 `basic.callgraph` 处理。回边环用深度优先回边检测报告为块起址环，不可约 CFG 降级为「未报告环」而非错误结论。它同样不声明 `requires`（自解析 ELF 并复用反汇编事实），Capstone 缺失或无可执行分节时报 `CFG_NO_DECODER`/`CFG_NO_CODE_REGIONS` 警告并返回空图；规模由 `max_functions`/`max_instructions` 控制，越界记 `CFG_TRUNCATED`。数据结构见 `infrastructure/cfg.py`。
 
 `basic.callgraph` 解析调用点为 `call_edges`（caller/callee/`callee_kind: local/import/indirect`）并给出 `callers_of` 反向索引与 `external_calls` 外部调用汇总。直接调用按函数符号表解析为 `local`；落到 PLT 桩的调用经桩自身的 GOT 槽（x86-64 `jmp [rip+disp]`、AArch64 `adrp`+`ldr` 对）匹配 `.rela.*` 重定位恢复导入符号名，记为 `import`；间接调用（寄存器/内存目标）只记 `indirect` 且不带 callee，不猜测。PLT 桩起点从指令形态读取，不假设固定步长，因此 PLT0、`.plt.sec` 与 IRELATIVE 布局同样成立。降级与截断语义同 `basic.cfg`（`CALLGRAPH_NO_DECODER`/`CALLGRAPH_NO_CODE_REGIONS`/`CALLGRAPH_TRUNCATED`，`max_functions`/`max_instructions`/`max_edges`）。数据结构见 `infrastructure/callgraph.py`。
+
+`basic.dataflow` 在 `basic.cfg` 的基本块之上做函数内（intra-procedural）use-def 与到达定义分析。寄存器位置从指令操作数文本读取而非解码器摘要：目标操作数为写、其余寄存器为读，子寄存器折叠到架构寄存器（`eax`→`rax`、`w0`→`x0`），内存操作数只贡献基址寄存器。事实按基本块聚合为 `defs`/`uses`，`uses` 携带 `reaching` 到达定义列表；跨块传播是前向数据流（按前驱重算 `in`，块内最后一次定义 kill 入口值），在最长无环路径上每块一轮收敛。函数间传播不在能力范围内（`scope: intra-procedural`），规模由 `max_functions`/`max_instructions`/`max_pairs` 控制，越界记 `DATAFLOW_TRUNCATED`；降级语义同 `basic.cfg`（`DATAFLOW_NO_DECODER`/`DATAFLOW_NO_CODE_REGIONS`）。数据结构见 `infrastructure/dataflow.py`。
 
 ### 2.2 高级分析
 

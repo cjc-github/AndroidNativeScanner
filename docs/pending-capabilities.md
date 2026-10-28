@@ -2,22 +2,15 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 14/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 15/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 1/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **28/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **27/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
-## 1. 基础分析（basic，1 项外壳）
+## 1. 基础分析（basic，0 项外壳）
 
-`basic.disasm`（指令解码 + 符号/序言函数边界 + 代码区域）、`basic.cfg`（基本块/边/回边环）与 `basic.callgraph`（直接调用/PLT 导入/间接调用）已实现，以下一项建立在它们之上。
-
-### `basic.dataflow`（Use-Def/数据依赖/基础传播）
-
-- **现状**：无。依赖 `basic.cfg`，是基础分析族中最重的一项。
-- **需要什么**：按 ABI 建模寄存器/栈槽的 use-def；建议先做函数内（intra-procedural）分析，函数间传播推后。
-- **建议事实形态**：`defs`/`uses`（按基本块聚合）、`reaches`（到达定义对，限量声明截断）。
-- **依赖**：`basic.cfg`。风险与字符串联合（如"传入 `strcpy` 目标的是栈缓冲区"）属于 Phase 4 安全闭环的数据流证据，不在此能力内完成。
+`basic` 十项能力全部已实现：`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`。反汇编族（disasm → cfg → callgraph → dataflow）已补齐，`security.dangerous-api`/`security.vulnerability` 的调用点证据接入见 §3。
 
 ---
 
@@ -118,8 +111,8 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 
 ```text
 1. 软依赖 D1        —— 解锁聚合类 Analyzer 降级语义（Phase 4 前置）
-2. 反汇编族         —— ✅ 底座决策、basic.disasm、basic.cfg 与 basic.callgraph；
-                       接着 basic.dataflow（Phase 3 主体）
+2. 反汇编族         —— ✅ 底座决策、basic.disasm、basic.cfg、basic.callgraph
+                       与 basic.dataflow 全部完成（Phase 3 主体）
 3. advanced.family  —— constants/algorithm/file-format/library/compiler 先行，
                        protocol 次之，obfuscation 依赖 CFG 放最后（Phase 3 收尾）
 4. Phase 4 余项     —— 调用点证据接入 dangerous-api/vulnerability、CI Gate、基线抑制
@@ -129,7 +122,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）
 ```
 
-理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编底座已选定 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg`/`basic.callgraph` 依次复用其指令、边界与 CFG 事实，剩余 dataflow 直接建在 CFG 之上；动态与 AI 都有共同底座，逐能力散做会重复付费。
+理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编族已整体落地——`basic.disasm` 用 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg`/`basic.callgraph`/`basic.dataflow` 依次复用其指令、边界与 CFG 事实；下一步的 advanced 族多数只需 ELF 分节与字符串层，无需反汇编；动态与 AI 都有共同底座，逐能力散做会重复付费。
 
 ---
 

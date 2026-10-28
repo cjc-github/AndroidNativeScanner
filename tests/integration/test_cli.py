@@ -67,10 +67,12 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.disasm",
         "basic.cfg",
         "basic.callgraph",
+        "basic.dataflow",
     ]
     assert payload["result"]["resolved_analyzers"] == [
         "basic.callgraph",
         "basic.cfg",
+        "basic.dataflow",
         "basic.disasm",
         "basic.file",
         "basic.elf",
@@ -184,7 +186,7 @@ def test_cli_lists_product_modules_with_status_column():
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
         "MODULE      NAME      CAPABILITIES  STATUS",
-        "basic       基础分析            10  partial",
+        "basic       基础分析            10  implemented",
         "advanced    高级分析             8  partial",
         "security    安全分析             4  implemented",
         "dynamic     动态分析             5  catalog-only",
@@ -203,7 +205,7 @@ def test_cli_shows_module_capabilities_with_status():
     assert lines[:6] == [
         "Module: basic",
         "Name:   基础分析",
-        "Status: partial",
+        "Status: implemented",
         "",
         "Description:",
         "  建立二进制、ELF、代码结构和统一 IR 的基础事实。",
@@ -215,7 +217,8 @@ def test_cli_shows_module_capabilities_with_status():
     assert header.endswith("STATUS")
 
     assert any(row.endswith("implemented") for row in rows)
-    assert any(row.endswith("planned") for row in rows)
+    # Every basic capability is implemented now, so no row is planned.
+    assert all(row.endswith("implemented") for row in rows)
 
 
 @pytest.mark.parametrize(
@@ -279,6 +282,7 @@ def test_cli_lists_plugins_as_table():
         "basic.callgraph        1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg              1.0.0   collector   yes     CFG Analyzer",
         "basic.cpp              1.0.0   collector   yes     C++ Recovery Analyzer",
+        "basic.dataflow         1.0.0   collector   yes     Data Flow Analyzer",
         "basic.disasm           1.0.0   collector   yes     Disassembly Analyzer",
         "basic.dwarf            1.0.0   collector   yes     DWARF Analyzer",
         "basic.elf              1.0.0   collector   yes     ELF Header Analyzer",
@@ -367,7 +371,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   14\n" in output
+    assert "  Registered analyzers   15\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -775,20 +779,20 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dataflow", str(target)], stdout=stdout)
+    exit_code = main(["advanced", "constants", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  basic.dataflow",
+        "  advanced.constants",
         "",
         "Reason:",
-        "  Analyzer not found: basic.dataflow",
+        "  Analyzer not found: advanced.constants",
         "",
         "Try:",
-        "  soinsight modules show basic",
+        "  soinsight modules show advanced",
         "  soinsight basic file <target>",
         "",
         "Exit code: 3",
@@ -800,12 +804,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dataflow", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["advanced", "constants", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "basic.dataflow" in payload["diagnostics"][0]["message"]
+    assert "advanced.constants" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -998,7 +1002,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["basic", "dataflow", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["advanced", "constants", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
@@ -1045,5 +1049,5 @@ def test_modules_list_uses_compact_layout_for_narrow_terminal(monkeypatch):
 
     assert exit_code == 0
     assert stdout.getvalue().splitlines()[0] == "MODULE      STATUS"
-    assert "basic       partial" in stdout.getvalue()
+    assert "basic       implemented" in stdout.getvalue()
     assert "CAPABILITIES" not in stdout.getvalue()

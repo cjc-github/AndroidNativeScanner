@@ -44,6 +44,7 @@
 - [x] 内置 `basic.disasm` Analyzer（Capstone 指令解码 + 函数边界恢复：符号表优先，x86-64/AArch64 序言扫描补齐；`infrastructure/disasm`，Capstone 为可选依赖）；
 - [x] 内置 `basic.cfg` Analyzer（leader 切分基本块、`branch`/`cond`/`call`/`call_indirect`/`jump_indirect`/`fallthrough` 边分类、DFS 回边环检测；`infrastructure/cfg`，间接目标不猜测）；
 - [x] 内置 `basic.callgraph` Analyzer（调用点解析为 local/import/indirect，PLT 桩经自身 GOT 槽匹配 `.rela.*` 恢复导入符号名；`infrastructure/callgraph`，含 `.rela`/`.rel` 解析）；
+- [x] 内置 `basic.dataflow` Analyzer（函数内 use-def + 到达定义：按基本块聚合 `defs`/`uses`，前向数据流跨块传播；`infrastructure/dataflow`，寄存器从操作数文本读取）；
 - [x] 纯 Python DWARF 解析基础设施 `infrastructure/dwarf`（`.debug_info`/`.debug_abbrev`/`.debug_str`/`.debug_line_str`/`.debug_line`，无外部工具依赖）；
 - [x] 内置 `security.dangerous-api` Analyzer（符号名精确匹配 + FORTIFY 归一化 + 严重度阈值）；
 - [x] 第一条真实跨域链路：`basic.file → basic.elf → security.hardening`；
@@ -85,12 +86,13 @@
 - [x] `basic.disasm`：指令解码、符号/序言函数边界、代码区域、选项截断、非 ELF、不支持的机器与缺失解码器降级；
 - [x] `basic.cfg`：leader 切分、边分类（branch/cond/call/call_indirect/jump_indirect/fallthrough）、回边环检测、间接目标不猜测、选项截断、非 ELF、缺失解码器与无代码区域降级；
 - [x] `basic.callgraph`：local/import/indirect 调用分类、PLT 桩 GOT 槽与 `.rela.*` 匹配、`callers_of` 反向索引、外部调用汇总、选项截断、非 ELF、缺失解码器与无代码区域降级；
+- [x] `basic.dataflow`：块内 use-def、跨块到达定义传播、子寄存器折叠、`scope: intra-procedural` 声明、选项截断、非 ELF、缺失解码器与无代码区域降级；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用、`cpp_demangle` 未装）：
-`566 passed, 9 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
+`582 passed, 9 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
 （`pip install -e '.[dev]'`）后该模块以及参考 demangler 比对用例会恢复收集。
-Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
+Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
 
@@ -125,7 +127,7 @@ Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgr
 
 | 范围 | 已有部分 | 缺少部分 |
 |---|---|---|
-| 六大模块 | Catalog、CLI、ID | `basic.cpp`/反汇编族/高级分析/动态/AI/Automation 等其余 Analyzer/Rule/Provider |
+| 六大模块 | Catalog、CLI、ID | 高级分析/动态/AI/Automation 等其余 Analyzer/Rule/Provider |
 | `scan` | 目标解析、CLI/YAML 选择、Runtime、输出、`basic.file`、内置 Profile（`quick`/`security`） | 无 |
 | Binary Diff | 双目标命令形态 | 多目标 Request 与 Diff 引擎 |
 | Dynamic | 命令和能力定义 | 授权、沙箱、采集器 |
@@ -196,8 +198,8 @@ soinsight scan libfoo.so --module-available basic,security --format json
 ### Phase 3：基础与高级分析深化
 
 - DWARF、类型、C++；
-- 反汇编、CFG、Call Graph、Data Flow；
-- 算法、协议、格式、库、编译器和混淆识别。
+- 反汇编、CFG、Call Graph、Data Flow（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`）；
+- 算法、协议、格式、库、编译器和混淆识别（未做）。
 
 ### Phase 4：安全分析闭环
 

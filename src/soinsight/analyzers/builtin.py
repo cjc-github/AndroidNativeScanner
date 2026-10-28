@@ -6,6 +6,7 @@ from .basic import BasicElfAnalyzer, BasicFileAnalyzer
 from .callgraph import BasicCallgraphAnalyzer
 from .cfg import BasicCfgAnalyzer
 from .cpp import BasicCppAnalyzer
+from .dataflow import BasicDataflowAnalyzer
 from .disasm import BasicDisasmAnalyzer
 from .dwarf import BasicDwarfAnalyzer
 from .security import (
@@ -28,6 +29,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicDisasmAnalyzer())
     registry.register(BasicCfgAnalyzer())
     registry.register(BasicCallgraphAnalyzer())
+    registry.register(BasicDataflowAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDangerousApiAnalyzer())
