@@ -65,8 +65,10 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.types",
         "basic.cpp",
         "basic.disasm",
+        "basic.cfg",
     ]
     assert payload["result"]["resolved_analyzers"] == [
+        "basic.cfg",
         "basic.disasm",
         "basic.file",
         "basic.elf",
@@ -272,6 +274,7 @@ def test_cli_lists_plugins_as_table():
     assert stdout.getvalue().splitlines() == [
         "ID                     VERSION KIND        DEFAULT NAME",
         "advanced.strings       1.0.0   collector   yes     Strings Analyzer",
+        "basic.cfg              1.0.0   collector   yes     CFG Analyzer",
         "basic.cpp              1.0.0   collector   yes     C++ Recovery Analyzer",
         "basic.disasm           1.0.0   collector   yes     Disassembly Analyzer",
         "basic.dwarf            1.0.0   collector   yes     DWARF Analyzer",
@@ -361,7 +364,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   12\n" in output
+    assert "  Registered analyzers   13\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output

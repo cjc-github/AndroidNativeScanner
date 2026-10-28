@@ -3,6 +3,7 @@
 from ..core.analyzer import AnalyzerRegistry
 from .advanced import AdvancedStringsAnalyzer
 from .basic import BasicElfAnalyzer, BasicFileAnalyzer
+from .cfg import BasicCfgAnalyzer
 from .cpp import BasicCppAnalyzer
 from .disasm import BasicDisasmAnalyzer
 from .dwarf import BasicDwarfAnalyzer
@@ -24,6 +25,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicTypesAnalyzer())
     registry.register(BasicCppAnalyzer())
     registry.register(BasicDisasmAnalyzer())
+    registry.register(BasicCfgAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDangerousApiAnalyzer())

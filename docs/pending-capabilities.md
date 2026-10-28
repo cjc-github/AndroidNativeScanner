@@ -2,22 +2,15 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 12/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 13/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 3/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **30/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 2/10、`advanced` 7/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **29/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
-## 1. 基础分析（basic，3 项外壳）
+## 1. 基础分析（basic，2 项外壳）
 
-`basic.disasm` 已实现（指令解码 + 符号/序言函数边界 + 代码区域），以下三项建立在它之上。
-
-### `basic.cfg`（CFG：基本块/边/控制流结构）
-
-- **现状**：无。依赖 `basic.disasm`。
-- **需要什么**：在反汇编层之上做基本块划分（跳转/调用/返回指令切分），边恢复分两档：直接跳转可精确恢复；间接跳转（寄存器/内存目标）先用"未解析边"事实占位，不做猜测。
-- **建议事实形态**：`basic_blocks`（按函数聚合，`start`/`end`/`successors`）、`edges`（`kind: branch/cond/indirect`）。
-- **依赖**：`basic.file → basic.elf → basic.symbols → basic.disasm → basic.cfg`。
+`basic.disasm`（指令解码 + 符号/序言函数边界 + 代码区域）与 `basic.cfg`（基本块/边/回边环）已实现，以下两项建立在它们之上。
 
 ### `basic.callgraph`（Caller/Callee 与跨函数调用关系）
 
@@ -132,8 +125,8 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 
 ```text
 1. 软依赖 D1        —— 解锁聚合类 Analyzer 降级语义（Phase 4 前置）
-2. 反汇编族         —— ✅ 底座决策与 basic.disasm；接着 basic.cfg
-                       → basic.callgraph → basic.dataflow（Phase 3 主体）
+2. 反汇编族         —— ✅ 底座决策、basic.disasm 与 basic.cfg；
+                       接着 basic.callgraph → basic.dataflow（Phase 3 主体）
 3. advanced.family  —— constants/algorithm/file-format/library/compiler 先行，
                        protocol 次之，obfuscation 依赖 CFG 放最后（Phase 3 收尾）
 4. Phase 4 余项     —— 调用点证据接入 dangerous-api/vulnerability、CI Gate、基线抑制
@@ -143,7 +136,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）
 ```
 
-理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编底座已选定 Capstone 作为可选依赖（缺失时降级为边界事实），剩余三项直接复用其指令与边界事实；动态与 AI 都有共同底座，逐能力散做会重复付费。
+理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编底座已选定 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg` 复用其指令与边界事实，剩余 callgraph/dataflow 直接建在 CFG 之上；动态与 AI 都有共同底座，逐能力散做会重复付费。
 
 ---
 

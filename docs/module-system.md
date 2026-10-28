@@ -28,7 +28,7 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic types` | `basic.types` | 类型恢复 | 已实现 |
 | `basic cpp` | `basic.cpp` | C++ 恢复 | 已实现 |
 | `basic disasm` | `basic.disasm` | 反汇编 | 已实现 |
-| `basic cfg` | `basic.cfg` | CFG 恢复 | 外壳 |
+| `basic cfg` | `basic.cfg` | CFG 恢复 | 已实现 |
 | `basic callgraph` | `basic.callgraph` | Call Graph 恢复 | 外壳 |
 | `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 外壳 |
 
@@ -41,6 +41,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 `basic.cpp` 把链接层证据恢复成 C++ 结构事实：`_ZTV*`/`_ZTI*`/`_ZTS*`/`_ZTT*` 符号给出 vtable/typeinfo/typeinfo name/VTT 及所属类，`_ZTC*` 记为构造 vtable 清单，`_ZTh*`/`_ZTv*` thunk 作为扁平证据记录（不在类记录中映射回类）；构造/析构函数由 demangler 的 constructor/destructor kind 归类（支持 C1/C2/C3/C4/C5 与 D0/D1/D2/D4/D5 克隆码），虚方法与继承来自 DWARF（基类、offset、accessibility、virtuality）。类记录标注证据来源（`dwarf`/`rtti`/`symbols`）并三方互证；只有本镜像定义的符号产生证据（导入的 `__cxxabiv1` 运行时符号不算），纯 C 结构（无基类/特殊成员/vtable/RTTI 证据）不进入类清单。其依赖链为 `basic.file → basic.elf → basic.dwarf → basic.types → basic.cpp`；能力边界是链接层恢复：不含调用点证据，无法还原源码语义。
 
 `basic.disasm` 解码可执行分节并恢复函数边界，是 `basic.cfg`/`basic.callgraph`/`basic.dataflow` 的共同前置。它不声明 `requires`：自己解析 ELF 镜像，因此可在 `basic.file → basic.elf → basic.symbols` 链之外单独运行。事实分三类：`code_regions`（可执行分节拆分）、`functions`（地址/长度/来源/指令数/未解码字节）与 `instructions`（分页数组，按上限截断）。边界先取符号表中已定义的函数符号（同一地址/尺寸在 `.dynsym` 与 `.symtab` 重复时取 `.symtab`），符号空隙再用 x86-64（`endbr64`、`push rbp; mov rbp,rsp`）与 AArch64（`stp x29,x30,[sp,…]`、`sub sp`）序言扫描补齐；序言命中不与符号边界重复。指令解码走 Capstone（可选依赖，与 `cpp_demangle` 同策略）：缺失时报 `DISASM_DECODER_UNAVAILABLE` 警告并保留边界事实；机器类型无解码器（`DISASM_UNSUPPORTED_ARCH`）或无可执行分节（`DISASM_NO_CODE_REGIONS`）时同样只降级不失败。规模由能力选项 `max_functions`/`max_instructions` 控制，越界记 `DISASM_TRUNCATED`。
+
+`basic.cfg` 在 `basic.disasm` 的指令流之上按函数构建控制流图：基本块由「入口、直接跳转目标、终结指令的下一条」三类 leader 切分，边按终结指令分类为 `branch`/`cond`/`call`/`call_indirect`/`jump_indirect`/`fallthrough`。间接跳转与间接调用不猜目标，只记 `*_indirect` 边；`call` 的返回边记到 fall-through 块，被调方作为调用图事实由 `basic.callgraph` 处理。回边环用深度优先回边检测报告为块起址环，不可约 CFG 降级为「未报告环」而非错误结论。它同样不声明 `requires`（自解析 ELF 并复用反汇编事实），Capstone 缺失或无可执行分节时报 `CFG_NO_DECODER`/`CFG_NO_CODE_REGIONS` 警告并返回空图；规模由 `max_functions`/`max_instructions` 控制，越界记 `CFG_TRUNCATED`。数据结构见 `infrastructure/cfg.py`。
 
 ### 2.2 高级分析
 
