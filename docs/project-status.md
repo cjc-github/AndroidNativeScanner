@@ -82,7 +82,7 @@
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，pyelftools 可用、`cpp_demangle` 未装）：
-`393 passed, 1 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
+`398 passed, 1 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
 （`pip install -e '.[dev]'`）后该模块以及参考 demangler 比对用例会恢复收集。
 
 ### 真实共享库验证
