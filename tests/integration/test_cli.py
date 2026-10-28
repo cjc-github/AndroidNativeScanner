@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from io import StringIO
 import json
+import shutil
 
 import pytest
 
@@ -358,14 +359,33 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
     assert "  Registered analyzers   11\n" in output
-    assert "\nExternal tools:\n" in output
+    assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
     assert "  strings               " in output
     # External binutils are optional: the built-in analyzers parse ELF
     # directly, so the status line depends only on the host toolchain.
     assert "\nStatus:\n  " in output
-    assert output.splitlines()[-1] in ("  ok", "  Install binutils: sudo apt-get install binutils")
+    assert output.splitlines()[-1] in (
+        "  ok",
+        "  Install binutils if needed: sudo apt-get install binutils",
+    )
+
+
+def test_cli_doctor_reports_missing_legacy_tools_as_info(monkeypatch):
+    """Missing binutils downgrade to info: V2 analyzers are pure Python."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    stdout = StringIO()
+
+    exit_code = main(["doctor"], stdout=stdout)
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "\nLegacy tools (V1 pipeline only):\n" in output
+    assert "\nStatus:\n  info\n" in output
+    assert "warning" not in output
+    assert "Legacy tools missing: readelf, nm, strings" in output
+    assert "legacy V1 pipeline" in output
 
 
 def test_cli_cache_info_reports_version_scoping(tmp_path):

@@ -946,18 +946,31 @@ def _handle_doctor(
         stdout.write(f"  Product modules        {payload['product_modules']}\n")
         stdout.write(f"  Registered analyzers   {payload['registered_analyzers']}\n")
         stdout.write("\n")
-        stdout.write("External tools:\n")
+        stdout.write("Legacy tools (V1 pipeline only):\n")
         for name, path in payload["legacy_tools"].items():
             tool = _pad_display(name, 22)
             status = _pad_display("ok" if path else "missing", 9)
             stdout.write(f"  {tool}{status}{path or ''}\n")
         stdout.write("\n")
+        # The V2 analyzers parse ELF/DWARF/strings directly in Python, so the
+        # overall health depends on the host interpreter only; binutils are
+        # merely the legacy V1 pipeline's dependencies.
+        status = "info" if missing_tools else "ok"
         stdout.write("Status:\n")
-        stdout.write(f"  {'warning' if missing_tools else 'ok'}\n")
+        stdout.write(f"  {status}\n")
         if missing_tools:
             stdout.write("\n")
-            stdout.write("Hint:\n")
-            stdout.write("  Install binutils: sudo apt-get install binutils\n")
+            stdout.write("Notes:\n")
+            stdout.write(
+                f"  Legacy tools missing: {', '.join(missing_tools)}\n"
+            )
+            stdout.write(
+                "  They are required only by the legacy V1 pipeline"
+                " (python3 main.py); all V2 analyzers are pure Python.\n"
+            )
+            stdout.write(
+                "  Install binutils if needed: sudo apt-get install binutils\n"
+            )
     return 0
 
 
