@@ -80,7 +80,7 @@ class BasicCppAnalyzer(Analyzer):
                 ],
             )
 
-        classes, class_total, truncated, truncated_lists = _build_classes(
+        classes, class_total, truncated, truncated_lists, counts = _build_classes(
             types_result, dwarf_result, elf, options["max_classes"]
         )
         thunks = _collect_thunks(elf)
@@ -102,11 +102,13 @@ class BasicCppAnalyzer(Analyzer):
             data={
                 "has_debug_info": bool(types_result.data.get("has_debug_info")),
                 "class_count": class_total,
-                "vtable_count": sum(1 for c in classes if c["vtable"]),
-                "typeinfo_count": sum(1 for c in classes if c["typeinfo"]),
-                "constructor_count": sum(len(c["constructors"]) for c in classes),
-                "destructor_count": sum(len(c["destructors"]) for c in classes),
-                "virtual_method_count": sum(len(c["virtual_methods"]) for c in classes),
+                # Counts cover the full class set (pre-truncation) so the
+                # summary numbers stay consistent with class_count.
+                "vtable_count": counts["vtable"],
+                "typeinfo_count": counts["typeinfo"],
+                "constructor_count": counts["constructor"],
+                "destructor_count": counts["destructor"],
+                "virtual_method_count": counts["virtual_method"],
                 "thunk_count": len(thunks),
                 "construction_vtable_count": len(construction_vtables),
                 "truncated": lists_truncated,
@@ -326,11 +328,18 @@ def _build_classes(types_result, dwarf_result, elf, max_classes: int):
 
     ordered = sorted(classes.values(), key=lambda record: record["name"])
     total = len(ordered)
+    counts = {
+        "vtable": sum(1 for record in ordered if record["vtable"]),
+        "typeinfo": sum(1 for record in ordered if record["typeinfo"]),
+        "constructor": sum(len(record["constructors"]) for record in ordered),
+        "destructor": sum(len(record["destructors"]) for record in ordered),
+        "virtual_method": sum(len(record["virtual_methods"]) for record in ordered),
+    }
     if total > max_classes:
         truncated = True
         truncated_lists.append(f"classes {total}>{max_classes}")
         ordered = ordered[:max_classes]
-    return ordered, total, truncated, truncated_lists
+    return ordered, total, truncated, truncated_lists, counts
 
 
 def _class_record(classes: dict[str, dict], class_name: str, source: str) -> dict:

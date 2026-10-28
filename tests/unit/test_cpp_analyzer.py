@@ -196,6 +196,8 @@ def test_max_classes_option_truncates_with_diagnostic(tmp_path):
     assert len(result.data["classes"]) == 2
     assert result.data["truncated"] is True
     assert any(d.code == "CPP_TRUNCATED" for d in result.diagnostics)
+    # Sub-counts cover the full class set, consistent with class_count.
+    assert result.data["typeinfo_count"] == 4
 
 
 def test_thunks_are_collected_as_flat_evidence(tmp_path):
