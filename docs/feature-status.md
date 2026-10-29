@@ -40,7 +40,7 @@
 - [x] CLI 输出规范：状态列、分组 help、`doctor`、`--quiet`、TTY 颜色、窄终端自适应、`report` 二次渲染
 - [x] 退出码与错误语义：能力未实现 → `ANALYSIS_PLAN_ERROR`（预期外壳行为）
 
-### 3. V2 已实现的真正 Analyzer 与 Rule（20/45 能力）
+### 3. V2 已实现的真正 Analyzer 与 Rule（25/45 能力）
 
 | 能力 ID | 内容 | 位置 |
 |---|---|---|
@@ -61,6 +61,11 @@
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
 | `advanced.constants` | 已知算法常量表扫描（AES S-box、MD5/SHA 初值、CRC32、zlib deflate、Base64、ChaCha20 等）；要求全部特征字命中，记录偏移与分节 | `analyzers/constants.py` + `infrastructure/constants.py` |
 | `advanced.algorithm` | 交叉判定算法：常量表命中 + 导入/导出符号名（OpenSSL/BoringSSL/zlib/mbedtls）+ 工具链与算法名字符串；多源证据标 `corroborated`，输出家族归类 | `analyzers/algorithm.py` + `infrastructure/algorithm.py` |
+| `advanced.file-format` | 外层与内嵌格式识别：ZIP/PNG/JPEG/GIF/PDF/DEX/ELF/Mach-O/gzip/xz/bzip2/7z/SQLite/RIFF/Ogg 魔数扫描，报告偏移、所属分节与 `verified` 结构校验 | `analyzers/file_format.py` + `infrastructure/formats.py` |
+| `advanced.library` | 第三方库识别：`DT_NEEDED`/SONAME、符号命名空间前缀、版本串（OpenSSL/zlib/libpng/curl/protobuf/SQLite 等 23 个指纹），多源标 `corroborated` | `analyzers/library.py` + `infrastructure/library.py` |
+| `advanced.compiler` | 编译工具链识别：`.comment`/note 段与符号证据（gcc/clang/rustc/swift/NDK/Emscripten/MSVC），提取版本号并区分证据强度 | `analyzers/compiler.py` + `infrastructure/compiler.py` |
+| `advanced.protocol` | 协议特征识别：协议关键字/消息头常量与网络 import 交叉（HTTP/TLS/MQTT/DNS/gRPC/RTSP/RTMP/数据库/WebRTC 等 21 个指纹），多源标 `corroborated` | `analyzers/protocol.py` + `infrastructure/protocol.py` |
+| `advanced.obfuscation` | 混淆/加壳证据：UPX/VMProtect/Themida/OLLVM 等签名、OLLVM 符号、分节熵值（默认阈值 7.0）；控制流平坦化判定留待后续能力 | `analyzers/obfuscation.py` + `infrastructure/obfuscation.py` |
 | `security.risk` | 三源聚合去重 + 严重度/置信度/类别计数 + V1 权重字符串指标 + 风险分档（权重可配） | `analyzers/security.py` |
 | `security.dynamic-loading` | 动态加载风险：继承的 RPATH、相对与全局可写搜索路径、`DT_TEXTREL`、`DF_SYMBOLIC`/`DF_1_INTERPOSE`、无版本依赖 | `analyzers/dynamic_loading.py` |
 | `security.vulnerability` | 把 `security.dangerous-api` 命中映射到 CWE（命令注入/缓冲区/格式串/权限等）并生成漏洞模式 Finding | `analyzers/security.py` |
@@ -69,7 +74,7 @@
 `security.hardcoded-url`、`security.encoded-payload`（`rules/string_rules.py`，指纹格式
 `sensitive:<label>:<value>` / `url:<value>` / `base64:<value>`）。
 
-支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）（`DwarfType`/`DwarfMember`/`DwarfBase`/`DwarfEnumValue`/`DwarfVariable` 与复合类型/变量索引）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）、`infrastructure/disasm`（Capstone 指令解码与函数边界恢复；Capstone 为可选依赖，缺失时仅保留边界事实）。
+支撑基础设施（纯 Python、无外部工具依赖）：`infrastructure/elf`（Header/Section/PHDR/Symbol 表、Itanium C++ demangler、JNI 解码）、`infrastructure/dwarf`（`.debug_info/.debug_abbrev/.debug_str/.debug_line_str/.debug_line`）（`DwarfType`/`DwarfMember`/`DwarfBase`/`DwarfEnumValue`/`DwarfVariable` 与复合类型/变量索引）、`infrastructure/strings`（可见串提取与分类，迁移自 V1 口径）、`infrastructure/disasm`（Capstone 指令解码与函数边界恢复；Capstone 为可选依赖，缺失时仅保留边界事实）、`infrastructure/formats`（格式魔数与结构校验）、`infrastructure/library`（第三方库指纹）、`infrastructure/compiler`（工具链横幅与版本提取）、`infrastructure/protocol`（协议指纹）、`infrastructure/obfuscation`（加壳/混淆签名与分节熵）。
 
 已验证事实（见 `project-status.md` §真实共享库验证）：5 个真实 C++ 共享库 2943 导出函数全覆盖，1895 个 C++ 符号 0 解码失败、0 类型差异。
 
@@ -104,18 +109,18 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 25/45 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 20/45 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
 | `basic`（0/12） | —（`basic` 十二项能力全部已实现） |
-| `advanced`（5/8） | `advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
+| `advanced`（0/8） | —（`advanced` 八项能力全部已实现） |
 | `security`（0/5） | — |
 | `dynamic`（5/5） | `dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（全部） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
 | `automation`（7/7） | `automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow`（全部） |
 
-`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.risk`、`security.vulnerability`、`security.dynamic-loading`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
+`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.risk`、`security.vulnerability`、`security.dynamic-loading`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
 下一步建议是 `advanced.file-format`（magic 扫描无需反汇编）与 `advanced.library`。
 
 完整清单与实现顺序见 [未完成分析能力与技术债](pending-capabilities.md)。

@@ -18,7 +18,7 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-10-29，六大模块目录、40 项原始能力、2 项自动化增强能力以及为动态链接与交叉引用新增的 3 项能力（`basic.dynamic`、`basic.xref`、`security.dynamic-loading`）的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-10-29，六大模块目录、40 项原始能力、2 项自动化增强能力以及为动态链接与交叉引用新增的 3 项能力（`basic.dynamic`、`basic.xref`、`security.dynamic-loading`）的命令外壳已经建立（advanced 八项能力已全部落地），`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 

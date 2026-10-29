@@ -4,9 +4,9 @@
 
 ## 1. 当前里程碑
 
-> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
+> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 是已接入的真实 Analyzer，不代表 45 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 是已接入的真实 Analyzer，不代表 45 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -90,11 +90,16 @@
 - [x] `basic.dataflow`：块内 use-def、跨块到达定义传播、子寄存器折叠、`scope: intra-procedural` 声明、选项截断、非 ELF、缺失解码器与无代码区域降级；
 - [x] `advanced.algorithm`：常量表 + 符号名 + 字符串线索交叉判定算法，多源证据标 `corroborated`、单源标 `single`，家族归类与非 ELF 目标可用；
 - [x] `basic.xref`：指令操作数到字符串字面量的引用还原（x86-64/x86-32/AArch64/ARM 形态）、`exact`/`suffix` 匹配、控制流引用排除、代码段字符串排除、寄存器追踪在写入与调用点失效、函数尺寸按分节裁剪、选项截断、非 ELF、缺失解码器/不支持架构/无代码区域降级；
+- [x] `advanced.file-format`：外层与内嵌格式魔数扫描、结构校验 `verified`、ELF 分节归属、`CAFEBABE` 双解释、选项截断与非 ELF 目标可用；
+- [x] `advanced.library`：`DT_NEEDED`/SONAME + 符号前缀 + 版本串交叉识别 23 个库指纹，多源标 `corroborated`；
+- [x] `advanced.compiler`：`.comment`/note 横幅与符号佐证、版本号提取、build-id 与 Android note 存在性；
+- [x] `advanced.protocol`：协议关键字与网络符号交叉识别 21 个协议指纹，单源/多源分级；
+- [x] `advanced.obfuscation`：壳/保护器/混淆器签名、OLLVM 符号、分节熵阈值（可配），控制流平坦化明确不在范围内；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `673 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `558 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `723 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `608 passed, 1 skipped`。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -205,7 +210,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 - DWARF、类型、C++；
 - 反汇编、CFG、Call Graph、Data Flow、交叉引用（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.xref`）；
-- 算法、协议、格式、库、编译器和混淆识别（`advanced.constants` ✅ 已完成，其余未做）。
+- 算法、协议、格式、库、编译器和混淆识别（✅ 全部已完成：`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`）。
 
 ### Phase 4：安全分析闭环
 

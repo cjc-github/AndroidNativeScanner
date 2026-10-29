@@ -9,6 +9,11 @@ from .cfg import BasicCfgAnalyzer
 from .constants import AdvancedConstantsAnalyzer
 from .cpp import BasicCppAnalyzer
 from .dataflow import BasicDataflowAnalyzer
+from .file_format import AdvancedFileFormatAnalyzer
+from .compiler import AdvancedCompilerAnalyzer
+from .obfuscation import AdvancedObfuscationAnalyzer
+from .protocol import AdvancedProtocolAnalyzer
+from .library import AdvancedLibraryAnalyzer
 from .dynamic_link import BasicDynamicAnalyzer
 from .disasm import BasicDisasmAnalyzer
 from .dwarf import BasicDwarfAnalyzer
@@ -39,6 +44,11 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicXrefAnalyzer())
     registry.register(AdvancedConstantsAnalyzer())
     registry.register(AdvancedAlgorithmAnalyzer())
+    registry.register(AdvancedFileFormatAnalyzer())
+    registry.register(AdvancedLibraryAnalyzer())
+    registry.register(AdvancedCompilerAnalyzer())
+    registry.register(AdvancedProtocolAnalyzer())
+    registry.register(AdvancedObfuscationAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDynamicLoadingAnalyzer())

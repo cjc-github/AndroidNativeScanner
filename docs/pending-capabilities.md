@@ -2,9 +2,9 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 20/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 25/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 0/12、`advanced` 5/8、`security` 0/5、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **25/45** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **20/45** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
@@ -16,16 +16,15 @@
 
 ## 2. 高级分析（advanced，6 项外壳）
 
-`advanced.strings` 与 `advanced.constants` 已实现，以下 6 项多数可以复用它们的提取、分节归属与常量证据。
+`advanced` 八项能力全部已实现：`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.protocol`/`advanced.obfuscation`。全部是纯 Python 的链接级与字节级事实提取，不依赖外部工具链。
 
-| 能力 | 现状与做法 | 依赖 |
-|---|---|---|
-| `advanced.algorithm` | 常量签名（已有 `advanced.constants`）+ 导入符号名（OpenSSL/BoringSSL 系列）+ 导出算法名，交叉判定加密/哈希/压缩/编码 | `advanced.constants`、`basic.symbols` |
-| `advanced.protocol` | 字符串线索（协议关键字、端口、消息头常量）+ 网络 import（`socket`/`connect` 等）做协议特征识别；语义级识别依赖动态/反汇编，先做链接级 | `advanced.strings`、`basic.symbols` |
-| `advanced.file-format` | 数据段/文件内嵌 magic 扫描（ZIP/PNG/JPEG/Dex 等），报告偏移与外层归属 | `basic.file`、`advanced.strings` |
-| `advanced.library` | `DT_NEEDED`/SONAME（需补 `infrastructure/elf` 的 dynamic 段解析）、版本字符串、符号命名空间指纹（`std::`、protobuf 等）识别第三方库与版本线索 | `basic.symbols` |
-| `advanced.compiler` | `.comment`/build-id note/ABI tag note、工具链字符串、代码生成特征；note 解析在 `security.hardening`（GNU property）已有先例 | `basic.elf` |
-| `advanced.obfuscation` | 高熵分节、UPX/壳签名、OLLVM 特征字符串可先做；控制流平坦化判定依赖 `basic.cfg`，放后 | `advanced.strings`、`basic.cfg` |
+各能力的证据形态与边界：`advanced.file-format` 报告外层与内嵌格式的偏移和结构校验结果；`advanced.library` 与 `advanced.protocol` 用 `DT_NEEDED`/符号/字符串交叉，单源标 `single`、多源标 `corroborated`；`advanced.compiler` 从 `.comment` 与 note 段取横幅并抽版本；`advanced.obfuscation` 报告壳签名与高熵分节。
+
+剩余演进点（不是外壳欠账）：
+
+- **协议语义级识别**：当前只做链接级特征，报文结构与状态机识别需要动态证据；
+- **控制流平坦化判定**：需要比较 `basic.cfg` 恢复出的图形态，留待后续能力；
+- **库版本精确匹配**：版本串只能给出线索，无法从链接层证明具体补丁版本。
 
 ---
 
@@ -112,8 +111,8 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 1. 软依赖 D1        —— 解锁聚合类 Analyzer 降级语义（Phase 4 前置）
 2. 反汇编族         —— ✅ 底座决策、basic.disasm、basic.cfg、basic.callgraph
                        与 basic.dataflow 全部完成（Phase 3 主体）
-3. advanced.family  —— ✅ constants 完成；algorithm/file-format/library/compiler
-                       先行，protocol 次之，obfuscation 依赖 CFG 放最后（Phase 3 收尾）
+3. advanced.family  —— ✅ 全部完成（algorithm/file-format/library/compiler 先行，
+                       protocol 次之，obfuscation 收尾；Phase 3 收尾）
 4. Phase 4 余项     —— 调用点证据接入 dangerous-api/vulnerability、CI Gate、基线抑制
 5. 动态底座 D9      —— 然后 dynamic.* 五项（Phase 5）
 6. AI Provider D10  —— 先 ai.vulnerability-explanation（Finding 已就绪），
@@ -121,7 +120,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）
 ```
 
-理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编族已整体落地——`basic.disasm` 用 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg`/`basic.callgraph`/`basic.dataflow` 依次复用其指令、边界与 CFG 事实；`advanced.constants` 已给出算法常量证据，`advanced.algorithm` 是它的直接下游；动态与 AI 都有共同底座，逐能力散做会重复付费。
+理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编族已整体落地——`basic.disasm` 用 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg`/`basic.callgraph`/`basic.dataflow` 依次复用其指令、边界与 CFG 事实；`advanced.constants` 已给出算法常量证据，`advanced.algorithm` 是它的直接下游；advanced 余下五项（file-format/library/compiler/protocol/obfuscation）均已落地，全部复用 `infrastructure/elf` 的分节与符号事实；动态与 AI 都有共同底座，逐能力散做会重复付费。
 
 ---
 
@@ -131,7 +130,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 # 能力目录与实现状态一目了然
 PYTHONPATH=src python3 -m soinsight modules list
 # 外壳行为（未实现能力返回 ANALYSIS_PLAN_ERROR，退出码 3）
-PYTHONPATH=src python3 -m soinsight basic callgraph libfoo.so
+PYTHONPATH=src python3 -m soinsight dynamic trace libfoo.so
 # 已实现能力全量链路
 PYTHONPATH=src python3 -m soinsight scan libfoo.so --module-available basic,security,advanced
 ```

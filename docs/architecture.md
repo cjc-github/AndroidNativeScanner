@@ -251,7 +251,7 @@ core 不依赖 cli/modules/具体 analyzer
 
 ## 10. 当前差距
 
-1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 20/45 项能力已接入）；
+1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 25/45 项能力已接入）；
 2. 支持双目标、多样本、结果集等复杂输入模型；
 3. 内置 deep/ci Profile（`quick`/`security` 已实现）；
 4. Artifact Store 接入 Runtime；

@@ -172,6 +172,120 @@ def _render_xrefs(result) -> list[str]:
     return lines
 
 
+_TEXT_LISTING_LIMIT = 6
+
+
+def _render_formats(result) -> list[str]:
+    """Render the ``advanced.file-format`` facts, or nothing when not collected."""
+    result_item = result.results.get("advanced.file-format")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "File formats:",
+        f"  Outer                {data.get('outer_format') or 'unknown'}",
+        f"  Embedded hits        {data.get('format_count', 0)}"
+        f" ({data.get('verified_count', 0)} verified)",
+    ]
+    for entry in data.get("formats", [])[:_TEXT_LISTING_LIMIT]:
+        section = entry.get("section") or "file"
+        marker = "ok" if entry.get("verified") else "magic"
+        lines.append(
+            f"    {entry.get('offset')} {entry.get('format')} [{section}] {marker}"
+        )
+    remaining = data.get("format_count", 0) - min(
+        len(data.get("formats", [])), _TEXT_LISTING_LIMIT
+    )
+    if remaining > 0:
+        lines.append(f"    ... and {remaining} more")
+    return lines
+
+
+def _render_libraries(result) -> list[str]:
+    """Render the ``advanced.library`` facts, or nothing when not collected."""
+    result_item = result.results.get("advanced.library")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "Libraries:",
+        f"  Identified           {data.get('library_count', 0)}"
+        f" ({data.get('corroborated_count', 0)} corroborated)",
+    ]
+    for item in data.get("libraries", [])[:_TEXT_LISTING_LIMIT]:
+        details = ", ".join(ev.get("detail") for ev in item.get("evidence", [])[:2])
+        lines.append(f"    {item.get('library')} [{item.get('family')}] {details}")
+    remaining = data.get("library_count", 0) - min(
+        len(data.get("libraries", [])), _TEXT_LISTING_LIMIT
+    )
+    if remaining > 0:
+        lines.append(f"    ... and {remaining} more")
+    return lines
+
+
+def _render_compilers(result) -> list[str]:
+    """Render the ``advanced.compiler`` facts, or nothing when not collected."""
+    result_item = result.results.get("advanced.compiler")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "Toolchain:",
+        f"  Identified           {data.get('toolchain_count', 0)}"
+        f" ({data.get('corroborated_count', 0)} corroborated)",
+    ]
+    if data.get("has_build_id"):
+        lines.append("  Build ID             present")
+    if data.get("has_android_ident"):
+        lines.append("  Android note         present")
+    for item in data.get("toolchains", [])[:_TEXT_LISTING_LIMIT]:
+        version = f" v{item.get('version')}" if item.get("version") else ""
+        lines.append(f"    {item.get('toolchain')}{version}")
+    return lines
+
+
+def _render_protocols(result) -> list[str]:
+    """Render the ``advanced.protocol`` facts, or nothing when not collected."""
+    result_item = result.results.get("advanced.protocol")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "Protocols:",
+        f"  Identified           {data.get('protocol_count', 0)}"
+        f" ({data.get('corroborated_count', 0)} corroborated)",
+    ]
+    for item in data.get("protocols", [])[:_TEXT_LISTING_LIMIT]:
+        lines.append(f"    {item.get('protocol')} [{item.get('family')}]")
+    remaining = data.get("protocol_count", 0) - min(
+        len(data.get("protocols", [])), _TEXT_LISTING_LIMIT
+    )
+    if remaining > 0:
+        lines.append(f"    ... and {remaining} more")
+    return lines
+
+
+def _render_obfuscation(result) -> list[str]:
+    """Render the ``advanced.obfuscation`` facts, or nothing when not collected."""
+    result_item = result.results.get("advanced.obfuscation")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "Obfuscation:",
+        f"  Signals              {data.get('signal_count', 0)}"
+        f" ({data.get('corroborated_count', 0)} corroborated)",
+    ]
+    for item in data.get("signals", [])[:_TEXT_LISTING_LIMIT]:
+        lines.append(f"    {item.get('signal')} [{item.get('category')}]")
+    return lines
+
+
 def _category_count(classified: dict, category: str) -> int:
     return int(classified.get(category, {}).get("count", 0) or 0)
 
@@ -220,6 +334,11 @@ class TextRenderer(Renderer):
             lines.extend(_render_dynamic(result))
             lines.extend(_render_strings(result))
             lines.extend(_render_xrefs(result))
+            lines.extend(_render_formats(result))
+            lines.extend(_render_libraries(result))
+            lines.extend(_render_compilers(result))
+            lines.extend(_render_protocols(result))
+            lines.extend(_render_obfuscation(result))
             lines.extend(["", "Findings:"])
             if result.findings:
                 lines[-1] = f"Findings: {len(result.findings)}"

@@ -59,11 +59,11 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `advanced strings` | `advanced.strings` | 字符串分析 | 已实现 |
 | `advanced constants` | `advanced.constants` | 常量分析 | 已实现 |
 | `advanced algorithm` | `advanced.algorithm` | 算法识别 | 已实现 |
-| `advanced protocol` | `advanced.protocol` | 协议识别 | 外壳 |
-| `advanced file-format` | `advanced.file-format` | 文件格式识别 | 外壳 |
-| `advanced library` | `advanced.library` | 第三方库识别 | 外壳 |
-| `advanced compiler` | `advanced.compiler` | 编译器识别 | 外壳 |
-| `advanced obfuscation` | `advanced.obfuscation` | 混淆识别 | 外壳 |
+| `advanced protocol` | `advanced.protocol` | 协议识别 | 已实现 |
+| `advanced file-format` | `advanced.file-format` | 文件格式识别 | 已实现 |
+| `advanced library` | `advanced.library` | 第三方库识别 | 已实现 |
+| `advanced compiler` | `advanced.compiler` | 编译器识别 | 已实现 |
+| `advanced obfuscation` | `advanced.obfuscation` | 混淆识别 | 已实现 |
 
 `advanced.strings` 对任意文件（含非 ELF）做纯 Python 可见串提取并去重计数，可选
 URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS_TRUNCATED` /
@@ -74,6 +74,16 @@ URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS
 `advanced.constants` 扫描数据段中的已知算法常量表（AES S-box、MD5/SHA 初值、CRC32 多项式、zlib deflate 基表、Base64 字母表、ChaCha20 sigma 等）。签名要求**所有**特征字都出现才算命中，单个巧合字不产生结论；命中记录首个特征字的文件偏移与所属分节。它同样对任意文件可用（非 ELF 目标没有分节归属，记为 `null` 而不是失败），输入超过 `max_scan_bytes` 时报 `CONSTANTS_INPUT_TRUNCATED` 并说明尾部未扫描；每算法命中数由 `max_hits_per_algorithm` 限制。这里只报告"常量表存在"这一事实，算法判定与用途推断由 `advanced.algorithm` 负责。数据结构见 `infrastructure/constants.py`。
 
 `advanced.algorithm` 把三类证据交叉起来判定算法：`infrastructure/constants.py` 的常量表命中、`basic.symbols` 的导入/导出符号名（`EVP_`/`BIO_`/`CRYPTO_` → OpenSSL，`mbedtls_`、`BORINGSSL`、`inflate`/`deflate` 等）与文件中的字符串线索（`AES-256-GCM`、`OpenSSL 1.1.1` 这类）。每条证据单独记录来源与命中的字符串，同一个字符串可同时支持多个算法；证据来源超过一个时标 `corroborated`，单一来源标 `single`——前者比后者可信，但都不等于"确认使用"。输出 `algorithms`（算法名/家族/强度/证据）、`families`（crypto/hash/compression/encoding/library 归类）与各来源的命中计数，输入超过 `max_scan_bytes` 时报 `ALGORITHM_INPUT_TRUNCATED`；符号与字符串数量分别由 `max_symbols`/`max_strings` 与 `min_length` 控制。数据结构见 `infrastructure/algorithm.py`。
+
+`advanced.file-format` 扫描原始字节里的格式魔数，既识别目标自身的外层格式（偏移 0），也识别嵌入在其中的资源与载荷（ZIP/PNG/JPEG/GIF/PDF/DEX/APK 签名块/ELF/Mach-O/Java class/gzip/bzip2/xz/7z/SQLite/RIFF/Ogg）。命中记录格式、类别、偏移与 `verified`——后者表示魔数之外的结构校验（JPEG 是否自带 EOI、ZIP 是否有中央目录尾、DEX 是否带三位版本号）也通过，只是证据强度，不是结论。ELF 目标会把偏移归到所属分节；`CAFEBABE` 同时是 fat Mach-O 与 Java class 的魔数，两种解释都作为事实列出并各自校验。规模由 `max_scan_bytes`/`max_hits` 控制，越界记 `FORMAT_INPUT_TRUNCATED`。数据结构见 `infrastructure/formats.py`。
+
+`advanced.library` 把链接层证据汇成第三方库判定：`DT_NEEDED`/SONAME、符号命名空间前缀（`_ZSt`、`_ZN6google8protobuf`、`EVP_*`、`inflate`/`deflate`）与版本串（`OpenSSL 1.1.1`、`zlib 1.2.11`）。指纹表覆盖运行时（libc++/libstdc++/gnustl）、加密（OpenSSL/BoringSSL/mbedTLS/libsodium）、压缩（zlib/liblzma/bzip2）、图像（libpng/libjpeg/libwebp/freetype）、网络（libcurl/c-ares）、序列化（protobuf/json-c/SQLite）、XML（libxml2/expat）、媒体（FFmpeg）与日志（Android liblog）。单源命中标 `single`，两种及以上来源标 `corroborated`；非 ELF 目标只用字符串证据。数据结构见 `infrastructure/library.py`。
+
+`advanced.compiler` 识别编译工具链：从 `.comment` 段与 note 段读取编译器横幅（`GCC: (GNU) 9.4.0`、`Android clang version 14.0.6`、`rustc`、`Swift version`、`Emscripten`、`MSVC`），用运行时符号（`_Unwind_Resume`、`__aeabi_*`、`__clang_call_terminate`、`swift_*`、`__android_log_*`）佐证，并从匹配到的整行横幅中提取版本号。`.comment` 被剥离时退回全文件可见串扫描；同时报告 build-id 与 `.note.android.ident` 是否存在。单源 `single`、多源 `corroborated`。数据结构见 `infrastructure/compiler.py`。
+
+`advanced.protocol` 用协议关键字与消息头常量（`GET /`、`HTTP/1.1`、`MQTT`、`Sec-WebSocket-Key`、`grpc-status`、`RTSP/1.0` 等）加网络侧符号（`SSL_read`/`SSL_CTX_new`、`MQTTClient_*`、`grpc_*`、`PQconnectdb`、`redisCommand`）做链接级协议特征识别，覆盖 Web/传输/消息/RPC/媒体/数据库/IoT/VPN 共 21 个指纹。语义级识别需要动态证据，不在此能力范围内；单源 `single`、多源 `corroborated`。数据结构见 `infrastructure/protocol.py`。
+
+`advanced.obfuscation` 报告加壳与混淆证据：UPX/ASPack/Petite 壳签名、VMProtect/Themida 保护器横幅、OLLVM 特征串与 `__llvm` 辅助符号，以及分节熵值超过阈值（默认 7.0，可由 `entropy_threshold` 调整）的可疑高熵分节。控制流平坦化判定需要比较恢复出的 CFG 形状，属于后续能力，这里不做字节级猜测。信号带类别（packer/protector/obfuscator/packing）与证据，规模由 `max_scan_bytes`/`max_symbols`/`max_section_bytes` 控制，越界记 `OBFUSCATION_INPUT_TRUNCATED`。数据结构见 `infrastructure/obfuscation.py`。
 
 ### 2.3 安全分析
 

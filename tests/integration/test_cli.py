@@ -191,7 +191,7 @@ def test_cli_lists_product_modules_with_status_column():
     assert stdout.getvalue().splitlines() == [
         "MODULE      NAME      CAPABILITIES  STATUS",
         "basic       基础分析            12  implemented",
-        "advanced    高级分析             8  partial",
+        "advanced    高级分析             8  implemented",
         "security    安全分析             5  implemented",
         "dynamic     动态分析             5  catalog-only",
         "ai          AI 分析              8  catalog-only",
@@ -283,7 +283,12 @@ def test_cli_lists_plugins_as_table():
     assert stdout.getvalue().splitlines() == [
         "ID                       VERSION KIND        DEFAULT NAME",
         "advanced.algorithm       1.0.0   collector   yes     Algorithm Analyzer",
+        "advanced.compiler        1.0.0   collector   yes     Compiler Analyzer",
         "advanced.constants       1.0.0   collector   yes     Constants Analyzer",
+        "advanced.file-format     1.0.0   collector   yes     File Format Analyzer",
+        "advanced.library         1.0.0   collector   yes     Library Analyzer",
+        "advanced.obfuscation     1.0.0   collector   yes     Obfuscation Analyzer",
+        "advanced.protocol        1.0.0   collector   yes     Protocol Analyzer",
         "advanced.strings         1.0.0   collector   yes     Strings Analyzer",
         "basic.callgraph          1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg                1.0.0   collector   yes     CFG Analyzer",
@@ -380,7 +385,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   20\n" in output
+    assert "  Registered analyzers   25\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -790,20 +795,20 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "protocol", str(target)], stdout=stdout)
+    exit_code = main(["dynamic", "trace", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  advanced.protocol",
+        "  dynamic.trace",
         "",
         "Reason:",
-        "  Analyzer not found: advanced.protocol",
+        "  Analyzer not found: dynamic.trace",
         "",
         "Try:",
-        "  soinsight modules show advanced",
+        "  soinsight modules show dynamic",
         "  soinsight basic file <target>",
         "",
         "Exit code: 3",
@@ -815,12 +820,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "protocol", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["dynamic", "trace", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "advanced.protocol" in payload["diagnostics"][0]["message"]
+    assert "dynamic.trace" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -984,7 +989,7 @@ def test_modules_list_uses_color_on_tty():
 
     assert exit_code == 0
     assert "\x1b[" in stdout.getvalue()
-    assert "partial" in stdout.getvalue()
+    assert "implemented" in stdout.getvalue()
 
 
 def test_no_color_disables_tty_color():
@@ -994,7 +999,7 @@ def test_no_color_disables_tty_color():
 
     assert exit_code == 0
     assert "\x1b[" not in stdout.getvalue()
-    assert "partial" in stdout.getvalue()
+    assert "implemented" in stdout.getvalue()
 
 
 def test_quiet_success_suppresses_analysis_text_output(tmp_path):
@@ -1013,7 +1018,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["advanced", "protocol", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["dynamic", "trace", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
