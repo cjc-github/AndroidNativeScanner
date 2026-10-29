@@ -96,13 +96,15 @@
 - [x] `advanced.protocol`：协议关键字与网络符号交叉识别 21 个协议指纹，单源/多源分级；
 - [x] `advanced.obfuscation`：壳/保护器/混淆器签名、OLLVM 符号、分节熵阈值（可配），控制流平坦化明确不在范围内；
 - [x] 软依赖（`optional_requires`）：Planner 仅排序不拉入、缺席时 `context.optional()` 降级、未注册软依赖忽略、缓存按参与的可选依赖分键；
+- [x] 动态执行底座：`dynamic_execution` 授权块（默认拒绝 + `allow_targets` 白名单）、`detect_sandbox()`（bwrap/firejail/docker/unshare，无裸执行兜底）、`DryRunExecutor` 与仅双重 opt-in 才运行的 `SubprocessSandboxExecutor`；
+- [x] `dynamic.trace`：`not-authorized`/`no-sandbox`/`planned` 三态、计划含超时与内存上限、不启动进程；
 - [x] CI Gate 与基线抑制：`--fail-on`（退出码 6）、`--baseline` 按指纹抑制并标 `suppressed`、`--update-baseline` 写基线、不可读/版本不符基线报 `BASELINE_UNREADABLE`；
 - [x] 调用点证据：`basic.callgraph` 作为 `security.dangerous-api` 软依赖接入，导入型命中带 `call_site_count`/`call_sites` 与 `evidence_level`，并随 `security.vulnerability` 传递；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `749 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `634 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `775 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `660 passed, 1 skipped`。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -225,7 +227,8 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 ### Phase 5：动态分析
 
-- 明确授权和隔离执行器；
+- 明确授权和隔离执行器（✅ 已完成：默认拒绝的授权门、沙箱探测、计划/执行分离与双重 opt-in）；
+- 采集器与 harness（未做：`dynamic.trace` 已完成判定链，但还不采集事件）；
 - Trace、参数、内存、系统调用和覆盖率；
 - 静态/动态结果关联。
 

@@ -193,7 +193,7 @@ def test_cli_lists_product_modules_with_status_column():
         "basic       基础分析            12  implemented",
         "advanced    高级分析             8  implemented",
         "security    安全分析             5  implemented",
-        "dynamic     动态分析             5  catalog-only",
+        "dynamic     动态分析             5  partial",
         "ai          AI 分析              8  catalog-only",
         "automation  自动化               7  catalog-only",
     ]
@@ -302,6 +302,7 @@ def test_cli_lists_plugins_as_table():
         "basic.symbols            1.0.0   collector   yes     Symbol Analyzer",
         "basic.types              1.0.0   collector   yes     Type Recovery Analyzer",
         "basic.xref               1.0.0   collector   yes     Cross-Reference Analyzer",
+        "dynamic.trace            1.0.0   collector   yes     Runtime Trace",
         "security.dangerous-api   1.0.0   detector    yes     Dangerous API Detection",
         "security.dynamic-loading 1.0.0   collector   yes     Dynamic Loading Risk Analyzer",
         "security.hardening       1.0.0   collector   yes     Hardening Analyzer",
@@ -338,7 +339,7 @@ def test_cli_expands_product_module_for_scan(tmp_path):
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "dynamic.trace" in payload["diagnostics"][0]["message"]
+    assert "Missing analyzer" in payload["diagnostics"][0]["message"]
 
 
 def test_main_help_groups_commands_and_hides_development_aliases():
@@ -385,7 +386,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   25\n" in output
+    assert "  Registered analyzers   26\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output
@@ -795,20 +796,20 @@ def test_cli_reports_unimplemented_capability_with_try_suggestions(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["dynamic", "trace", str(target)], stdout=stdout)
+    exit_code = main(["ai", "function-name", str(target)], stdout=stdout)
 
     assert exit_code == 3
     assert stdout.getvalue().splitlines() == [
         "Error: capability is not implemented",
         "",
         "Capability:",
-        "  dynamic.trace",
+        "  ai.function-name",
         "",
         "Reason:",
-        "  Analyzer not found: dynamic.trace",
+        "  Analyzer not found: ai.function-name",
         "",
         "Try:",
-        "  soinsight modules show dynamic",
+        "  soinsight modules show ai",
         "  soinsight basic file <target>",
         "",
         "Exit code: 3",
@@ -820,12 +821,12 @@ def test_cli_reports_unimplemented_capability_as_json(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["dynamic", "trace", str(target), "--format", "json"], stdout=stdout)
+    exit_code = main(["ai", "function-name", str(target), "--format", "json"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert exit_code == 3
     assert payload["diagnostics"][0]["code"] == "ANALYSIS_PLAN_ERROR"
-    assert "dynamic.trace" in payload["diagnostics"][0]["message"]
+    assert "ai.function-name" in payload["diagnostics"][0]["message"]
 
 
 def test_cli_renders_basic_file_analysis_as_human_text(tmp_path):
@@ -1018,7 +1019,7 @@ def test_quiet_failure_keeps_actionable_error(tmp_path):
     target.write_bytes(b"test")
     stdout = StringIO()
 
-    exit_code = main(["dynamic", "trace", str(target), "--quiet"], stdout=stdout)
+    exit_code = main(["ai", "function-name", str(target), "--quiet"], stdout=stdout)
 
     assert exit_code == 3
     assert "Error: capability is not implemented" in stdout.getvalue()
@@ -1188,3 +1189,56 @@ def test_cli_text_output_marks_baselined_findings(tmp_path):
     assert exit_code == 0
     assert "baselined)" in output
     assert "[baselined]" in output
+
+
+def test_cli_dynamic_trace_refuses_without_authorization(tmp_path):
+    from tests.conftest import SAMPLE_SYMBOLS, build_elf64_with_symbols
+
+    target = tmp_path / "libsample.so"
+    target.write_bytes(build_elf64_with_symbols(SAMPLE_SYMBOLS))
+    stdout = StringIO()
+
+    exit_code = main(["dynamic", "trace", str(target), "--format", "json"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    data = payload["result"]["results"]["dynamic.trace"]["data"]
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 0
+    assert data["state"] == "not-authorized"
+    assert data["executed"] is False
+    assert "DYNAMIC_EXECUTION_NOT_AUTHORIZED" in codes
+
+
+def test_cli_dynamic_trace_plans_when_authorized(tmp_path, monkeypatch):
+    from tests.conftest import SAMPLE_SYMBOLS, build_elf64_with_symbols
+
+    target = tmp_path / "libsample.so"
+    target.write_bytes(build_elf64_with_symbols(SAMPLE_SYMBOLS))
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "name: dyn\nschema_version: 1\n"
+        f"dynamic_execution:\n  authorized: true\n"
+        f"  allow_targets: [\"{target.resolve()}\"]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "soinsight.analyzers.dynamic_trace.detect_sandbox",
+        lambda: __import__(
+            "soinsight.infrastructure.execution", fromlist=["SandboxSpec"]
+        ).SandboxSpec(name="bwrap", prefix=("bwrap", "--unshare-all")),
+    )
+    stdout = StringIO()
+
+    exit_code = main(
+        ["dynamic", "trace", str(target), "--config", str(config), "--format", "json"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    data = payload["result"]["results"]["dynamic.trace"]["data"]
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 0
+    assert data["state"] == "planned"
+    assert data["executed"] is False
+    assert data["plan"]["argv"][0] == "bwrap"
+    assert "DYNAMIC_DRY_RUN" in codes

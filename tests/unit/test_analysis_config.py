@@ -79,3 +79,58 @@ def test_rejects_unknown_schema_fields():
         parse(base(unknown=True))
     with pytest.raises(ValueError, match="Unknown analysis option"):
         parse(base({"moduels": {"basic": ["file"]}}))
+
+
+def test_dynamic_execution_block_is_accepted_and_normalised():
+    from soinsight.infrastructure.config.analysis_config import AnalysisConfig
+    from soinsight.modules import create_builtin_module_catalog
+
+    payload = {
+        "name": "dyn",
+        "schema_version": 1,
+        "dynamic_execution": {
+            "authorized": True,
+            "allow_targets": ["/opt/samples/libfoo.so"],
+            "timeout_seconds": 5,
+        },
+    }
+
+    config = AnalysisConfig.from_mapping(
+        payload, create_builtin_module_catalog()
+    )
+
+    assert config.dynamic_execution["authorized"] is True
+    assert config.dynamic_execution["allow_targets"] == ["/opt/samples/libfoo.so"]
+    assert config.dynamic_execution["timeout_seconds"] == 5
+
+
+def test_dynamic_execution_defaults_to_absent():
+    from soinsight.infrastructure.config.analysis_config import AnalysisConfig
+    from soinsight.modules import create_builtin_module_catalog
+
+    config = AnalysisConfig.from_mapping({"name": "x"}, create_builtin_module_catalog())
+
+    assert config.dynamic_execution == {}
+
+
+def test_dynamic_execution_rejects_unknown_or_malformed_options():
+    import pytest
+
+    from soinsight.infrastructure.config.analysis_config import AnalysisConfig
+    from soinsight.modules import create_builtin_module_catalog
+
+    catalog = create_builtin_module_catalog()
+
+    with pytest.raises(ValueError, match="Unknown dynamic_execution option"):
+        AnalysisConfig.from_mapping(
+            {"name": "x", "dynamic_execution": {"auth": True}}, catalog
+        )
+    with pytest.raises(ValueError, match="authorized must be true or false"):
+        AnalysisConfig.from_mapping(
+            {"name": "x", "dynamic_execution": {"authorized": "yes"}}, catalog
+        )
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        AnalysisConfig.from_mapping(
+            {"name": "x", "dynamic_execution": {"authorized": True, "timeout_seconds": 0}},
+            catalog,
+        )

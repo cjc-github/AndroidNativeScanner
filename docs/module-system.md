@@ -117,13 +117,13 @@ low/medium/high/critical。三个内置规则
 
 ### 2.4 动态分析
 
-| 命令 | 稳定能力 ID | 能力 |
-|---|---|---|
-| `dynamic trace` | `dynamic.trace` | Runtime Trace |
-| `dynamic arguments` | `dynamic.arguments` | 参数采集 |
-| `dynamic memory` | `dynamic.memory` | 内存分析 |
-| `dynamic syscalls` | `dynamic.syscalls` | 系统调用分析 |
-| `dynamic coverage` | `dynamic.coverage` | 覆盖率分析 |
+| 命令 | 稳定能力 ID | 能力 | 状态 |
+|---|---|---|---|
+| `dynamic trace` | `dynamic.trace` | Runtime Trace | 已接入（默认拒绝执行，仅出计划） |
+| `dynamic arguments` | `dynamic.arguments` | 参数采集 | 外壳 |
+| `dynamic memory` | `dynamic.memory` | 内存分析 | 外壳 |
+| `dynamic syscalls` | `dynamic.syscalls` | 系统调用分析 | 外壳 |
+| `dynamic coverage` | `dynamic.coverage` | 覆盖率分析 | 外壳 |
 
 ### 2.5 AI 分析
 
@@ -187,10 +187,16 @@ automation.harness
 1. Analyzer 通过 `requires` 声明硬依赖，通过 `optional_requires` 声明软依赖；
 2. Planner 补全硬依赖、检查循环，并把软依赖作为纯排序约束：软依赖不会因为被声明而被拉进计划，只有它因别的原因（被直接请求或被硬依赖拉入）出现在计划里时才要求先跑；未注册的软依赖被忽略，不报错；
 3. 下游从 `AnalysisContext` 读取统一结果：硬依赖用 `require()`，软依赖用 `optional()` 并在缺席时降级；
-3a. 缓存按（代码指纹、目标 sha256、Analyzer ID+版本、**参与的可选依赖集合**）分键——同一目标上有无调用图会产出不同事实，不能互相复用；
+3a. 缓存按（代码指纹、目标 sha256、Analyzer ID+版本、**参与的可选依赖集合**）分键——同一目标上有无调用图会产出不同事实，不能互相复用；结果还依赖宿主或配置状态的 Analyzer（例如 `dynamic.trace` 取决于授权与已安装的沙箱）必须声明 `cacheable=False`，运行时既不读取也不写入它的缓存条目；
 4. 禁止一个模块直接 import 并调用另一个模块 Analyzer 的 `analyze()`；
 5. AI 能力优先解释已有证据，不重复执行安全或基础分析；
 6. 自动化能力负责组合，不复制底层分析逻辑。
+
+`dynamic.trace` 是动态族的第一个接入点，它把「能不能执行」变成代码而不是文档：
+配置里没有 `dynamic_execution.authorized: true` 就返回 `state: not-authorized`；
+授权后若探测不到 `bwrap`/`firejail`/`docker`/`unshare`，返回 `state: no-sandbox` 并拒绝执行；
+两者都满足时返回 `state: planned`，给出包裹后的 argv、超时与内存上限，但 `executed: false`——
+采集器与 `dlopen` 驱动尚未接入（`infrastructure/execution.py`）。
 
 ## 5. 当前实现状态
 

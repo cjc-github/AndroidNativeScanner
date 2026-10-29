@@ -23,9 +23,10 @@ _ALLOWED_RUNTIME_KEYS = {
 _ALLOWED_OUTPUT_KEYS = {"format", "path"}
 _ALLOWED_ROOT_KEYS = {
     "schema_version", "name", "description", "analysis", "runtime", "output",
-    "capability_options",
+    "capability_options", "dynamic_execution",
 }
 _ALLOWED_ANALYSIS_KEYS = {"modules", "capabilities", "exclude", "profile"}
+_ALLOWED_EXECUTION_KEYS = {"authorized", "allow_targets", "timeout_seconds", "memory_mib"}
 
 
 def _expect_mapping(value: object, field_name: str) -> dict[str, Any]:
@@ -106,6 +107,7 @@ class AnalysisConfig:
     runtime: dict[str, object] = field(default_factory=dict)
     output: dict[str, object] = field(default_factory=dict)
     capability_options: dict[str, dict[str, object]] = field(default_factory=dict)
+    dynamic_execution: dict[str, object] = field(default_factory=dict)
     source: Path | None = None
 
     @classmethod
@@ -207,6 +209,10 @@ class AnalysisConfig:
                 options, f"capability_options.{capability_id}"
             )
 
+        dynamic_execution = _parse_dynamic_execution(
+            root.get("dynamic_execution")
+        )
+
         return cls(
             name=name.strip(),
             description=description,
@@ -215,6 +221,7 @@ class AnalysisConfig:
             runtime=runtime,
             output=output,
             capability_options=capability_options,
+            dynamic_execution=dynamic_execution,
             source=source,
         )
 
@@ -244,6 +251,34 @@ class AnalysisConfig:
         if self.capability_options:
             payload["capability_options"] = self.capability_options
         return payload
+
+
+def _parse_dynamic_execution(value: object) -> dict[str, object]:
+    """Validate the opt-in block that authorizes executing the target."""
+    if value is None:
+        return {}
+    payload = _expect_mapping(value, "dynamic_execution")
+    unknown = set(payload).difference(_ALLOWED_EXECUTION_KEYS)
+    if unknown:
+        raise ValueError(
+            "Unknown dynamic_execution option: " + ", ".join(sorted(unknown))
+        )
+    authorized = payload.get("authorized", False)
+    if not isinstance(authorized, bool):
+        raise ValueError("dynamic_execution.authorized must be true or false")
+    allow_targets = _expect_string_list(
+        payload.get("allow_targets"), "dynamic_execution.allow_targets"
+    )
+    resolved: dict[str, object] = {"authorized": authorized}
+    if allow_targets:
+        resolved["allow_targets"] = list(allow_targets)
+    for key in ("timeout_seconds", "memory_mib"):
+        if key in payload:
+            raw = payload[key]
+            if not isinstance(raw, int) or isinstance(raw, bool) or raw <= 0:
+                raise ValueError(f"dynamic_execution.{key} must be a positive integer")
+            resolved[key] = raw
+    return resolved
 
 
 def _validate_runtime(runtime: Mapping[str, object]) -> None:

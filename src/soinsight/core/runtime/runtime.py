@@ -64,6 +64,10 @@ class AnalysisRuntime:
         if cache:
             for analyzer_id in plan.resolved:
                 analyzer = self.registry.get(analyzer_id)
+                if not analyzer.metadata.cacheable:
+                    # The result depends on host or configuration state the key
+                    # does not cover, so it must never be replayed.
+                    continue
                 cached = cache.get(
                     target,
                     analyzer_id,
@@ -97,7 +101,11 @@ class AnalysisRuntime:
         self._attach_text_outputs(context)
         if cache:
             for result in context.results.values():
-                if result.status == AnalysisStatus.SUCCESS and not result.cache_hit:
+                if (
+                    result.status == AnalysisStatus.SUCCESS
+                    and not result.cache_hit
+                    and self.registry.get(result.analyzer_id).metadata.cacheable
+                ):
                     cache.put(
                         target,
                         result,

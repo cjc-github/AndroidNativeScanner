@@ -17,6 +17,7 @@ from .library import AdvancedLibraryAnalyzer
 from .dynamic_link import BasicDynamicAnalyzer
 from .disasm import BasicDisasmAnalyzer
 from .dwarf import BasicDwarfAnalyzer
+from .dynamic_trace import DynamicTraceAnalyzer
 from .dynamic_loading import SecurityDynamicLoadingAnalyzer
 from .security import (
     SecurityDangerousApiAnalyzer,
@@ -49,6 +50,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(AdvancedCompilerAnalyzer())
     registry.register(AdvancedProtocolAnalyzer())
     registry.register(AdvancedObfuscationAnalyzer())
+    registry.register(DynamicTraceAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDynamicLoadingAnalyzer())

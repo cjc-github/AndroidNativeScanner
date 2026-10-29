@@ -85,7 +85,7 @@ class WebJobConsoleTests(unittest.TestCase):
         response = urllib.request.urlopen(f"{self.base}/api/health")
         payload = json.load(response)
         self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["registered_analyzers"]), 25)
+        self.assertEqual(len(payload["registered_analyzers"]), 26)
 
     def _job_log_text(self, log: dict) -> str:
         return "\n".join(

@@ -99,6 +99,24 @@ soinsight scan libfoo.so --module-available basic,security \
 
 基线内的问题仍会出现在报告里（标 `suppressed`/`[baselined]`），只是不再阻断构建。
 
+## 动态分析（默认拒绝执行）
+
+`dynamic.*` 会执行目标，因此默认拒绝。只有在配置中显式授权后才会继续判定：
+
+```yaml
+# 例如写在 ~/.config/soinsight/config.yaml 或项目配置里
+dynamic_execution:
+  authorized: true
+  allow_targets: ["/opt/samples/libfoo.so"]   # 可选白名单
+```
+
+```bash
+soinsight dynamic trace libfoo.so   # 未授权 → not-authorized；已授权但无沙箱 → no-sandbox
+```
+
+隔离靠探测（`bwrap` > `firejail` > `docker` > `unshare`），探测不到就拒绝，**不会**在宿主上裸跑。
+当前 `dynamic.trace` 只产出沙箱执行计划（含超时/内存上限），不启动进程、不采集事件。
+
 ## 更多文档
 
 - 原详细使用文档（快速开始/使用手册/命令参考/YAML 配置）：`docs/archive/`

@@ -353,3 +353,43 @@ def test_dependency_signature_lists_only_planned_optional_deps():
         )
         == "basic.callgraph,basic.dataflow"
     )
+
+
+def test_non_cacheable_analyzer_is_never_replayed(tmp_path):
+    """A host-dependent analyzer must not reuse an entry across runs."""
+    from soinsight.core.runtime import DependencyPlanner
+
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+
+    class HostDependentAnalyzer(Analyzer):
+        metadata = AnalyzerMetadata(
+            id="dynamic.trace",
+            name="Trace",
+            version="1.0.0",
+            cacheable=False,
+        )
+        calls = 0
+
+        def analyze(self, target, context):
+            type(self).calls += 1
+            return AnalysisResult(
+                analyzer_id=self.metadata.id,
+                analyzer_version=self.metadata.version,
+                status=AnalysisStatus.SUCCESS,
+                data={"calls": type(self).calls},
+            )
+
+    registry = AnalyzerRegistry()
+    registry.register(HostDependentAnalyzer())
+    runtime = AnalysisRuntime(registry)
+    config = RuntimeConfig(cache_dir=tmp_path / "cache", cache_enabled=True)
+
+    first = runtime.execute(target_file, ("dynamic.trace",), config)
+    second = runtime.execute(target_file, ("dynamic.trace",), config)
+
+    assert first.results["dynamic.trace"].data == {"calls": 1}
+    assert second.results["dynamic.trace"].data == {"calls": 2}
+    # Nothing was written for it either.
+    written = list((tmp_path / "cache").rglob("dynamic_trace*.json"))
+    assert written == []

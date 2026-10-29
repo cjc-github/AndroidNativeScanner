@@ -2,9 +2,9 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 25/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 26/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **20/45** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 4/5、`ai` 8/8、`automation` 7/7 —— 共 **19/45** 项外壳能力（`dynamic.trace` 已接入，默认拒绝执行，见 §4）。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
@@ -37,20 +37,37 @@
 
 ---
 
-## 4. 动态分析（dynamic，5 项外壳）
+## 4. 动态分析（dynamic，1 项已接入 / 4 项外壳）
 
-动态族有共同的、比单个能力更大的前置：**授权门 + 隔离执行器**。没有这两层，任何采集器都不该落地。
+动态族的共同前置 —— **授权门 + 隔离执行器（D9）** —— 已经落地，形式是
+`infrastructure/execution.py`：
 
-| 能力 | 内容 | 共同前置之外需要什么 |
+- **授权默认拒绝**：配置里没有 `dynamic_execution.authorized: true` 就什么都不跑；可选的
+  `allow_targets` 白名单按真实路径比对。拒绝不是崩溃，而是一条
+  `DYNAMIC_EXECUTION_NOT_AUTHORIZED` 警告加 `state: not-authorized` 的事实。
+- **隔离靠探测，不靠假设**：`detect_sandbox()` 依次探测 `bwrap` > `firejail` > `docker` >
+  `unshare` 并给出包裹命令；**没有裸执行的兜底**——探测不到就报
+  `DYNAMIC_SANDBOX_UNAVAILABLE` 并拒绝。
+- **计划与执行分离**：`DryRunExecutor` 只产出沙箱命令行（含超时与内存上限），
+  `SubprocessSandboxExecutor` 必须同时满足「已授权」与「构造时 `allow_execution=True`」
+  两个条件才会真正启动进程；当前没有任何内置 Analyzer 打开它。
+
+`dynamic.trace` 已接入调度，走完授权 → 沙箱 → 计划的完整判定链，三种状态分别是
+`not-authorized` / `no-sandbox` / `planned`（`planned` 时给出待执行的 argv，但
+`executed: false`）。**它不采集事件**：采集器与 `dlopen` 驱动（harness）属于下一步。
+
+| 能力 | 现状 | 还缺什么 |
 |---|---|---|
-| `dynamic.trace` | 函数/模块/事件运行轨迹 | 采集器通道（ptrace/frida 或模拟器）；事件流进统一结果模型 |
-| `dynamic.arguments` | 调用参数、返回值与上下文采集 | 同上 + 采样点选择（通常结合 `basic.callgraph`/hooks） |
-| `dynamic.memory` | 内存映射、访问与关键数据观测 | 同上 + 观测点白名单（读 `/proc/<pid>/maps` 级别先做） |
-| `dynamic.syscalls` | 系统调用与文件/网络/进程行为 | 同上 + seccomp/ptrace 拦截策略 |
-| `dynamic.coverage` | 函数/基本块/边覆盖率 | 同上 + 与 `basic.cfg` 的块号对齐（覆盖率最终要对回静态 CFG） |
+| `dynamic.trace` | 已接入：授权门 + 沙箱探测 + dry-run 计划 | 采集器（ptrace/frida 或 eBPF）、harness、事件流进统一结果模型 |
+| `dynamic.arguments` | 外壳 | 同上 + 采样点选择（结合 `basic.callgraph`） |
+| `dynamic.memory` | 外壳 | `/proc/<pid>/maps` 级别的观测点白名单 |
+| `dynamic.syscalls` | 外壳 | seccomp/ptrace 拦截策略 |
+| `dynamic.coverage` | 外壳 | 与 `basic.cfg` 块号对齐 |
 
-- **依赖**：全部依赖一个"动态执行底座"（授权声明、目标进程沙箱、采集器、结果回传），建议作为一个 Phase 5 里程碑一起验收，而不是逐能力散做。
-- **结果模型**：动态事实与静态 Finding 的关联（如"该危险 API 确实被调用且参数可控"）是 Phase 5 的验收点之一。
+- **依赖**：采集器需要一个能加载 `.so` 的驱动进程，静态分析给不出来；
+  `automation.harness` 与本节的 harness 需求是同一件事。
+- **结果模型**：动态事实与静态 Finding 的关联（如"该危险 API 确实被调用且参数可控"）仍是
+  Phase 5 的验收点。
 
 ---
 
@@ -97,7 +114,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 | D6 | 目录扫描 | V2 TargetResolver 只接受单文件 | 多目标 Request 模型（与 D8 同源） |
 | D7 | doctor 分级 | 缺 binutils 报 info 而非 warning，并注明 binutils 仅 V1 legacy 管线需要、V2 Analyzer 均为纯 Python | （无遗留） |
 | D8 | 多目标 Request 与 Diff 引擎 | 只有双目标命令形态 | 统一 Request 模型 + Diff 本体（支撑 binary-diff/目录扫描/批处理） |
-| D9 | 动态执行底座 | 无 | 授权门、沙箱执行器、采集器（dynamic 五项共同前置） |
+| D9 | 动态执行底座 | ✅ 授权门（默认拒绝 + 白名单）、沙箱探测（bwrap/firejail/docker/unshare）、计划/执行分离与双重 opt-in 已落地 | 采集器与 harness（`dynamic.*` 余下部分） |
 | D10 | AI Provider 抽象 | 无 | 本地优先策略、隐私防护、证据引用、模型版本与成本治理 |
 | D11 | Automation 编排引擎 | 无 | Workflow、CI Gate、Fuzz 编排器、批处理流水线 |
 
@@ -114,7 +131,8 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 3. advanced.family  —— ✅ 全部完成（algorithm/file-format/library/compiler 先行，
                        protocol 次之，obfuscation 收尾；Phase 3 收尾）
 4. Phase 4 余项     —— 调用点证据接入 dangerous-api/vulnerability、CI Gate、基线抑制
-5. 动态底座 D9      —— 然后 dynamic.* 五项（Phase 5）
+5. 动态底座 D9      —— ✅ 授权门/沙箱/计划已落地；采集器与 harness 之后再接
+                       dynamic.* 余下四项（Phase 5）
 6. AI Provider D10  —— 先 ai.vulnerability-explanation（Finding 已就绪），
                        其余随证据丰富度推进（Phase 6）
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）

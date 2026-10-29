@@ -598,6 +598,8 @@ def _handle_analysis(
             "analysis_config_source": str(analysis_config.source or ""),
             "capability_options": analysis_config.capability_options,
         }
+        if analysis_config.dynamic_execution:
+            extra["dynamic_execution"] = analysis_config.dynamic_execution
     try:
         runtime_config = ConfigLoader().load(
             jobs=args.jobs if args.jobs is not None else yaml_runtime.get("jobs"),
