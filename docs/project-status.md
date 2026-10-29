@@ -4,9 +4,9 @@
 
 ## 1. 当前里程碑
 
-> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`advanced.strings`/`advanced.constants`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
+> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk` 是已接入的真实 Analyzer，不代表 42 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 是已接入的真实 Analyzer，不代表 45 项业务能力已经实现。
 
 ## 2. 已完成
 
@@ -89,12 +89,13 @@
 - [x] `basic.callgraph`：local/import/indirect 调用分类、PLT 桩 GOT 槽与 `.rela.*` 匹配、`callers_of` 反向索引、外部调用汇总、选项截断、非 ELF、缺失解码器与无代码区域降级；
 - [x] `basic.dataflow`：块内 use-def、跨块到达定义传播、子寄存器折叠、`scope: intra-procedural` 声明、选项截断、非 ELF、缺失解码器与无代码区域降级；
 - [x] `advanced.algorithm`：常量表 + 符号名 + 字符串线索交叉判定算法，多源证据标 `corroborated`、单源标 `single`，家族归类与非 ELF 目标可用；
+- [x] `basic.xref`：指令操作数到字符串字面量的引用还原（x86-64/x86-32/AArch64/ARM 形态）、`exact`/`suffix` 匹配、控制流引用排除、代码段字符串排除、寄存器追踪在写入与调用点失效、函数尺寸按分节裁剪、选项截断、非 ELF、缺失解码器/不支持架构/无代码区域降级；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
-当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用、`cpp_demangle` 未装）：
-`613 passed, 9 skipped`，此时 `test_demangler_oracle.py` 整模块不收集——装齐 dev 依赖
-（`pip install -e '.[dev]'`）后该模块以及参考 demangler 比对用例会恢复收集。
-Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
+当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `673 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `558 passed, 1 skipped`。
+Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
 
@@ -179,6 +180,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 - `advanced.strings`（✅ 已完成：纯 Python 提取，任意文件可用；URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断；实现于 `analyzers/advanced.py` 与 `infrastructure/strings/`）；
 - `advanced.constants`（✅ 已完成：已知算法常量表扫描，全特征字命中才报告，记录偏移与分节；实现于 `analyzers/constants.py` 与 `infrastructure/constants.py`）；
 - `advanced.algorithm`（✅ 已完成：常量表 + 导入/导出符号名 + 字符串线索交叉判定，多源证据标 `corroborated`，输出家族归类；实现于 `analyzers/algorithm.py` 与 `infrastructure/algorithm.py`）；
+- `basic.xref`（✅ 已完成：逐函数重解码还原操作数指向的数据地址，与已加载分节的可见串匹配（`exact`/`suffix`），控制流引用与代码段字符串排除，寄存器追踪在写入与调用点失效；实现于 `analyzers/xref.py` 与 `infrastructure/xref.py`）；
 - `security.risk`（✅ 已完成：依赖 `security.hardening` + `security.dangerous-api` + `advanced.strings`，按指纹去重、严重度/置信度/类别计数、V1 权重口径的字符串指标、可配置权重的风险分档；实现于 `analyzers/security.py`）；
 - V1 URL/Secret/Base64 规则迁移（✅ 已完成：`rules/string_rules.py` 提供 `security.sensitive-string`、`security.hardcoded-url`、`security.encoded-payload` 三条内置规则，指纹格式 `sensitive:<label>:<value>` / `url:<value>` / `base64:<value>`）；
 - V1 JNI 规则迁移（未做：JNI 导出统计已由 `basic.symbols` 以计数形式提供，命名建议类规则形态仍在设计）。
@@ -202,7 +204,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 ### Phase 3：基础与高级分析深化
 
 - DWARF、类型、C++；
-- 反汇编、CFG、Call Graph、Data Flow（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`）；
+- 反汇编、CFG、Call Graph、Data Flow、交叉引用（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.xref`）；
 - 算法、协议、格式、库、编译器和混淆识别（`advanced.constants` ✅ 已完成，其余未做）。
 
 ### Phase 4：安全分析闭环
@@ -236,7 +238,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 在实现和验收前，不应宣称：
 
-- V2 已具备 42 项真实分析能力；
+- V2 已具备 45 项真实分析能力；
 - V2 已替代 V1；
 - `basic.symbols` 能恢复 stripped 二进制的参数名或 DWARF 类型（ mangled name 与 JNI 名之外的类型信息不存在）；
 - 动态分析会安全执行目标；

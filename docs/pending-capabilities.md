@@ -2,15 +2,15 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 16/42 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 20/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 0/10、`advanced` 6/8、`security` 0/4、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **26/42** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/12、`advanced` 5/8、`security` 0/5、`dynamic` 5/5、`ai` 8/8、`automation` 7/7 —— 共 **25/45** 项外壳能力。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
 ## 1. 基础分析（basic，0 项外壳）
 
-`basic` 十项能力全部已实现：`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`。反汇编族（disasm → cfg → callgraph → dataflow）已补齐，`security.dangerous-api`/`security.vulnerability` 的调用点证据接入见 §3。
+`basic` 十二项能力全部已实现：`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`。反汇编族（disasm → cfg → callgraph → dataflow/xref）与动态链接事实已补齐，`security.dangerous-api`/`security.vulnerability` 的调用点证据接入见 §3。
 
 ---
 

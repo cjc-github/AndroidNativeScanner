@@ -139,6 +139,39 @@ def _render_dynamic(result) -> list[str]:
     return lines
 
 
+_TEXT_XREF_LIMIT = 8
+
+
+def _render_xrefs(result) -> list[str]:
+    """Render the ``basic.xref`` facts, or nothing when not collected."""
+    xref_result = result.results.get("basic.xref")
+    if xref_result is None or not xref_result.data:
+        return []
+    data = xref_result.data
+    lines = [
+        "",
+        "Cross references:",
+        f"  Strings              {data.get('string_count', 0)}",
+        f"  Referenced strings   {data.get('referenced_string_count', 0)}",
+        f"  Code references      {data.get('xref_count', 0)}",
+    ]
+    if data.get("truncated"):
+        lines.append("  (truncated)")
+    for entry in data.get("xrefs", [])[:_TEXT_XREF_LIMIT]:
+        value = entry.get("string", "")
+        lines.append(
+            f"    {entry.get('instruction_address')} -> "
+            f"{entry.get('string_address')} "
+            f"[{entry.get('kind')}] {_elide(value)}"
+        )
+    remainder = data.get("xref_count", 0) - min(
+        len(data.get("xrefs", [])), _TEXT_XREF_LIMIT
+    )
+    if remainder > 0:
+        lines.append(f"    ... and {remainder} more")
+    return lines
+
+
 def _category_count(classified: dict, category: str) -> int:
     return int(classified.get(category, {}).get("count", 0) or 0)
 
@@ -186,6 +219,7 @@ class TextRenderer(Renderer):
             lines.extend(_render_symbols(result))
             lines.extend(_render_dynamic(result))
             lines.extend(_render_strings(result))
+            lines.extend(_render_xrefs(result))
             lines.extend(["", "Findings:"])
             if result.findings:
                 lines[-1] = f"Findings: {len(result.findings)}"

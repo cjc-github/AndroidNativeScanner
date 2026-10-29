@@ -21,6 +21,7 @@ from .security import (
 )
 from .symbols import BasicSymbolsAnalyzer
 from .types import BasicTypesAnalyzer
+from .xref import BasicXrefAnalyzer
 
 
 def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
@@ -35,6 +36,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(BasicCallgraphAnalyzer())
     registry.register(BasicDataflowAnalyzer())
     registry.register(BasicDynamicAnalyzer())
+    registry.register(BasicXrefAnalyzer())
     registry.register(AdvancedConstantsAnalyzer())
     registry.register(AdvancedAlgorithmAnalyzer())
     registry.register(AdvancedStringsAnalyzer())

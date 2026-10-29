@@ -6,14 +6,14 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 
 | 模块 ID | 中文名 | 能力数 | CLI 前缀 | 定位 |
 |---|---|---:|---|---|
-| `basic` | 基础分析 | 10 | `soinsight basic` | 建立二进制、ELF、代码结构和统一 IR 基础事实 |
+| `basic` | 基础分析 | 12 | `soinsight basic` | 建立二进制、ELF、代码结构和统一 IR 基础事实 |
 | `advanced` | 高级分析 | 8 | `soinsight advanced` | 从基础事实识别字符串、算法、协议、工具链等语义 |
-| `security` | 安全分析 | 4 | `soinsight security` | 形成安全 Finding、证据和风险结论 |
+| `security` | 安全分析 | 5 | `soinsight security` | 形成安全 Finding、证据和风险结论 |
 | `dynamic` | 动态分析 | 5 | `soinsight dynamic` | 在授权与隔离环境中采集运行时证据 |
 | `ai` | AI 分析 | 8 | `soinsight ai` | 消费已有证据进行语义恢复与解释 |
 | `automation` | 自动化 | 7 | `soinsight automation` | 组合能力形成 Diff、Fuzz、报告和 CI 工作流 |
 
-前 40 项能力来自 V2 原始设计；`automation.report` 和 `automation.workflow` 是为了兑现“自动化报告、批处理和 CI 集成”目标而补充的编排能力。
+前 40 项能力来自 V2 原始设计；`automation.report` 和 `automation.workflow` 是为了兑现“自动化报告、批处理和 CI 集成”目标而补充的编排能力；`basic.dynamic`、`security.dynamic-loading` 与 `basic.xref` 是为补齐动态链接事实、动态加载风险判定和代码到数据的交叉引用而新增的能力。
 
 ## 2. 能力目录
 
@@ -31,6 +31,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic cfg` | `basic.cfg` | CFG 恢复 | 已实现 |
 | `basic callgraph` | `basic.callgraph` | Call Graph 恢复 | 已实现 |
 | `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 已实现 |
+| `basic dynamic` | `basic.dynamic` | 动态链接解析 | 已实现 |
+| `basic xref` | `basic.xref` | 交叉引用 | 已实现 |
 
 `basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
 
@@ -47,6 +49,8 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 `basic.callgraph` 解析调用点为 `call_edges`（caller/callee/`callee_kind: local/import/indirect`）并给出 `callers_of` 反向索引与 `external_calls` 外部调用汇总。直接调用按函数符号表解析为 `local`；落到 PLT 桩的调用经桩自身的 GOT 槽（x86-64 `jmp [rip+disp]`、AArch64 `adrp`+`ldr` 对）匹配 `.rela.*` 重定位恢复导入符号名，记为 `import`；间接调用（寄存器/内存目标）只记 `indirect` 且不带 callee，不猜测。PLT 桩起点从指令形态读取，不假设固定步长，因此 PLT0、`.plt.sec` 与 IRELATIVE 布局同样成立。降级与截断语义同 `basic.cfg`（`CALLGRAPH_NO_DECODER`/`CALLGRAPH_NO_CODE_REGIONS`/`CALLGRAPH_TRUNCATED`，`max_functions`/`max_instructions`/`max_edges`）。数据结构见 `infrastructure/callgraph.py`。
 
 `basic.dataflow` 在 `basic.cfg` 的基本块之上做函数内（intra-procedural）use-def 与到达定义分析。寄存器位置从指令操作数文本读取而非解码器摘要：目标操作数为写、其余寄存器为读，子寄存器折叠到架构寄存器（`eax`→`rax`、`w0`→`x0`），内存操作数只贡献基址寄存器。事实按基本块聚合为 `defs`/`uses`，`uses` 携带 `reaching` 到达定义列表；跨块传播是前向数据流（按前驱重算 `in`，块内最后一次定义 kill 入口值），在最长无环路径上每块一轮收敛。函数间传播不在能力范围内（`scope: intra-procedural`），规模由 `max_functions`/`max_instructions`/`max_pairs` 控制，越界记 `DATAFLOW_TRUNCATED`；降级语义同 `basic.cfg`（`DATAFLOW_NO_DECODER`/`DATAFLOW_NO_CODE_REGIONS`）。数据结构见 `infrastructure/dataflow.py`。
+
+`basic.xref` 把指令操作数还原成数据地址，再与镜像中已加载分节的可见串对齐，回答“这个字符串在哪条指令上被引用”。它在 `basic.disasm` 的代码区域与函数边界之上逐函数重解码（Capstone detail 模式读取操作数），函数之外的空隙（PLT 桩等）再补扫：编译器会把常量池嵌进 `.text`，整段线性解码会在常量池处失去同步。引用形态按架构读取——x86-64 的 `rip-relative`/`absolute`/`immediate`，AArch64 的 `adr`、`adrp`+`add` 页内偏移对以及寄存器追踪得到的 `register-load`，ARM 的 `movw`/`movt` 半字拼装与 PC 相对字面量池。地址正好落在串首记 `exact`，落在串中间记 `suffix`。跳转与调用目标指向代码而不是数据，不参与字符串匹配。寄存器追踪只在单个解码块内有效且不建模控制流：被追踪的页一旦遇到非页算术的写入（含 `w0`/`x0` 这类别名，按折叠后的寄存器名判定）即失效，调用点按 AAPCS64（x0-x18）与 AAPCS（r0-r3、r12）丢弃可能被 callee 破坏的值——留着过期页会报出指令根本不指向的地址。字符串表只收带 `SHF_ALLOC` 且不带 `SHF_EXECINSTR` 的分节：代码段里的展开表字节看起来像串但不是字面量；函数尺寸越出其所在分节时按分节裁剪，避免把下一分节的字节当指令解码。输出是事实而非结论（`xrefs` 记录串、串地址、所属分节、指令地址、引用形态与匹配形态，另有计数汇总），引用含义的判断留在 `security.*` 规则。Capstone 缺失（`XREF_DECODER_UNAVAILABLE`）或机器类型无解码器（`XREF_UNSUPPORTED_ARCH`）时保留字符串侧事实并把引用数记为 0，无可执行分节记 `XREF_NO_CODE_REGIONS`；规模由 `min_length`/`max_strings`/`max_xrefs` 控制，越界记 `XREF_STRINGS_TRUNCATED`/`XREF_TRUNCATED`。数据结构见 `infrastructure/xref.py`。
 
 ### 2.2 高级分析
 
@@ -79,6 +83,7 @@ URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS
 | `security dangerous-api` | `security.dangerous-api` | 危险 API 检测 | 已实现 |
 | `security vulnerability` | `security.vulnerability` | 漏洞模式识别 | 已实现 |
 | `security risk` | `security.risk` | 风险评分/评估 | 已实现 |
+| `security dynamic-loading` | `security.dynamic-loading` | 动态加载风险 | 已实现 |
 
 `security.vulnerability` 依赖 `security.dangerous-api`，把危险 API 链接事实按符号名映射到
 CWE 类别（命令注入/缓冲区溢出/格式化字符串/路径/权限等），生成带证据链的漏洞模式
@@ -181,7 +186,7 @@ automation.harness
 已实现：
 
 - 六大模块注册目录 `src/soinsight/modules/`；
-- 42 项能力定义及命名空间校验；
+- 45 项能力定义及命名空间校验；
 - 领域命令树；
 - `modules list/show`；
 - `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
@@ -191,7 +196,7 @@ automation.harness
 
 未实现：
 
-- 42 项能力对应的具体 Analyzer/Rule/Provider；
+- 45 项能力对应的具体 Analyzer/Rule/Provider；
 - 双目标及复杂输入能力的统一 Request 模型；
 - 动态分析隔离执行器；
 - AI Provider、隐私策略和成本控制；

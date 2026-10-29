@@ -18,14 +18,14 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-10-26，六大模块目录、40 项原始能力及 2 项自动化增强能力的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 截至 2026-10-29，六大模块目录、40 项原始能力、2 项自动化增强能力以及为动态链接与交叉引用新增的 3 项能力（`basic.dynamic`、`basic.xref`、`security.dynamic-loading`）的命令外壳已经建立，`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
 | [快速使用](docs/quickstart.md) | 安装、最常用命令和输出选项（一页） |
-| [模块体系](docs/module-system.md) | 六大产品模块、42 项能力及跨域依赖规则 |
+| [模块体系](docs/module-system.md) | 六大产品模块、45 项能力及跨域依赖规则 |
 | [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
 | [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
 | [扩展开发指南](docs/extension-development.md) | 为能力实现 Analyzer、Rule、Profile、Renderer |
