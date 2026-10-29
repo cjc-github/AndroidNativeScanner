@@ -79,20 +79,36 @@ class RuntimeCache:
         self.config = config
 
     def _path(
-        self, target: AnalysisTarget, analyzer_id: str, analyzer_version: str
+        self,
+        target: AnalysisTarget,
+        analyzer_id: str,
+        analyzer_version: str,
+        dependency_signature: str = "",
     ) -> Path:
         safe_id = analyzer_id.replace(".", "_")
+        # An analyzer that consumes optional dependencies produces different
+        # facts depending on which of them ran, so the entry is separated by
+        # that set. Analyzers without optional deps keep the original file name
+        # and therefore their existing cache entries.
+        suffix = ""
+        if dependency_signature:
+            digest = hashlib.sha256(dependency_signature.encode("utf-8")).hexdigest()[:8]
+            suffix = f"-{digest}"
         return (
             self.config.cache_dir
             / code_version()
             / target.sha256
-            / f"{safe_id}-{analyzer_version}.json"
+            / f"{safe_id}-{analyzer_version}{suffix}.json"
         )
 
     def get(
-        self, target: AnalysisTarget, analyzer_id: str, analyzer_version: str
+        self,
+        target: AnalysisTarget,
+        analyzer_id: str,
+        analyzer_version: str,
+        dependency_signature: str = "",
     ) -> AnalysisResult | None:
-        path = self._path(target, analyzer_id, analyzer_version)
+        path = self._path(target, analyzer_id, analyzer_version, dependency_signature)
         if not path.exists():
             return None
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -112,8 +128,15 @@ class RuntimeCache:
             schema_version=payload.get("schema_version", RESULT_SCHEMA_VERSION),
         )
 
-    def put(self, target: AnalysisTarget, result: AnalysisResult) -> None:
-        path = self._path(target, result.analyzer_id, result.analyzer_version)
+    def put(
+        self,
+        target: AnalysisTarget,
+        result: AnalysisResult,
+        dependency_signature: str = "",
+    ) -> None:
+        path = self._path(
+            target, result.analyzer_id, result.analyzer_version, dependency_signature
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(

@@ -260,9 +260,13 @@ class SecurityDangerousApiAnalyzer(Analyzer):
 
     Consumes the ``basic.symbols`` result: an imported dangerous API means the
     library can reach that behaviour, an exported one means it offers it to
-    its callers. Both are facts about linkage rather than about a call site —
-    the analyzer does not disassemble, so a match reports a capability, not a
-    proof of use, and the confidence field says so.
+    its callers. Both are facts about linkage; a match reports a capability, not
+    a proof of use.
+
+    ``basic.callgraph`` is an optional dependency: when it is part of the same
+    scan, imported APIs also carry the call sites the call graph resolved, and
+    the evidence is marked ``call-site`` instead of ``linkage``. Without it the
+    detector still runs -- it simply says less.
     """
 
     metadata = AnalyzerMetadata(
@@ -272,22 +276,35 @@ class SecurityDangerousApiAnalyzer(Analyzer):
         description="Detect dangerous imported and exported APIs.",
         kind=AnalyzerKind.DETECTOR,
         requires=("basic.symbols",),
+        optional_requires=("basic.callgraph",),
     )
 
     def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
         del target
         options = _resolve_options(context)
         symbols = context.require("basic.symbols")
+        callgraph = context.optional("basic.callgraph")
+        call_sites = _import_call_sites(callgraph)
+        call_graph_ran = callgraph is not None and callgraph.status == AnalysisStatus.SUCCESS
         findings: list[Finding] = []
         matched: set[str] = set()
 
         if options["include_imports"]:
             for record in symbols.data.get("imports", []):
-                matched |= self._inspect(record, options, findings, usage="import")
+                matched |= self._inspect(
+                    record, options, findings, usage="import", call_sites=call_sites
+                )
         if options["include_exports"]:
             for record in symbols.data.get("functions", []):
-                matched |= self._inspect(record, options, findings, usage="export")
+                matched |= self._inspect(
+                    record, options, findings, usage="export", call_sites=call_sites
+                )
 
+        confirmed = {
+            name
+            for name in matched
+            if call_sites.get(name, {}).get("call_site_count", 0)
+        }
         return AnalysisResult(
             analyzer_id=self.metadata.id,
             analyzer_version=self.metadata.version,
@@ -296,6 +313,11 @@ class SecurityDangerousApiAnalyzer(Analyzer):
                 "matched_apis": sorted(matched),
                 "finding_count": len(findings),
                 "counts_by_severity": _count_by_severity(findings),
+                # True means the call graph took part, so an absent call site
+                # is a fact ("not called through the PLT"), not missing data.
+                "call_site_evidence": call_graph_ran,
+                "call_site_confirmed_apis": sorted(confirmed),
+                "call_site_confirmed_count": len(confirmed),
             },
             findings=findings,
             diagnostics=_stripped_diagnostic(self.metadata.id, symbols),
@@ -359,6 +381,7 @@ class SecurityDangerousApiAnalyzer(Analyzer):
         findings: list[Finding],
         *,
         usage: str,
+        call_sites: dict | None = None,
     ) -> set[str]:
         name = record.get("name", "")
         if not name:
@@ -370,6 +393,31 @@ class SecurityDangerousApiAnalyzer(Analyzer):
         category, severity, remediation = rule
         if _SEVERITY_ORDER[severity] < _SEVERITY_ORDER[options["min_severity"]]:
             return set()
+        sites = (call_sites or {}).get(name)
+        call_site_count = sites.get("call_site_count", 0) if sites else 0
+        evidence = {
+            "symbol": name,
+            "canonical_symbol": canonical,
+            "usage": usage,
+            "source": record.get("source", ".dynsym"),
+            "api_category": category,
+            # ``linkage`` means "declared/reachable"; ``call-site`` means the
+            # call graph also found where the symbol is called.
+            "evidence_level": "call-site" if call_site_count else "linkage",
+            "call_site_count": call_site_count,
+        }
+        if sites:
+            evidence["call_sites"] = tuple(sites.get("call_sites", ())[:10])
+        if call_site_count:
+            message = (
+                f"The library {usage}s '{name}' ({category}) and calls it at "
+                f"{call_site_count} site(s); the capability is reachable and used."
+            )
+        else:
+            message = (
+                f"The library {usage}s '{name}' ({category}); "
+                f"the capability is reachable through this symbol."
+            )
         findings.append(
             Finding(
                 rule_id=f"security.dangerous-api.{canonical}",
@@ -378,24 +426,25 @@ class SecurityDangerousApiAnalyzer(Analyzer):
                 category="dangerous-api",
                 severity=severity,
                 confidence=Confidence.HIGH,
-                message=(
-                    f"The library {usage}s '{name}' ({category}); "
-                    f"the capability is reachable through this symbol."
-                ),
+                message=message,
                 fingerprint=f"{canonical}:{usage}:{name}",
-                evidence=(
-                    {
-                        "symbol": name,
-                        "canonical_symbol": canonical,
-                        "usage": usage,
-                        "source": record.get("source", ".dynsym"),
-                        "api_category": category,
-                    },
-                ),
+                evidence=(evidence,),
                 remediation=remediation,
             )
         )
         return {canonical}
+
+
+def _import_call_sites(callgraph) -> dict:
+    """Index ``basic.callgraph`` external calls by imported symbol name."""
+    if callgraph is None or callgraph.status != AnalysisStatus.SUCCESS:
+        return {}
+    records = callgraph.data.get("external_calls") or ()
+    return {
+        record.get("name"): record
+        for record in records
+        if record.get("name") and record.get("call_site_count")
+    }
 
 
 def _canonical_symbol(name: str) -> str:
@@ -650,9 +699,36 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
                 continue
             seen.add(key)
             severity = source.severity.value
+            call_site_count = _call_site_count_of(source)
+            evidence_level = "call-site" if call_site_count else "linkage"
             patterns[title] = patterns.get(title, 0) + 1
             counts_by_cwe[cwe] = counts_by_cwe.get(cwe, 0) + 1
             counts_by_severity[severity] = counts_by_severity.get(severity, 0) + 1
+            if call_site_count:
+                message = (
+                    f"The library reaches and calls '{canonical}' ({category}) at "
+                    f"{call_site_count} site(s); this matches {cwe}. No taint "
+                    f"analysis was performed, so attacker-controlled data is "
+                    f"not established."
+                )
+            else:
+                message = (
+                    f"The library can reach '{canonical}' ({category}); this "
+                    f"matches {cwe}. The use is inferred from linkage only, "
+                    f"not from a call site with attacker-controlled data."
+                )
+            evidence = {
+                "cwe": cwe,
+                "api": canonical,
+                "api_category": category,
+                "usage": _usage_of(source),
+                "evidence_level": evidence_level,
+                "call_site_count": call_site_count,
+                "source_analyzer": "security.dangerous-api",
+            }
+            call_sites = _call_sites_of(source)
+            if call_sites:
+                evidence["call_sites"] = call_sites
             findings.append(
                 Finding(
                     rule_id=f"security.vulnerability.{cwe}",
@@ -660,22 +736,12 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
                     title=f"Potential {title} via {canonical}()",
                     category="vulnerability",
                     severity=source.severity,
+                    # Confidence stays MEDIUM even with a confirmed call site:
+                    # a call proves use, not attacker-controlled input.
                     confidence=Confidence.MEDIUM,
-                    message=(
-                        f"The library can reach '{canonical}' ({category}); this "
-                        f"matches {cwe}. The use is inferred from linkage only, "
-                        f"not from a call site with attacker-controlled data."
-                    ),
+                    message=message,
                     fingerprint=f"vuln:{cwe}:{canonical}",
-                    evidence=[
-                        {
-                            "cwe": cwe,
-                            "api": canonical,
-                            "api_category": category,
-                            "usage": _usage_of(source),
-                            "source_analyzer": "security.dangerous-api",
-                        }
-                    ],
+                    evidence=[evidence],
                     remediation=source.remediation,
                 )
             )
@@ -749,6 +815,22 @@ def _canonical_of(finding: Finding) -> str:
 
 def _category_of(finding: Finding) -> str:
     return finding.evidence[0].get("api_category", "") if finding.evidence else ""
+
+
+def _evidence_entry(finding, key: str, default=None):
+    """Look ``key`` up in the finding's evidence entries."""
+    for entry in finding.evidence:
+        if isinstance(entry, dict) and key in entry:
+            return entry[key]
+    return default
+
+
+def _call_site_count_of(finding) -> int:
+    return int(_evidence_entry(finding, "call_site_count", 0) or 0)
+
+
+def _call_sites_of(finding):
+    return _evidence_entry(finding, "call_sites", ())
 
 
 def _usage_of(finding: Finding) -> str:

@@ -180,13 +180,14 @@ automation.harness
   consumes: basic.types, advanced.protocol, dynamic.coverage
 ```
 
-`security.dangerous-api` 当前只依赖 `basic.symbols`：它按符号名精确匹配导入/导出的危险 API。FORTIFY 变体（`__strcpy_chk`）和前导下划线先归一化再匹配；`basic.disasm`/`basic.callgraph` 实现后可作为可选依赖提供调用点证据，当前不阻断匹配。
+`security.dangerous-api` 硬依赖 `basic.symbols`：它按符号名精确匹配导入/导出的危险 API，FORTIFY 变体（`__strcpy_chk`）和前导下划线先归一化再匹配。`basic.callgraph` 是它的**软依赖**（`optional_requires`）：当同一次扫描里存在调用图时，导入型命中会带上调用点数量与地址，证据标 `call-site`；没有调用图时照常工作，证据标 `linkage`。`security.vulnerability` 把这些调用点继续带进自己的证据，但置信度仍是 MEDIUM——调用点证明「被使用」，不证明「参数可控」。
 
 约束：
 
-1. Analyzer 通过 `requires` 声明依赖；
-2. Planner 补全依赖并检查循环；
-3. 下游从 `AnalysisContext` 读取统一结果；
+1. Analyzer 通过 `requires` 声明硬依赖，通过 `optional_requires` 声明软依赖；
+2. Planner 补全硬依赖、检查循环，并把软依赖作为纯排序约束：软依赖不会因为被声明而被拉进计划，只有它因别的原因（被直接请求或被硬依赖拉入）出现在计划里时才要求先跑；未注册的软依赖被忽略，不报错；
+3. 下游从 `AnalysisContext` 读取统一结果：硬依赖用 `require()`，软依赖用 `optional()` 并在缺席时降级；
+3a. 缓存按（代码指纹、目标 sha256、Analyzer ID+版本、**参与的可选依赖集合**）分键——同一目标上有无调用图会产出不同事实，不能互相复用；
 4. 禁止一个模块直接 import 并调用另一个模块 Analyzer 的 `analyze()`；
 5. AI 能力优先解释已有证据，不重复执行安全或基础分析；
 6. 自动化能力负责组合，不复制底层分析逻辑。
@@ -197,6 +198,7 @@ automation.harness
 
 - 六大模块注册目录 `src/soinsight/modules/`；
 - 45 项能力定义及命名空间校验；
+- 软依赖（`optional_requires`）调度、软依赖缺席降级与按参与依赖分键的缓存；
 - 领域命令树；
 - `modules list/show`；
 - `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；

@@ -284,3 +284,72 @@ def test_runtime_reuses_cached_text_instead_of_reformatting(tmp_path):
     assert formatted == ["basic.file"], "cache hit must not re-render the text"
     assert second.results["basic.file"].cache_hit is True
     assert second.results["basic.file"].text == "=== 缓存的文本 ==="
+
+
+def test_cache_entry_is_separated_by_participating_optional_dependencies(tmp_path):
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+    target = AnalysisTarget(target_file, target_file.resolve(), "sample.so", 6, "sha")
+    cache = RuntimeCache(RuntimeConfig(cache_dir=tmp_path / "cache"))
+    linkage_only = AnalysisResult(
+        analyzer_id="security.dangerous-api",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"call_site_evidence": False},
+    )
+    with_call_sites = AnalysisResult(
+        analyzer_id="security.dangerous-api",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"call_site_evidence": True},
+    )
+
+    cache.put(target, linkage_only)
+    cache.put(target, with_call_sites, "basic.callgraph")
+
+    # The symbol-only entry is not reused by a call-graph run.
+    assert cache.get(target, "security.dangerous-api", "1.0.0").data == {
+        "call_site_evidence": False
+    }
+    assert cache.get(
+        target, "security.dangerous-api", "1.0.0", "basic.callgraph"
+    ).data == {"call_site_evidence": True}
+
+
+def test_analyzers_without_optional_dependencies_keep_the_plain_entry(tmp_path):
+    target_file = tmp_path / "sample.so"
+    target_file.write_bytes(b"sample")
+    target = AnalysisTarget(target_file, target_file.resolve(), "sample.so", 6, "sha")
+    cache = RuntimeCache(RuntimeConfig(cache_dir=tmp_path / "cache"))
+    result = AnalysisResult(
+        analyzer_id="basic.file",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"size": 6},
+    )
+
+    cache.put(target, result)
+
+    paths = [
+        path.name
+        for path in (tmp_path / "cache").rglob("basic_file-1.0.0*.json")
+    ]
+    assert paths == ["basic_file-1.0.0.json"]
+
+
+def test_dependency_signature_lists_only_planned_optional_deps():
+    from soinsight.core.runtime.runtime import _dependency_signature
+
+    class _Metadata:
+        optional_requires = ("basic.callgraph", "basic.dataflow")
+
+    class _Analyzer:
+        metadata = _Metadata()
+
+    assert _dependency_signature(_Analyzer(), ("basic.symbols",)) == ""
+    assert (
+        _dependency_signature(
+            _Analyzer(), ("basic.symbols", "basic.callgraph", "basic.dataflow")
+        )
+        == "basic.callgraph,basic.dataflow"
+    )

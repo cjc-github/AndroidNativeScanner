@@ -40,6 +40,21 @@ def _analyze(symbols_data: dict, **extra):
     return SecurityDangerousApiAnalyzer().analyze(None, _context(symbols_data, **extra))
 
 
+def _callgraph_result(records: list[dict]) -> AnalysisResult:
+    return AnalysisResult(
+        analyzer_id="basic.callgraph",
+        analyzer_version="1.0.0",
+        status=AnalysisStatus.SUCCESS,
+        data={"external_calls": records},
+    )
+
+
+def _analyze_with_callgraph(symbols_data: dict, records: list[dict]):
+    context = _context(symbols_data)
+    context.add_result(_callgraph_result(records))
+    return SecurityDangerousApiAnalyzer().analyze(None, context)
+
+
 def test_analyzer_id_matches_the_catalog():
     from soinsight.modules import create_builtin_module_catalog
 
@@ -203,6 +218,9 @@ def test_analyzer_handles_empty_symbol_result():
         "matched_apis": [],
         "finding_count": 0,
         "counts_by_severity": {},
+        "call_site_evidence": False,
+        "call_site_confirmed_apis": [],
+        "call_site_confirmed_count": 0,
     }
     assert result.diagnostics == []
 
@@ -236,3 +254,69 @@ def test_rule_table_excludes_ubiquitous_primitives():
 def test_analyzer_is_registered_as_default_enabled():
     assert SecurityDangerousApiAnalyzer.metadata.default_enabled is True
     assert SecurityDangerousApiAnalyzer.metadata.kind.value == "detector"
+
+
+def test_import_finding_carries_call_sites_when_callgraph_is_present():
+    symbols = {
+        "imports": [{"name": "system", "source": ".dynsym"}],
+        "functions": [],
+        "stripped": False,
+    }
+    records = [
+        {
+            "name": "system",
+            "plt_address": "0x1020",
+            "call_site_count": 2,
+            "call_sites": ["0x1100", "0x1200"],
+        }
+    ]
+
+    result = _analyze_with_callgraph(symbols, records)
+
+    finding = result.findings[0]
+    evidence = finding.evidence[0]
+    assert evidence["evidence_level"] == "call-site"
+    assert evidence["call_site_count"] == 2
+    assert evidence["call_sites"] == ("0x1100", "0x1200")
+    assert "calls it at 2 site(s)" in finding.message
+    assert result.data["call_site_evidence"] is True
+    assert result.data["call_site_confirmed_apis"] == ["system"]
+    assert result.data["call_site_confirmed_count"] == 1
+
+
+def test_import_finding_stays_linkage_when_the_symbol_is_never_called():
+    symbols = {
+        "imports": [{"name": "system", "source": ".dynsym"}],
+        "functions": [],
+        "stripped": False,
+    }
+
+    result = _analyze_with_callgraph(symbols, [])
+
+    finding = result.findings[0]
+    assert finding.evidence[0]["evidence_level"] == "linkage"
+    assert finding.evidence[0]["call_site_count"] == 0
+    assert "reachable through this symbol" in finding.message
+    # The call graph ran, so "no call site" is a fact rather than missing data.
+    assert result.data["call_site_evidence"] is True
+    assert result.data["call_site_confirmed_count"] == 0
+
+
+def test_linkage_only_analysis_is_unchanged_without_callgraph():
+    symbols = {
+        "imports": [{"name": "system", "source": ".dynsym"}],
+        "functions": [],
+        "stripped": False,
+    }
+
+    result = _analyze(symbols)
+
+    finding = result.findings[0]
+    assert finding.evidence[0]["evidence_level"] == "linkage"
+    assert result.data["call_site_evidence"] is False
+
+
+def test_optional_callgraph_is_not_a_hard_dependency():
+    """A symbol-only plan must not require basic.callgraph."""
+    assert SecurityDangerousApiAnalyzer.metadata.requires == ("basic.symbols",)
+    assert "basic.callgraph" in SecurityDangerousApiAnalyzer.metadata.optional_requires

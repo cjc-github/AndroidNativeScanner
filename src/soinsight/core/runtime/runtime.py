@@ -64,7 +64,12 @@ class AnalysisRuntime:
         if cache:
             for analyzer_id in plan.resolved:
                 analyzer = self.registry.get(analyzer_id)
-                cached = cache.get(target, analyzer_id, analyzer.metadata.version)
+                cached = cache.get(
+                    target,
+                    analyzer_id,
+                    analyzer.metadata.version,
+                    _dependency_signature(analyzer, plan.resolved),
+                )
                 if cached is not None:
                     context.add_result(cached)
                     # A cache hit skips the scheduler, so report it here or the
@@ -93,7 +98,13 @@ class AnalysisRuntime:
         if cache:
             for result in context.results.values():
                 if result.status == AnalysisStatus.SUCCESS and not result.cache_hit:
-                    cache.put(target, result)
+                    cache.put(
+                        target,
+                        result,
+                        _dependency_signature(
+                            self.registry.get(result.analyzer_id), plan.resolved
+                        ),
+                    )
         self.rule_engine.evaluate(context)
         duration_ms = int((perf_counter() - started) * 1000)
         emit(
@@ -134,3 +145,10 @@ class AnalysisRuntime:
                 continue
             if rendered:
                 result.text = rendered
+
+
+def _dependency_signature(analyzer, planned: tuple[str, ...]) -> str:
+    """Cache-key component naming the optional dependencies that took part."""
+    optional = getattr(analyzer.metadata, "optional_requires", ())
+    participants = tuple(sorted(dep for dep in optional if dep in planned))
+    return ",".join(participants)

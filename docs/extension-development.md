@@ -94,7 +94,7 @@ class DangerousApiAnalyzer(Analyzer):
 
 只能通过 Context 消费依赖结果，禁止直接实例化或调用其他 Analyzer。
 
-`optional_requires` 已存在于元数据，但当前 Planner 尚未自动调度可选依赖；真正必需的结果必须放在 `requires`。
+`requires` 是硬依赖：Planner 会把它们拉进计划并在循环检查中覆盖。`optional_requires` 是软依赖（仅排序）：它**不会**把依赖拉进计划，只在该依赖因别的原因出现在计划里时要求先执行；消费方必须用 `context.optional()` 读取并在缺席时降级。真正必需的结果仍然只能放在 `requires`。软依赖会进入缓存键（见 `core/runtime/cache.py`），因此「有无该依赖」产生的不同事实不会互相污染。
 
 内置 `basic.dwarf` 是跨基础设施依赖的例子：它 `requires=("basic.elf",)`，由 `infrastructure/dwarf` 解析调试信息，输出与 `basic.symbols` 在渲染层联合，而不是去调用 symbols 的实现。
 

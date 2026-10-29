@@ -20,6 +20,7 @@ class DependencyPlanner:
     ) -> AnalysisPlan:
         requested_ids = tuple(dict.fromkeys(requested))
         graph: dict[str, set[str]] = {}
+        soft: dict[str, tuple[str, ...]] = {}
         visiting: set[str] = set()
         visited: set[str] = set()
 
@@ -38,8 +39,15 @@ class DependencyPlanner:
                 ) from exc
 
             visiting.add(analyzer_id)
+            # Hard dependencies pull analyzers into the plan and always run
+            # first; soft ones only order what is already planned.
             dependencies = set(analyzer.metadata.requires)
-            graph[analyzer_id] = dependencies
+            graph[analyzer_id] = set(dependencies)
+            soft[analyzer_id] = tuple(
+                dependency
+                for dependency in analyzer.metadata.optional_requires
+                if registry.contains(dependency)
+            )
             for dependency_id in sorted(dependencies):
                 visit(dependency_id, (*path, analyzer_id))
             visiting.remove(analyzer_id)
@@ -47,6 +55,13 @@ class DependencyPlanner:
 
         for analyzer_id in requested_ids:
             visit(analyzer_id, ())
+
+        # A soft dependency constrains the order only when it is planned for
+        # another reason (requested directly or pulled in by a hard edge).
+        for analyzer_id, dependencies in soft.items():
+            graph[analyzer_id].update(
+                dependency for dependency in dependencies if dependency in visited
+            )
 
         remaining = {key: set(value) for key, value in graph.items()}
         stages: list[ExecutionStage] = []

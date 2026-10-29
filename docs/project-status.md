@@ -95,11 +95,13 @@
 - [x] `advanced.compiler`：`.comment`/note 横幅与符号佐证、版本号提取、build-id 与 Android note 存在性；
 - [x] `advanced.protocol`：协议关键字与网络符号交叉识别 21 个协议指纹，单源/多源分级；
 - [x] `advanced.obfuscation`：壳/保护器/混淆器签名、OLLVM 符号、分节熵阈值（可配），控制流平坦化明确不在范围内；
+- [x] 软依赖（`optional_requires`）：Planner 仅排序不拉入、缺席时 `context.optional()` 降级、未注册软依赖忽略、缓存按参与的可选依赖分键；
+- [x] 调用点证据：`basic.callgraph` 作为 `security.dangerous-api` 软依赖接入，导入型命中带 `call_site_count`/`call_sites` 与 `evidence_level`，并随 `security.vulnerability` 传递；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `723 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `608 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `736 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `621 passed, 1 skipped`。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -210,6 +212,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 - DWARF、类型、C++；
 - 反汇编、CFG、Call Graph、Data Flow、交叉引用（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.xref`）；
+- 调用点证据（✅ 已完成：`security.dangerous-api` 软依赖 `basic.callgraph`）；
 - 算法、协议、格式、库、编译器和混淆识别（✅ 全部已完成：`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`）。
 
 ### Phase 4：安全分析闭环

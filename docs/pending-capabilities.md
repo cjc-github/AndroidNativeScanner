@@ -32,8 +32,8 @@
 
 四项能力均已实现（`hardening`/`dangerous-api`/`vulnerability`/`risk`），无外壳欠账。剩余演进点：
 
-- **调用点证据**：`security.dangerous-api` 与 `security.vulnerability` 目前基于链接级事实（符号名），证据不含调用上下文；`basic.callgraph`/`basic.dataflow` 实现后作为可选依赖接入，可提升证据等级与置信度（`module-system.md` §4 已预留此扩展）。
-- **软依赖（order-only dependency）**：`security.risk` 在非 ELF 目标上随链整体跳过是有意行为；若要"缺上游按空集降级评分"，需要调度器支持仅排序的可选依赖（见 §7 技术债 D1）。
+- **调用点证据**（✅ 已完成）：`basic.callgraph` 已作为 `security.dangerous-api` 的软依赖接入，导入型命中带调用点数量与地址，证据标 `call-site`，并随 `security.vulnerability` 的证据链传递；无调用图时保持 `linkage`。剩余演进点是**参数可控性**：证明调用点参数来自外部输入需要污点分析或动态观测，`basic.dataflow` 目前只做函数内 use-def，不足以支撑该结论。
+- **软依赖（order-only dependency）**（✅ 已完成，见 §7 D1）：调度器已支持 `optional_requires`。`security.risk` 仍然保持硬依赖并在非 ELF 目标上整体跳过——空集上的风险分没有解释力，「缺上游就不给分数」比「给 0 分」更诚实；这是有意的设计选择，不是待办。
 
 ---
 
@@ -89,7 +89,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 
 | 编号 | 债项 | 现状 | 需要什么 |
 |---|---|---|---|
-| D1 | 软依赖（仅排序的可选依赖） | `requires` 既是排序依据也是跳过闸门 | 调度器新增 `order_only`/软依赖语义：上游缺席时降级为空集。规划与 `security.risk` 非 ELF 降级、`security.vulnerability` 聚合一起落地 |
+| D1 | 软依赖（仅排序的可选依赖） | ✅ 已落地：`optional_requires` 参与排序但不拉入计划，缺席时消费方走 `context.optional()` 降级；缓存按参与的可选依赖集合分键 | （无遗留） |
 | D2 | 缓存治理 | 命中/写入按“代码指纹 / 目标 sha256 / analyzer 版本”三层隔离，`cache info/clean/prune` 可用 | （无遗留：随代码变更自动失效，`prune` 清理旧版本条目） |
 | D3 | 插件兼容协议 | entry point 发现已实现 | 与外部插件的兼容协议定义 |
 | D4 | 报告 Schema | `docs/cli-output-schema.md` 只是文档 | 机器可校验 `.schema.json` + 兼容性测试 |
