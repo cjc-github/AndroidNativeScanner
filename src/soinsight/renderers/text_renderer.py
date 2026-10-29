@@ -102,6 +102,43 @@ def _render_strings(result) -> list[str]:
     return lines
 
 
+def _render_dynamic(result) -> list[str]:
+    """Render the ``basic.dynamic`` facts, or nothing when not collected."""
+    dynamic_result = result.results.get("basic.dynamic")
+    if dynamic_result is None or not dynamic_result.data:
+        return []
+    data = dynamic_result.data
+    if not data.get("has_dynamic"):
+        return []
+    lines = [
+        "",
+        "Dynamic linking:",
+        f"  Needed libraries     {data.get('needed_count', 0)}",
+    ]
+    for name in data.get("needed", []):
+        lines.append(f"    {name}")
+    if data.get("soname"):
+        lines.append(f"  SONAME               {data['soname']}")
+    for label, key in (("RPATH", "rpath"), ("RUNPATH", "runpath")):
+        if data.get(key):
+            lines.append(f"  {label:<20} {data[key]}")
+    lines.append(
+        f"  Constructors         {data.get('constructor_count', 0)}"
+    )
+    versions = data.get("symbol_versions", {})
+    lines.append(
+        f"  Symbol versions      {versions.get('versioned_symbol_count', 0)} "
+        f"symbol(s), "
+        f"{len(versions.get('requirements', []))} requirement(s)"
+    )
+    relocations = data.get("relocations", {})
+    lines.append(
+        f"  Relocations          {relocations.get('total', 0):,} "
+        f"({relocations.get('import_count', 0):,} to external symbols)"
+    )
+    return lines
+
+
 def _category_count(classified: dict, category: str) -> int:
     return int(classified.get(category, {}).get("count", 0) or 0)
 
@@ -147,6 +184,7 @@ class TextRenderer(Renderer):
                     ]
                 )
             lines.extend(_render_symbols(result))
+            lines.extend(_render_dynamic(result))
             lines.extend(_render_strings(result))
             lines.extend(["", "Findings:"])
             if result.findings:

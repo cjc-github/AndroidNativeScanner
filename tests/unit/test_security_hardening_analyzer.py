@@ -161,3 +161,49 @@ def test_security_hardening_accepts_present_mitigations(tmp_path):
     assert result.status == AnalysisStatus.SUCCESS
     assert result.findings == []
     assert result.data["hardening_summary"]["finding_count"] == 0
+
+
+def test_security_hardening_flags_partial_relro(tmp_path):
+    context = _target_and_context(tmp_path, name="libpartial.so")
+    context.add_result(
+        AnalysisResult(
+            analyzer_id="basic.elf",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={
+                "type": "DYN",
+                "machine": "x86-64",
+                "executable_stack": False,
+                "has_gnu_relro": True,
+                "relro_mode": "partial",
+            },
+        )
+    )
+
+    result = SecurityHardeningAnalyzer().analyze(context.target, context)
+
+    rule_ids = {finding.rule_id for finding in result.findings}
+    assert "security.hardening.partial-relro" in rule_ids
+    assert "security.hardening.missing-relro" not in rule_ids
+
+
+def test_security_hardening_accepts_full_relro(tmp_path):
+    context = _target_and_context(tmp_path, name="libfull.so")
+    context.add_result(
+        AnalysisResult(
+            analyzer_id="basic.elf",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={
+                "type": "DYN",
+                "machine": "x86-64",
+                "executable_stack": False,
+                "has_gnu_relro": True,
+                "relro_mode": "full",
+            },
+        )
+    )
+
+    result = SecurityHardeningAnalyzer().analyze(context.target, context)
+
+    assert {finding.rule_id for finding in result.findings} == set()

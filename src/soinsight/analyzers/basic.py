@@ -12,6 +12,11 @@ from ..core.models import (
 )
 from ..infrastructure.elf import ElfFormatError, parse_elf
 
+_DEFAULT_OPTIONS = {
+    "include_sections": True,
+    "include_segments": True,
+}
+
 
 class BasicFileAnalyzer(Analyzer):
     metadata = AnalyzerMetadata(
@@ -93,7 +98,7 @@ class BasicElfAnalyzer(Analyzer):
     )
 
     def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
-        del context
+        options = _resolve_options(context)
         try:
             elf = parse_elf(target.real_path)
         except ElfFormatError as exc:
@@ -130,6 +135,9 @@ class BasicElfAnalyzer(Analyzer):
                 "has_stack_canary": hardening["has_stack_canary"],
                 "has_cfi": hardening["has_cfi"],
                 "has_pac": hardening["has_pac"],
+                "relro_mode": hardening["relro_mode"],
+                "segments": _segment_records(elf) if options["include_segments"] else [],
+                "sections": _section_records(elf) if options["include_sections"] else [],
             },
         )
 
@@ -164,3 +172,78 @@ class BasicElfAnalyzer(Analyzer):
         else:
             lines.append("AArch64 PAC: 不适用（非 AArch64 目标）")
         return "\n".join(lines)
+
+
+def _resolve_options(context) -> dict:
+    """Read capability options with defaults, types and ranges enforced."""
+    extra = getattr(getattr(context, "config", None), "extra", None) or {}
+    declared = extra.get("capability_options", {}).get("basic.elf", {})
+    resolved = dict(_DEFAULT_OPTIONS)
+    for key in ("include_sections", "include_segments"):
+        if key in declared:
+            resolved[key] = bool(declared[key])
+    return resolved
+
+
+def _segment_records(elf) -> list[dict]:
+    """One record per program header, with its permission bits spelled out."""
+    records: list[dict] = []
+    for segment in elf.program_headers:
+        records.append(
+            {
+                "type": segment.type,
+                "flags": _segment_flags(segment.flags),
+                "offset": hex(segment.offset),
+                "vaddr": hex(segment.virtual_address),
+                "file_size": segment.file_size,
+                "memory_size": segment.memory_size,
+                "alignment": segment.alignment,
+            }
+        )
+    return records
+
+
+def _segment_flags(flags: int) -> str:
+    """Render the program-header permission bits as ``rwx``."""
+    return "".join(
+        (
+            "r" if flags & 0x4 else "-",
+            "w" if flags & 0x2 else "-",
+            "x" if flags & 0x1 else "-",
+        )
+    )
+
+
+def _section_records(elf) -> list[dict]:
+    """One record per section header, with its attribute flags spelled out."""
+    records: list[dict] = []
+    for section in elf.sections:
+        records.append(
+            {
+                "name": section.name,
+                "type": section.type,
+                "flags": _section_flags(section.flags),
+                "address": hex(section.address),
+                "offset": hex(section.offset),
+                "size": section.size,
+            }
+        )
+    return records
+
+
+def _section_flags(flags: int) -> str:
+    """Render the section attribute flags as a short attribute string."""
+    letters = []
+    if flags & 0x1:
+        letters.append("w")
+    if flags & 0x2:
+        letters.append("a")
+    if flags & 0x4:
+        letters.append("x")
+    if flags & 0x10:
+        letters.append("m")
+    if flags & 0x20:
+        letters.append("s")
+    if flags & 0x400:
+        letters.append("t")
+    return "".join(letters)

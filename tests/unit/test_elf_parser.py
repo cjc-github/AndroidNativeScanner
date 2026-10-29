@@ -14,6 +14,7 @@ def _all_unknown_hardening() -> dict:
         "has_stack_canary": None,
         "has_cfi": None,
         "has_pac": None,
+        "relro_mode": None,
     }
 
 
@@ -94,6 +95,9 @@ def test_parse_elf_reads_program_headers(tmp_path):
         "has_stack_canary": None,
         "has_cfi": None,
         "has_pac": None,
+        # The section table is absent, so the GOT cannot be located and the
+        # difference between full and partial RELRO stays unknown.
+        "relro_mode": None,
     }
 
 

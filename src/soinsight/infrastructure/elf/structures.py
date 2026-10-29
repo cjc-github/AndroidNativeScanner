@@ -91,3 +91,82 @@ class Symbol:
     def is_exported(self) -> bool:
         """True for dynamic symbols visible to linkers and dlopen/dlsym."""
         return self.is_defined and self.bind in ("GLOBAL", "WEAK")
+
+
+@dataclass(frozen=True)
+class DynamicEntry:
+    """One decoded ``Elf*_Dyn`` entry from the ``.dynamic`` table."""
+
+    tag: str
+    tag_value: int
+    value: int
+
+
+@dataclass(frozen=True)
+class VersionDefinition:
+    """One version an image defines itself (``Elf*_Verdef``)."""
+
+    index: int
+    name: str
+    is_base: bool
+
+
+@dataclass(frozen=True)
+class VersionRequirement:
+    """One version an image demands of a dependency (``Elf*_Verneed``)."""
+
+    name: str
+    file: str
+    index: int
+    flags: int
+
+
+@dataclass(frozen=True)
+class SymbolVersion:
+    """The version a dynamic symbol belongs to."""
+
+    name: str
+    index: int
+    hidden: bool
+
+
+@dataclass(frozen=True)
+class Relocation:
+    """One load-time relocation applied to the image."""
+
+    section: str
+    offset: int
+    symbol_index: int
+    symbol_name: str | None
+    type: int
+    addend: int
+    kind: str  # rela | rel
+
+
+@dataclass(frozen=True)
+class DynamicInfo:
+    """The dynamic-linking facts an image declares about itself.
+
+    ``needed`` lists the shared objects the loader must provide, ``init_array``
+    and ``fini_array`` hold the constructors and destructors that run around
+    ``main``, and the search path entries decide which library wins when two
+    provide the same soname.
+    """
+
+    entries: tuple[DynamicEntry, ...] = ()
+    needed: tuple[str, ...] = ()
+    soname: str | None = None
+    rpath: str | None = None
+    runpath: str | None = None
+    init: int | None = None
+    fini: int | None = None
+    init_array: tuple[int, ...] = ()
+    fini_array: tuple[int, ...] = ()
+    preinit_array: tuple[int, ...] = ()
+    flags: int = 0
+    flags_1: int = 0
+    bind_now: bool = False
+    has_textrel: bool = False
+    version_definitions: tuple[VersionDefinition, ...] = ()
+    version_requirements: tuple[VersionRequirement, ...] = ()
+    symbol_versions: tuple[SymbolVersion, ...] = ()

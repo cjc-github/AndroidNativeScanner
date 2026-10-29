@@ -20,7 +20,16 @@ from pathlib import Path
 from typing import Iterable, Union
 
 from . import constants as elf
-from .structures import ElfHeader, ProgramHeader, SectionHeader, Symbol
+from .dynamic import parse_dynamic_info
+from .relocations import parse_relocations
+from .structures import (
+    DynamicInfo,
+    ElfHeader,
+    ProgramHeader,
+    Relocation,
+    SectionHeader,
+    Symbol,
+)
 
 
 class ElfFormatError(ValueError):
@@ -57,6 +66,8 @@ class ElfFile:
     sections: tuple[SectionHeader, ...]
     symbols: tuple[Symbol, ...]
     aarch64_feature_1: int | None = None
+    dynamic: DynamicInfo = DynamicInfo()
+    relocations: tuple[Relocation, ...] = ()
 
     @property
     def is_64bit(self) -> bool:
@@ -84,6 +95,41 @@ class ElfFile:
                 tables.append(symbol.table)
         return tuple(tables)
 
+    def relro_mode(self) -> str | None:
+        """Classify the relocation hardening of the image.
+
+        Returns ``"full"``, ``"partial"``, ``"none"`` or ``None`` when the
+        image carries no program headers and the mode cannot be known.
+
+        ``full`` means every writable relocation target -- the GOT in
+        practice -- is covered by the ``PT_GNU_RELRO`` segment, or the
+        dynamic linker resolves everything at load time (``BIND_NOW``).
+        ``partial`` means a RELRO segment exists but the GOT stays writable.
+        """
+        if not self.program_headers:
+            return None
+        relro = next(
+            (ph for ph in self.program_headers if ph.type == "GNU_RELRO"), None
+        )
+        if relro is None:
+            return "none"
+        if self.dynamic.bind_now:
+            return "full"
+        if not self.sections:
+            # Without a section table the GOT cannot be located, so the
+            # difference between full and partial RELRO is unknown.
+            return None
+        got = self.section(".got.plt") or self.section(".got")
+        if got is None or got.size <= 0:
+            # No writable relocation target exists, so nothing stays
+            # unprotected inside the RELRO segment.
+            return "full"
+        start = relro.virtual_address
+        end = start + relro.memory_size
+        if start <= got.address and got.address + got.size <= end:
+            return "full"
+        return "partial"
+
     @property
     def is_stripped(self) -> bool:
         """True when no regular (non-dynamic) symbol table is present."""
@@ -98,12 +144,13 @@ class ElfFile:
         relevant table or note is absent or truncated, which must never be
         reported as the absence of a feature.
         """
-        facts: dict[str, bool | None] = {
+        facts: dict[str, bool | None | str] = {
             "has_gnu_relro": None,
             "executable_stack": None,
             "has_stack_canary": None,
             "has_cfi": None,
             "has_pac": None,
+            "relro_mode": None,
         }
         has_relro: bool | None = None
         executable_stack: bool | None = None
@@ -116,6 +163,7 @@ class ElfFile:
                 executable_stack = program_header.is_executable
         facts["has_gnu_relro"] = has_relro
         facts["executable_stack"] = executable_stack
+        facts["relro_mode"] = self.relro_mode()
 
         if self.symbol_tables:
             facts["has_stack_canary"] = _references_any(
@@ -209,6 +257,7 @@ def parse_bytes(data: _BytesLike) -> ElfFile:
     raw_sections = _parse_section_headers(data, prefix, is64, header)
     sections = _resolve_section_names(data, raw_sections, header.section_name_table_index)
     symbols = _parse_symbols(data, prefix, is64, sections)
+    dynsym = tuple(symbol for symbol in symbols if symbol.table == elf.SECTION_DYNSYM)
     return ElfFile(
         header=header,
         program_headers=program_headers,
@@ -216,6 +265,21 @@ def parse_bytes(data: _BytesLike) -> ElfFile:
         symbols=symbols,
         aarch64_feature_1=_parse_aarch64_feature_1(
             data, prefix, program_headers, sections
+        ),
+        dynamic=parse_dynamic_info(
+            data,
+            prefix=prefix,
+            is64=is64,
+            sections=sections,
+            program_headers=program_headers,
+            dynsym=dynsym,
+        ),
+        relocations=parse_relocations(
+            data,
+            prefix=prefix,
+            is64=is64,
+            sections=sections,
+            dynsym=dynsym,
         ),
     )
 

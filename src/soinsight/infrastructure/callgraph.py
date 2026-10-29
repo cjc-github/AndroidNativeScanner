@@ -19,14 +19,12 @@ keeps the resolver correct for PLT0, ``.plt.sec`` and IRELATIVE layouts.
 
 from __future__ import annotations
 
-import struct
 from dataclasses import dataclass
 
 from .cfg import direct_target
-from .elf import ElfFile, SectionHeader, Symbol
+from .elf import ElfFile, Symbol
 
 _CALLS = frozenset({"call", "bl", "blr"})
-_RELA, _REL = 4, 9
 
 
 @dataclass(frozen=True)
@@ -56,46 +54,29 @@ class CallGraph:
 
 
 def relocation_slots(data: bytes, elf: ElfFile) -> dict[int, int]:
-    """Map a relocation slot address to the symbol index it refers to."""
-    slots: dict[int, int] = {}
-    for section in elf.sections:
-        if section.type_value not in (_RELA, _REL):
-            continue
-        if not (section.name.startswith(".rela") or section.name.startswith(".rel")):
-            continue
-        for offset, symbol_index in _read_relocations(data, section, elf):
-            slots[offset] = symbol_index
-    return slots
+    """Map a relocation slot address to the symbol index it refers to.
+
+    The relocation tables are decoded by the shared ELF parser, so the call
+    graph and the dynamic-linking facts always agree on what the image
+    declares.
+    """
+    del data  # the tables are already decoded into ``elf.relocations``
+    return {
+        item.offset: item.symbol_index
+        for item in elf.relocations
+        if item.symbol_index > 0
+    }
 
 
-def _read_relocations(
-    data: bytes, section: SectionHeader, elf: ElfFile
-) -> list[tuple[int, int]]:
-    """Decode one ``.rela``/``.rel`` section into ``(offset, symbol index)``."""
-    is64 = elf.is_64bit
-    little = elf.header.endianness == "little"
-    prefix = "<" if little else ">"
-    is_rela = section.type_value == _RELA
-    entry_size = section.entry_size or (24 if is_rela else 16)
-    if entry_size <= 0 or section.size <= 0:
-        return []
-    count = section.size // entry_size
-    start = section.offset
-    end = start + count * entry_size
-    if start < 0 or end > len(data):
-        return []
+def _relocation_symbols(elf: ElfFile) -> tuple[Symbol, ...]:
+    """The symbol table relocation indexes refer to.
 
-    entries: list[tuple[int, int]] = []
-    for index in range(count):
-        base = start + index * entry_size
-        if is64:
-            offset, info = struct.unpack_from(prefix + "QQ", data, base)[:2]
-            symbol_index = info >> 32
-        else:
-            offset, info = struct.unpack_from(prefix + "II", data, base)
-            symbol_index = info >> 8
-        entries.append((offset, symbol_index))
-    return entries
+    A relocation names a symbol of the dynamic symbol table; the regular
+    symbol table is a different table with its own indexes, so it must not
+    be used to resolve one.
+    """
+    dynamic = elf.symbols_from(".dynsym")
+    return dynamic if dynamic else elf.symbols
 
 
 def _symbol_name(symbols: tuple[Symbol, ...], index: int) -> str | None:
@@ -181,7 +162,7 @@ def plt_imports(data: bytes, elf: ElfFile, decode) -> dict[int, str]:
         for item in disasm.decode_bytes(blob, plt.address, arch_pair[0], arch_pair[1])
     ]
 
-    symbols = elf.symbols
+    symbols = _relocation_symbols(elf)
     imports: dict[int, str] = {}
     for position, item in enumerate(instructions):
         address, size, mnemonic, operands = item

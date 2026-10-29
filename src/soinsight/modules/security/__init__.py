@@ -11,6 +11,7 @@ MODULE = ModuleDefinition(
         CapabilityDefinition("security.dangerous-api", "dangerous-api", "危险 API 检测", "危险导入、调用点和上下文证据。"),
         CapabilityDefinition("security.vulnerability", "vulnerability", "漏洞模式识别", "基于规则、图和数据流的漏洞候选识别。"),
         CapabilityDefinition("security.risk", "risk", "风险评估", "Finding 去重、严重度、置信度和风险汇总。"),
+        CapabilityDefinition("security.dynamic-loading", "dynamic-loading", "动态加载风险", "RPATH/RUNPATH 搜索路径、符号抢占、文本重定位等动态加载风险。"),
     ),
 )
 

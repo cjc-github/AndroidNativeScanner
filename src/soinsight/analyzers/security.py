@@ -69,6 +69,22 @@ class SecurityHardeningAnalyzer(Analyzer):
                     message="No PT_GNU_RELRO segment found; relocation hardening may be absent.",
                 )
             )
+        if elf_data.get("relro_mode") == "partial":
+            findings.append(
+                Finding(
+                    rule_id="security.hardening.partial-relro",
+                    rule_version="1.0.0",
+                    title="RELRO protection is partial",
+                    category="hardening",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.MEDIUM,
+                    message=(
+                        "PT_GNU_RELRO does not cover the GOT, so the global "
+                        "offset table stays writable after the loader has "
+                        "finished; a write there can redirect calls."
+                    ),
+                )
+            )
         if elf_data.get("has_stack_canary") is False:
             findings.append(
                 Finding(
@@ -447,7 +463,12 @@ class SecurityRiskAnalyzer(Analyzer):
         version="1.0.0",
         description="Dedup, aggregate and score findings by severity and confidence.",
         kind=AnalyzerKind.TRANSFORMER,
-        requires=("security.hardening", "security.dangerous-api", "advanced.strings"),
+        requires=(
+            "security.hardening",
+            "security.dangerous-api",
+            "security.dynamic-loading",
+            "advanced.strings",
+        ),
     )
 
     def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:

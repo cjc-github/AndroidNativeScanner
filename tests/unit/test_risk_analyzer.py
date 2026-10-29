@@ -47,6 +47,13 @@ def _upstream(classified: dict | None = None, findings=None) -> dict[str, Analys
             data={},
             findings=[],
         ),
+        "security.dynamic-loading": AnalysisResult(
+            analyzer_id="security.dynamic-loading",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={},
+            findings=[],
+        ),
     }
 
 
@@ -94,6 +101,7 @@ def test_analyzer_id_matches_the_catalog():
     assert SecurityRiskAnalyzer.metadata.requires == (
         "security.hardening",
         "security.dangerous-api",
+        "security.dynamic-loading",
         "advanced.strings",
     )
 

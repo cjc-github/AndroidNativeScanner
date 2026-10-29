@@ -30,20 +30,21 @@ def test_basic_elf_analyzer_parses_minimal_elf64_header(tmp_path, minimal_elf64_
 
     assert result.status == AnalysisStatus.SUCCESS
     assert result.analyzer_id == "basic.elf"
-    assert result.data == {
-        "elf_class": "ELF64",
-        "endianness": "little",
-        "type": "DYN",
-        "machine": "x86-64",
-        "entry_point": "0x401000",
-        "program_header_count": 8,
-        "section_header_count": 12,
-        "has_gnu_relro": None,
-        "executable_stack": None,
-        "has_stack_canary": None,
-        "has_cfi": None,
-        "has_pac": None,
-    }
+    assert result.data["elf_class"] == "ELF64"
+    assert result.data["endianness"] == "little"
+    assert result.data["type"] == "DYN"
+    assert result.data["machine"] == "x86-64"
+    assert result.data["entry_point"] == "0x401000"
+    assert result.data["program_header_count"] == 8
+    assert result.data["section_header_count"] == 12
+    assert result.data["has_gnu_relro"] is None
+    assert result.data["executable_stack"] is None
+    assert result.data["has_stack_canary"] is None
+    assert result.data["has_cfi"] is None
+    assert result.data["has_pac"] is None
+    assert result.data["relro_mode"] is None
+    assert result.data["segments"] == []
+    assert result.data["sections"] == []
 
 
 def test_basic_elf_analyzer_rejects_non_elf(tmp_path):

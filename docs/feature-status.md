@@ -58,6 +58,7 @@
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值） | `analyzers/security.py` |
 | `advanced.strings` | 纯 Python 可见串提取（任意文件）+ URL/敏感/Base64 分类 + ELF 分节归属 + 截断诊断 | `analyzers/advanced.py` + `infrastructure/strings/` |
 | `advanced.constants` | 已知算法常量表扫描（AES S-box、MD5/SHA 初值、CRC32、zlib deflate、Base64、ChaCha20 等）；要求全部特征字命中，记录偏移与分节 | `analyzers/constants.py` + `infrastructure/constants.py` |
+| `advanced.algorithm` | 交叉判定算法：常量表命中 + 导入/导出符号名（OpenSSL/BoringSSL/zlib/mbedtls）+ 工具链与算法名字符串；多源证据标 `corroborated`，输出家族归类 | `analyzers/algorithm.py` + `infrastructure/algorithm.py` |
 | `security.risk` | 三源聚合去重 + 严重度/置信度/类别计数 + V1 权重字符串指标 + 风险分档（权重可配） | `analyzers/security.py` |
 | `security.vulnerability` | 把 `security.dangerous-api` 命中映射到 CWE（命令注入/缓冲区/格式串/权限等）并生成漏洞模式 Finding | `analyzers/security.py` |
 
@@ -100,19 +101,19 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 26/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 25/42 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
 | `basic`（0/10） | —（`basic` 十项能力全部已实现） |
-| `advanced`（6/8） | `advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
+| `advanced`（5/8） | `advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation` |
 | `security`（0/4） | — |
 | `dynamic`（5/5） | `dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（全部） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
 | `automation`（7/7） | `automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow`（全部） |
 
-`advanced.strings`、`advanced.constants`、`security.risk`、`security.vulnerability`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
-下一步建议是 `advanced.algorithm`（常量证据已就绪）与 `advanced.file-format`（magic 扫描无需反汇编）。
+`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.risk`、`security.vulnerability`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
+下一步建议是 `advanced.file-format`（magic 扫描无需反汇编）与 `advanced.library`。
 
 完整清单与实现顺序见 [未完成分析能力与技术债](pending-capabilities.md)。
 

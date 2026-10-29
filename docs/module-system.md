@@ -54,7 +54,7 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 |---|---|---|---|
 | `advanced strings` | `advanced.strings` | 字符串分析 | 已实现 |
 | `advanced constants` | `advanced.constants` | 常量分析 | 已实现 |
-| `advanced algorithm` | `advanced.algorithm` | 算法识别 | 外壳 |
+| `advanced algorithm` | `advanced.algorithm` | 算法识别 | 已实现 |
 | `advanced protocol` | `advanced.protocol` | 协议识别 | 外壳 |
 | `advanced file-format` | `advanced.file-format` | 文件格式识别 | 外壳 |
 | `advanced library` | `advanced.library` | 第三方库识别 | 外壳 |
@@ -68,6 +68,8 @@ URL/敏感凭据/Base64 分类并归属到 ELF 分节；截断时给出 `STRINGS
 控制。
 
 `advanced.constants` 扫描数据段中的已知算法常量表（AES S-box、MD5/SHA 初值、CRC32 多项式、zlib deflate 基表、Base64 字母表、ChaCha20 sigma 等）。签名要求**所有**特征字都出现才算命中，单个巧合字不产生结论；命中记录首个特征字的文件偏移与所属分节。它同样对任意文件可用（非 ELF 目标没有分节归属，记为 `null` 而不是失败），输入超过 `max_scan_bytes` 时报 `CONSTANTS_INPUT_TRUNCATED` 并说明尾部未扫描；每算法命中数由 `max_hits_per_algorithm` 限制。这里只报告"常量表存在"这一事实，算法判定与用途推断由 `advanced.algorithm` 负责。数据结构见 `infrastructure/constants.py`。
+
+`advanced.algorithm` 把三类证据交叉起来判定算法：`infrastructure/constants.py` 的常量表命中、`basic.symbols` 的导入/导出符号名（`EVP_`/`BIO_`/`CRYPTO_` → OpenSSL，`mbedtls_`、`BORINGSSL`、`inflate`/`deflate` 等）与文件中的字符串线索（`AES-256-GCM`、`OpenSSL 1.1.1` 这类）。每条证据单独记录来源与命中的字符串，同一个字符串可同时支持多个算法；证据来源超过一个时标 `corroborated`，单一来源标 `single`——前者比后者可信，但都不等于"确认使用"。输出 `algorithms`（算法名/家族/强度/证据）、`families`（crypto/hash/compression/encoding/library 归类）与各来源的命中计数，输入超过 `max_scan_bytes` 时报 `ALGORITHM_INPUT_TRUNCATED`；符号与字符串数量分别由 `max_symbols`/`max_strings` 与 `min_length` 控制。数据结构见 `infrastructure/algorithm.py`。
 
 ### 2.3 安全分析
 
