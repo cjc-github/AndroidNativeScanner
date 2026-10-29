@@ -81,7 +81,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 | `automation.seed` | 按 `advanced.file-format`/`advanced.protocol`/`advanced.constants` 事实生成种子语料 | 高级分析三项 |
 | `automation.crash-cluster` | 输入是崩溃语料（来自 fuzz），按栈帧/信号/根因线索聚类；fuzz 底座前无输入源 | `automation.fuzz-target` 链路 |
 | `automation.report` | 结果转换/归档/发布编排，可复用现有 Renderer 五格式；是最容易起步的一项 | Renderer（已实现） |
-| `automation.workflow` | 批处理/Profile/CI Gate/流水线编排引擎；Phase 4 的 CI Gate 与基线抑制归此 | 多目标与编排引擎 |
+| `automation.workflow` | 批处理/Profile/流水线编排引擎；CI Gate 与基线抑制已在 `scan` 以 `--fail-on`/`--baseline` 形式落地，缺的是多目标与阶段编排 | 多目标与编排引擎 |
 
 ---
 

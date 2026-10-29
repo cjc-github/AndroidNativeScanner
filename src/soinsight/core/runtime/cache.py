@@ -54,6 +54,7 @@ def _reconstruct_finding(item: dict) -> Finding:
         evidence=tuple(item.get("evidence", ())),
         remediation=item.get("remediation"),
         references=tuple(item.get("references", ())),
+        suppressed=bool(item.get("suppressed", False)),
     )
 
 

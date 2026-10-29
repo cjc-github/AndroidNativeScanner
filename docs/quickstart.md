@@ -85,6 +85,20 @@ python web/server.py            # 默认 http://127.0.0.1:8791
 - `--module` 是严格展开（要求模块内能力全部已实现），日常请用 `--module-available`。
 - V1 旧入口仍可用：`python3 main.py libfoo.so`。
 
+## CI 用法（Gate 与基线）
+
+```bash
+# 建立基线并确认当前状态（按 high 阈值判定，退出码 6 表示未通过）
+soinsight scan libfoo.so --module-available basic,security \
+  --fail-on high --update-baseline .soinsight/baseline.json
+
+# CI 中只拦新问题
+soinsight scan libfoo.so --module-available basic,security \
+  --fail-on high --baseline .soinsight/baseline.json
+```
+
+基线内的问题仍会出现在报告里（标 `suppressed`/`[baselined]`），只是不再阻断构建。
+
 ## 更多文档
 
 - 原详细使用文档（快速开始/使用手册/命令参考/YAML 配置）：`docs/archive/`

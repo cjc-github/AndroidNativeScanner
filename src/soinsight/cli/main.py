@@ -195,6 +195,24 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
         help="Comma-separated capability/analyzer ids",
     )
     scan.add_argument("--profile", default=None)
+    scan.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="Baseline of accepted findings; matches are marked suppressed",
+    )
+    scan.add_argument(
+        "--update-baseline",
+        type=Path,
+        default=None,
+        help="Write the current unfiltered findings as the new baseline",
+    )
+    scan.add_argument(
+        "--fail-on",
+        default=None,
+        choices=("critical", "high", "medium", "low", "info"),
+        help="Fail with exit code 6 when a finding reaches this severity",
+    )
     _add_runtime_options(scan)
     scan.set_defaults(handler="analysis", analyzer_id=None)
 
@@ -618,6 +636,9 @@ def _handle_analysis(
                 target=args.target,
                 analyzer_ids=analyzer_ids,
                 profile=effective_profile,
+                baseline=getattr(args, "baseline", None),
+                update_baseline=getattr(args, "update_baseline", None),
+                fail_on=getattr(args, "fail_on", None),
             ),
             runtime_config,
             observer=observer,

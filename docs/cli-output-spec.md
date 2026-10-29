@@ -240,6 +240,34 @@ Exit code: 3
 | `INVALID_TARGET` | invalid target | 检查路径是否存在且为文件 |
 | `INVALID_ANALYSIS_CONFIG` | invalid analysis config | 执行 `soinsight config validate <name-or-path>` |
 | `NO_ANALYZERS_SELECTED` | no analyzers selected | 使用 `--module`、`--enable` 或配置文件选择能力 |
+| `BASELINE_UNREADABLE` | baseline is unreadable | 检查 `--baseline` 路径与文件版本 |
+| `GATE_THRESHOLD_INVALID` | invalid gate threshold | `--fail-on` 取 critical/high/medium/low/info |
+
+## 10.1 CI Gate 与基线抑制
+
+`scan` 支持把结果变成构建决策：
+
+```bash
+# 首次建立基线：把当前发现项的指纹写入文件（同时按阈值判定，退出码 6）
+soinsight scan libfoo.so --module-available basic,security \
+  --fail-on high --update-baseline .soinsight/baseline.json
+
+# 之后的 CI 运行：基线内的问题不再阻断，新问题按阈值阻断
+soinsight scan libfoo.so --module-available basic,security \
+  --fail-on high --baseline .soinsight/baseline.json
+```
+
+- `--fail-on SEV`：任一**未被基线抑制**的发现项达到或超过该严重度时，进程退出码为 `6`，
+  并追加 `GATE_FAILED` 诊断（错误级）；未触发则追加 `GATE_PASSED`（信息级）。
+- `--baseline PATH`：按 finding 指纹匹配，命中项保留在结果里并标 `suppressed: true`，
+  文本报告标注 `[baselined]`，JSON 保留 `suppressed` 字段——抑制不等于隐藏。
+  追加 `BASELINE_APPLIED` 诊断并给出被抑制数量。
+- `--update-baseline PATH`：把当前未抑制的发现项指纹写成新基线，追加 `BASELINE_WRITTEN`。
+- 基线文件是可审阅的 JSON：`{"version": 1, "fingerprints": ["..."]}`；缺少指纹的发现项
+  退回 `rule_id:title` 作为键。
+
+退出码：`0` 成功、`2` 目标/配置/基线错误、`3` 计划错误、`4` 失败、`5` 部分成功、
+`6` CI Gate 未通过。
 
 ## 11. 实施优先级
 

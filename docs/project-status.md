@@ -96,12 +96,13 @@
 - [x] `advanced.protocol`：协议关键字与网络符号交叉识别 21 个协议指纹，单源/多源分级；
 - [x] `advanced.obfuscation`：壳/保护器/混淆器签名、OLLVM 符号、分节熵阈值（可配），控制流平坦化明确不在范围内；
 - [x] 软依赖（`optional_requires`）：Planner 仅排序不拉入、缺席时 `context.optional()` 降级、未注册软依赖忽略、缓存按参与的可选依赖分键；
+- [x] CI Gate 与基线抑制：`--fail-on`（退出码 6）、`--baseline` 按指纹抑制并标 `suppressed`、`--update-baseline` 写基线、不可读/版本不符基线报 `BASELINE_UNREADABLE`；
 - [x] 调用点证据：`basic.callgraph` 作为 `security.dangerous-api` 软依赖接入，导入型命中带 `call_site_count`/`call_sites` 与 `evidence_level`，并随 `security.vulnerability` 传递；
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `736 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `621 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `749 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `634 passed, 1 skipped`。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -219,8 +220,8 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 - 漏洞模式；
 - 证据链、去重、置信度和风险评分；
-- 软依赖（仅排序的可选依赖），支撑聚合类 Analyzer（`security.vulnerability` 等）在上游缺席时降级评分，也用于 `security.risk` 的非 ELF 降级；
-- CI Gate 和基线抑制。
+- 软依赖（仅排序的可选依赖）（✅ 已完成：`optional_requires`，`security.risk` 的非 ELF 降级仍保持整体跳过，见 `pending-capabilities.md` §3）；
+- CI Gate 和基线抑制（✅ 已完成：`scan --fail-on`、`--baseline`/`--update-baseline`，退出码 6）。
 
 ### Phase 5：动态分析
 

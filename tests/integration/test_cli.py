@@ -1067,3 +1067,124 @@ def test_modules_list_uses_compact_layout_for_narrow_terminal(monkeypatch):
     assert stdout.getvalue().splitlines()[0] == "MODULE      STATUS"
     assert "basic       implemented" in stdout.getvalue()
     assert "CAPABILITIES" not in stdout.getvalue()
+
+
+def _elf_with_dangerous_import():
+    """An ELF that imports ``system``: a CRITICAL dangerous-API finding."""
+    from tests.conftest import build_elf64_with_symbols
+
+    return build_elf64_with_symbols(
+        [("system", 1, 2, 0, 0, 0)],
+    )
+
+
+def _scan_with_gate(target, *extra):
+    stdout = StringIO()
+    exit_code = main(
+        ["scan", str(target), "--enable", "security.dangerous-api", *extra, "--format", "json"],
+        stdout=stdout,
+    )
+    return exit_code, json.loads(stdout.getvalue())
+
+
+def test_cli_gate_fails_when_a_finding_reaches_the_threshold(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_elf_with_dangerous_import())
+
+    exit_code, payload = _scan_with_gate(target, "--fail-on", "high")
+
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 6
+    assert "GATE_FAILED" in codes
+
+
+def test_cli_gate_fails_on_a_critical_finding_at_the_critical_threshold(tmp_path):
+    """A CRITICAL finding fails even the strictest threshold."""
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_elf_with_dangerous_import())
+
+    exit_code, payload = _scan_with_gate(target, "--fail-on", "critical")
+
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 6
+    assert "GATE_FAILED" in codes
+
+
+def test_cli_gate_passes_for_a_clean_target(tmp_path):
+    from tests.conftest import build_elf64_with_symbols
+
+    target = tmp_path / "clean.so"
+    target.write_bytes(build_elf64_with_symbols([("strlen", 1, 2, 0, 0, 0)]))
+
+    exit_code, payload = _scan_with_gate(target, "--fail-on", "low")
+
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 0
+    assert "GATE_PASSED" in codes
+
+
+def test_cli_baseline_suppresses_known_findings_from_the_gate(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_elf_with_dangerous_import())
+    baseline_path = tmp_path / "baseline.json"
+
+    first_exit, _ = _scan_with_gate(
+        target, "--fail-on", "low", "--update-baseline", str(baseline_path)
+    )
+    assert first_exit == 6
+    assert baseline_path.exists()
+
+    second_exit, payload = _scan_with_gate(
+        target, "--fail-on", "low", "--baseline", str(baseline_path)
+    )
+
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    suppressed = [
+        finding
+        for finding in payload["result"]["findings"]
+        if finding.get("suppressed")
+    ]
+    assert second_exit == 0
+    assert "BASELINE_APPLIED" in codes
+    assert "GATE_PASSED" in codes
+    assert suppressed
+
+
+def test_cli_reports_an_unreadable_baseline(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_elf_with_dangerous_import())
+
+    exit_code, payload = _scan_with_gate(
+        target, "--baseline", str(tmp_path / "missing.json")
+    )
+
+    codes = [item["code"] for item in payload["result"]["diagnostics"]]
+    assert exit_code == 2
+    assert "BASELINE_UNREADABLE" in codes
+
+
+def test_cli_text_output_marks_baselined_findings(tmp_path):
+    target = tmp_path / "libsample.so"
+    target.write_bytes(_elf_with_dangerous_import())
+    baseline_path = tmp_path / "baseline.json"
+
+    main(
+        [
+            "scan", str(target), "--enable", "security.dangerous-api",
+            "--update-baseline", str(baseline_path), "--format", "json",
+        ],
+        stdout=StringIO(),
+    )
+    stdout = StringIO()
+    exit_code = main(
+        [
+            "scan", str(target), "--enable", "security.dangerous-api",
+            "--baseline", str(baseline_path),
+        ],
+        stdout=stdout,
+    )
+
+    output = stdout.getvalue()
+    assert exit_code == 0
+    assert "baselined)" in output
+    assert "[baselined]" in output

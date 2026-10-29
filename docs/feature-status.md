@@ -130,7 +130,7 @@
 - [ ] **Binary Diff**：只有两个 `old new` 目标参数的命令形态；无多目标 Request 与 Diff 引擎
 - [ ] **动态分析执行**：无授权门、沙箱/隔离执行器、Trace/参数/内存/系统调用/覆盖率采集器；静态结果与动态结果关联
 - [ ] **AI 分析**：无 Provider 抽象（本地优先策略）、隐私防护、证据引用、模型版本与成本治理
-- [ ] **Automation**：无 Workflow、CI Gate、Fuzz 编排器、批处理流水线
+- [ ] **Automation**：无 Workflow、Fuzz 编排器、批处理流水线（CI Gate 与基线抑制已在 `scan` 落地，尚未编入 Workflow）
 - [ ] **软依赖（order-only dependency）**：调度器的 `requires` 既是排序依据也是跳过闸门；聚合类 Analyzer（`security.risk`、未来的 `security.vulnerability`）需要"仅保证顺序、上游缺席时降级为空集"的可选依赖。当前 `security.risk` 在非 ELF 目标上随链跳过是有意行为（规则报告仍在，缺风险分档）
 - [ ] ~~缓存治理~~：✅ 已解决——缓存键加入代码指纹（源码变更自动失效），`cache info/clean/prune` 可清理旧版本条目
 - [ ] **插件协议**：entry point 发现已实现，但与外部插件的兼容协议未定义

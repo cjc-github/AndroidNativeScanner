@@ -20,3 +20,5 @@ class Finding:
     evidence: tuple[dict[str, Any], ...] = ()
     remediation: str | None = None
     references: tuple[dict[str, str], ...] = ()
+    suppressed: bool = False
+    """Accepted by a baseline: still reported, but invisible to the gate."""

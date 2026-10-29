@@ -341,10 +341,15 @@ class TextRenderer(Renderer):
             lines.extend(_render_obfuscation(result))
             lines.extend(["", "Findings:"])
             if result.findings:
-                lines[-1] = f"Findings: {len(result.findings)}"
+                suppressed = sum(1 for item in result.findings if item.suppressed)
+                label = f"Findings: {len(result.findings)}"
+                if suppressed:
+                    label += f" ({suppressed} baselined)"
+                lines[-1] = label
                 for finding in result.findings:
+                    marker = " [baselined]" if finding.suppressed else ""
                     lines.append(
-                        f"  [{finding.severity.value}] {finding.title}"
+                        f"  [{finding.severity.value}] {finding.title}{marker}"
                     )
             else:
                 lines.append("  none")
