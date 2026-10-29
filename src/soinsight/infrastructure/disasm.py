@@ -21,6 +21,7 @@ _ARCHITECTURES = {
     "x86-64": ("x86", "CS_ARCH_X86", "CS_MODE_64"),
     "AArch64": ("aarch64", "CS_ARCH_ARM64", "CS_MODE_LITTLE_ENDIAN"),
     "ARM": ("arm", "CS_ARCH_ARM", "CS_MODE_LITTLE_ENDIAN"),
+    "x86": ("x86", "CS_ARCH_X86", "CS_MODE_32"),
     "Intel 80386": ("x86", "CS_ARCH_X86", "CS_MODE_32"),
 }
 
@@ -48,6 +49,15 @@ def _load_capstone():
         # sys.modules, which module_from_spec() does not populate.
         _MODULE = importlib.import_module("capstone")
     return _MODULE
+
+
+def capstone_module():
+    """Return the imported Capstone module, or ``None`` when unavailable.
+
+    Infrastructure modules that need Capstone's *detail* mode (operand
+    access) share this loader instead of importing Capstone on their own.
+    """
+    return _load_capstone()
 
 
 def capstone_version() -> str | None:

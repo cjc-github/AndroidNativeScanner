@@ -311,6 +311,12 @@ def test_decode_architecture_maps_supported_machines():
         capstone.CS_MODE_64,
     )
     assert decode_architecture("AArch64")[0] == capstone.CS_ARCH_ARM64
+    # The parser reports machine 3 as ``x86`` (the short EM_NAMES form), not as
+    # the ``Intel 80386`` spelling objdump uses; both must reach a decoder.
+    assert decode_architecture("x86") == (
+        capstone.CS_ARCH_X86,
+        capstone.CS_MODE_32,
+    )
     assert decode_architecture("MIPS") is None
 
 
