@@ -10,6 +10,7 @@ from .constants import AdvancedConstantsAnalyzer
 from .cpp import BasicCppAnalyzer
 from .dataflow import BasicDataflowAnalyzer
 from .file_format import AdvancedFileFormatAnalyzer
+from .fuzz_target import AutomationFuzzTargetAnalyzer
 from .compiler import AdvancedCompilerAnalyzer
 from .obfuscation import AdvancedObfuscationAnalyzer
 from .protocol import AdvancedProtocolAnalyzer
@@ -51,6 +52,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(AdvancedProtocolAnalyzer())
     registry.register(AdvancedObfuscationAnalyzer())
     registry.register(DynamicTraceAnalyzer())
+    registry.register(AutomationFuzzTargetAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDynamicLoadingAnalyzer())

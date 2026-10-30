@@ -195,7 +195,7 @@ def test_cli_lists_product_modules_with_status_column():
         "security    安全分析             5  implemented",
         "dynamic     动态分析             5  partial",
         "ai          AI 分析              8  catalog-only",
-        "automation  自动化               7  catalog-only",
+        "automation  自动化               7  partial",
     ]
 
 
@@ -290,6 +290,7 @@ def test_cli_lists_plugins_as_table():
         "advanced.obfuscation     1.0.0   collector   yes     Obfuscation Analyzer",
         "advanced.protocol        1.0.0   collector   yes     Protocol Analyzer",
         "advanced.strings         1.0.0   collector   yes     Strings Analyzer",
+        "automation.fuzz-target   1.0.0   collector   yes     Fuzz Target Analyzer",
         "basic.callgraph          1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg                1.0.0   collector   yes     CFG Analyzer",
         "basic.cpp                1.0.0   collector   yes     C++ Recovery Analyzer",
@@ -386,7 +387,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   26\n" in output
+    assert "  Registered analyzers   27\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output

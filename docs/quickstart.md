@@ -81,7 +81,7 @@ python web/server.py            # 默认 http://127.0.0.1:8791
 
 ## 注意事项
 
-- 六大模块共 45 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
+- 六大模块共 45 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`automation.fuzz-target`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
 - `--module` 是严格展开（要求模块内能力全部已实现），日常请用 `--module-available`。
 - V1 旧入口仍可用：`python3 main.py libfoo.so`。
 

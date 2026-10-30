@@ -286,6 +286,34 @@ def _render_obfuscation(result) -> list[str]:
     return lines
 
 
+_TEXT_FUZZ_TARGET_LIMIT = 5
+
+
+def _render_fuzz_targets(result) -> list[str]:
+    """Render the ``automation.fuzz-target`` facts, or nothing when not collected."""
+    result_item = result.results.get("automation.fuzz-target")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    lines = [
+        "",
+        "Fuzz targets:",
+        f"  Candidates           {data.get('target_count', 0)}"
+        f" (JNI {data.get('jni_count', 0)}, parser-like {data.get('parser_like_count', 0)})",
+        f"  Buffer+length pairs  {data.get('buffer_length_pair_count', 0)}",
+    ]
+    for item in data.get("targets", [])[:_TEXT_FUZZ_TARGET_LIMIT]:
+        lines.append(f"    {item.get('score'):>3} {item.get('name')} [{item.get('kind')}]")
+    remaining = data.get("target_count", 0) - min(
+        len(data.get("targets", [])), _TEXT_FUZZ_TARGET_LIMIT
+    )
+    if remaining > 0:
+        lines.append(f"    ... and {remaining} more")
+    if data.get("heuristic"):
+        lines.append("  (ranking is heuristic, not a fuzzability verdict)")
+    return lines
+
+
 def _category_count(classified: dict, category: str) -> int:
     return int(classified.get(category, {}).get("count", 0) or 0)
 
@@ -339,6 +367,7 @@ class TextRenderer(Renderer):
             lines.extend(_render_compilers(result))
             lines.extend(_render_protocols(result))
             lines.extend(_render_obfuscation(result))
+            lines.extend(_render_fuzz_targets(result))
             lines.extend(["", "Findings:"])
             if result.findings:
                 suppressed = sum(1 for item in result.findings if item.suppressed)
