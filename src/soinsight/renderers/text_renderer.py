@@ -314,6 +314,32 @@ def _render_fuzz_targets(result) -> list[str]:
     return lines
 
 
+def _render_harness(result) -> list[str]:
+    """Render the ``automation.harness`` facts, or nothing when not collected."""
+    result_item = result.results.get("automation.harness")
+    if result_item is None or not result_item.data:
+        return []
+    data = result_item.data
+    if not data.get("generated"):
+        return ["", "Harness:", f"  Not generated       {data.get('reason')}"]
+    harness = data.get("harness") or {}
+    warnings = harness.get("warnings") or ()
+    lines = [
+        "",
+        "Harness:",
+        f"  Target               {harness.get('target')} [{harness.get('engine')}]",
+        f"  Score                {data.get('candidate_score')}",
+        f"  Unresolved params    {len(warnings)}",
+    ]
+    for warning in warnings[:3]:
+        lines.append(f"    - {warning}")
+    lines.append(
+        f"  Source               {len(str(harness.get('source') or '').splitlines())} lines, "
+        "see --format json"
+    )
+    return lines
+
+
 def _category_count(classified: dict, category: str) -> int:
     return int(classified.get(category, {}).get("count", 0) or 0)
 
@@ -368,6 +394,7 @@ class TextRenderer(Renderer):
             lines.extend(_render_protocols(result))
             lines.extend(_render_obfuscation(result))
             lines.extend(_render_fuzz_targets(result))
+            lines.extend(_render_harness(result))
             lines.extend(["", "Findings:"])
             if result.findings:
                 suppressed = sum(1 for item in result.findings if item.suppressed)

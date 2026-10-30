@@ -291,6 +291,7 @@ def test_cli_lists_plugins_as_table():
         "advanced.protocol        1.0.0   collector   yes     Protocol Analyzer",
         "advanced.strings         1.0.0   collector   yes     Strings Analyzer",
         "automation.fuzz-target   1.0.0   collector   yes     Fuzz Target Analyzer",
+        "automation.harness       1.0.0   collector   yes     Harness Analyzer",
         "basic.callgraph          1.0.0   collector   yes     Call Graph Analyzer",
         "basic.cfg                1.0.0   collector   yes     CFG Analyzer",
         "basic.cpp                1.0.0   collector   yes     C++ Recovery Analyzer",
@@ -387,7 +388,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   27\n" in output
+    assert "  Registered analyzers   28\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output

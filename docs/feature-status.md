@@ -40,7 +40,7 @@
 - [x] CLI 输出规范：状态列、分组 help、`doctor`、`--quiet`、TTY 颜色、窄终端自适应、`report` 二次渲染
 - [x] 退出码与错误语义：能力未实现 → `ANALYSIS_PLAN_ERROR`（预期外壳行为）
 
-### 3. V2 已实现的真正 Analyzer 与 Rule（27/45 能力）
+### 3. V2 已实现的真正 Analyzer 与 Rule（28/45 能力）
 
 | 能力 ID | 内容 | 位置 |
 |---|---|---|
@@ -57,6 +57,7 @@
 | `basic.dynamic` | 动态链接事实：依赖清单、`SONAME`、RPATH/RUNPATH、构造/析构入口、符号版本与需求、重定位与导入计数 | `analyzers/dynamic_link.py` + `infrastructure/elf/dynamic.py` |
 | `basic.xref` | 指令操作数到字符串字面量的交叉引用：逐函数重解码（x86 `rip-relative`/`absolute`、AArch64 `adr`/`adrp-add`/`register-load`、ARM 字面量池与 `movw`/`movt`），`exact`/`suffix` 匹配，控制流引用排除，寄存器追踪在写入与调用点失效；字符串表只收已加载的非代码分节，函数尺寸按分节裁剪 | `analyzers/xref.py` + `infrastructure/xref.py` |
 | `security.hardening` | PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC（基于 ELF/PHDR/符号表/GNU 属性） | `analyzers/security.py` |
+| `automation.harness` | 模板型 Harness 生成：libFuzzer 风格 C 骨架，缓冲区→data、长度→size、其余填零；回调/第二缓冲区/输出指针以警告列出，返回类型缺失时按 `int` 假设并明说；只产源码，不编译不执行 | `analyzers/harness.py` + `infrastructure/harness.py` |
 | `automation.fuzz-target` | 静态 Fuzz 入口识别：导出/JNI 排序、参数按形状归类（buffer/size/out-pointer/struct/callback/scalar）、缓冲区+长度对判定与启发式评分（标 `heuristic`），不执行目标 | `analyzers/fuzz_target.py` + `infrastructure/fuzz_targets.py` |
 | `dynamic.trace` | 受授权门控制的运行时 trace：默认拒绝执行，授权 + 沙箱就绪时只产出沙箱化执行计划（超时/内存上限），不启动进程、不采集事件 | `analyzers/dynamic_trace.py` + `infrastructure/execution.py` |
 | `security.dangerous-api` | 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值）；`basic.callgraph` 在计划内时附带调用点数量与地址，证据标 `call-site` | `analyzers/security.py` |
@@ -111,7 +112,7 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 18/45 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 17/45 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
@@ -120,7 +121,7 @@
 | `security`（0/5） | — |
 | `dynamic`（4/5） | `dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（`dynamic.trace` 已接入但默认拒绝执行，采集器未接） |
 | `ai`（8/8） | `ai.function-name`、`ai.parameter-semantics`、`ai.struct-recovery`、`ai.module-identification`、`ai.algorithm-explanation`、`ai.protocol-explanation`、`ai.vulnerability-explanation`、`ai.assembly-explanation`（全部） |
-| `automation`（6/7） | `automation.binary-diff`、`automation.harness`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow` |
+| `automation`（5/7） | `automation.binary-diff`、`automation.seed`、`automation.crash-cluster`、`automation.report`、`automation.workflow` |
 
 `advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.risk`、`security.vulnerability`、`security.dynamic-loading`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref` 与 V1 的 URL/Secret/Base64 规则迁移已完成（见上表）；
 下一步建议是 `advanced.file-format`（magic 扫描无需反汇编）与 `advanced.library`。

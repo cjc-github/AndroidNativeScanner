@@ -144,11 +144,13 @@ low/medium/high/critical。三个内置规则
 |---|---|---|---|
 | `automation binary-diff OLD NEW` | `automation.binary-diff` | Binary Diff | 外壳 |
 | `automation fuzz-target TARGET` | `automation.fuzz-target` | Fuzz Target 识别 | 已实现（静态版） |
-| `automation harness TARGET` | `automation.harness` | Harness 生成 | 外壳 |
+| `automation harness TARGET` | `automation.harness` | Harness 生成 | 已实现（模板型） |
 | `automation seed TARGET` | `automation.seed` | Seed 生成 | 外壳 |
 | `automation crash-cluster TARGET` | `automation.crash-cluster` | Crash 聚类 | 外壳 |
 | `automation report TARGET` | `automation.report` | 报告自动化 | 外壳 |
 | `automation workflow TARGET` | `automation.workflow` | 批处理、Profile、CI Gate 和工作流编排 | 外壳 |
+
+`automation.harness` 把 `automation.fuzz-target` 的候选变成 libFuzzer 风格的 C 模板：第一个缓冲区参数接到 fuzz 输入，识别出的长度参数接 `size`，其余参数填零值。它不猜第二缓冲区、回调与输出指针——这些以 `HARNESS_TEMPLATE_INCOMPLETE` 警告列出，等人工补桩。原型的返回类型：签名已带返回类型就原样 `extern`；签名只有 `name(...)` 时用元数据 `return_type`，两者都没有则按 `int` 假设并明说。喂了缓冲区但没识别到长度参数时同样警告（否则模板传 0，fuzz 不到东西）。模板只生成源码文本，不编译也不执行；`--format json` 携带完整 `source`。
 
 `automation.fuzz-target` 只消费静态事实，不执行目标：导出函数与 JNI 方法都是可直达的入口，`basic.types` 提供参数类型，名称里的解析/读取语义提高排序。参数按**形状**归类（`buffer`/`size`/`out-pointer`/`struct`/`callback`/`scalar`）：`size_t`、定宽整型按类型判定，而 `int mode` 只有在参数名像长度（`len`/`size`/`count`…）时才算长度——不然会把模式参数当成缓冲区长度。评分只用于排序（JNI 45 / 解析类 35 / 普通导出 10，缓冲区+长度对 +25，指针参数各 +5，无参数 −10，回调参数 −5），输出标 `heuristic: true`，不是「可 fuzz」结论。
 

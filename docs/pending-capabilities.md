@@ -2,9 +2,9 @@
 
 **快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 27/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 28/45 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 4/5、`ai` 8/8、`automation` 6/7 —— 共 **18/45** 项外壳能力（`dynamic.trace` 已接入，默认拒绝执行，见 §4；`automation.fuzz-target` 已按静态版落地，见 §6）。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 4/5、`ai` 8/8、`automation` 5/7 —— 共 **17/45** 项外壳能力（`dynamic.trace` 已接入，默认拒绝执行，见 §4；`automation.fuzz-target`/`automation.harness` 已按静态版落地，见 §6）。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
@@ -94,7 +94,7 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 |---|---|---|
 | `automation.binary-diff` | 命令形态已建（`old new` 双目标），缺多目标 Request 模型与 Diff 引擎本体（函数集/CFG/Finding 差异） | 多目标 Request（§7 D8）、`basic.symbols`/`basic.types`、CFG |
 | `automation.fuzz-target` | ✅ 静态版已落地：导出/JNI 入口排序、参数按形状归类（含缓冲区+长度对判定）、启发式评分并标 `heuristic`；不做数据流分析，也不执行目标 | `basic.symbols`、`basic.types` |
-| `automation.harness` | 按设计消费 `basic.types`/`advanced.protocol`/`dynamic.coverage` 生成 Harness；先输出模板型 harness | `basic.types`、`advanced.protocol` |
+| `automation.harness` | ✅ 模板版已落地：从 `automation.fuzz-target` 的候选生成 libFuzzer 风格 C 骨架（缓冲区→data、长度→size、其余填零）；无法满足的参数以警告列出，不猜测；只产源码不执行 | `automation.fuzz-target` |
 | `automation.seed` | 按 `advanced.file-format`/`advanced.protocol`/`advanced.constants` 事实生成种子语料 | 高级分析三项 |
 | `automation.crash-cluster` | 输入是崩溃语料（来自 fuzz），按栈帧/信号/根因线索聚类；fuzz 底座前无输入源 | `automation.fuzz-target` 链路 |
 | `automation.report` | 结果转换/归档/发布编排，可复用现有 Renderer 五格式；是最容易起步的一项 | Renderer（已实现） |

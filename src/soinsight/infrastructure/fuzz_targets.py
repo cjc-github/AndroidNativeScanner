@@ -87,6 +87,7 @@ class FuzzCandidate:
     """``jni``, ``parser`` or ``export``."""
 
     language: str
+    return_type: str | None
     parameters: tuple[ParameterShape, ...]
     buffer_length_pairs: int
     score: int
@@ -99,6 +100,7 @@ class FuzzCandidate:
             "signature": self.signature,
             "kind": self.kind,
             "language": self.language,
+            "return_type": self.return_type,
             "parameter_count": len(self.parameters),
             "parameters": [
                 {
@@ -273,6 +275,9 @@ def rank_candidates(
                 signature=str(record.get("signature") or raw_name),
                 kind=kind,
                 language=str(record.get("language") or "c"),
+                return_type=(
+                    str(record["return_type"]) if record.get("return_type") else None
+                ),
                 parameters=shapes,
                 buffer_length_pairs=pairs,
                 score=score,
