@@ -117,6 +117,15 @@ soinsight dynamic trace libfoo.so   # 未授权 → not-authorized；已授权�
 隔离靠探测（`bwrap` > `firejail` > `docker` > `unshare`），探测不到就拒绝，**不会**在宿主上裸跑。
 当前 `dynamic.trace` 只产出沙箱执行计划（含超时/内存上限），不启动进程、不采集事件。
 
+## 版本对比（Binary Diff）
+
+```bash
+soinsight diff old.so new.so            # 符号级：新增 / 移除 / 移动 / 大小变化
+soinsight diff old.so new.so --format json
+```
+
+纯静态对比，秒级出结果；函数体级与 CFG 级差异不在范围内。
+
 ## 更多文档
 
 - 原详细使用文档（快速开始/使用手册/命令参考/YAML 配置）：`docs/archive/`

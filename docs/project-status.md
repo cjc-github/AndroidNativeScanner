@@ -96,6 +96,7 @@
 - [x] `advanced.protocol`：协议关键字与网络符号交叉识别 21 个协议指纹，单源/多源分级；
 - [x] `advanced.obfuscation`：壳/保护器/混淆器签名、OLLVM 符号、分节熵阈值（可配），控制流平坦化明确不在范围内；
 - [x] 软依赖（`optional_requires`）：Planner 仅排序不拉入、缺席时 `context.optional()` 降级、未注册软依赖忽略、缓存按参与的可选依赖分键；
+- [x] `automation.binary-diff`（符号级）：`diff OLD NEW` 双输入、按 mangled name 匹配、增删/移动/大小变化分类、`default_enabled=False` 不进默认扫描集；
 - [x] `automation.harness`（模板版）：libFuzzer 骨架生成、参数映射、返回类型三级来源（签名/元数据/int 假设）、不可满足参数警告；
 - [x] `automation.fuzz-target`（静态版）：导出/JNI 入口排序、参数形状归类、缓冲区+长度对判定、`heuristic` 标记与选项截断；
 - [x] 动态执行底座：`dynamic_execution` 授权块（默认拒绝 + `allow_targets` 白名单）、`detect_sandbox()`（bwrap/firejail/docker/unshare，无裸执行兜底）、`DryRunExecutor` 与仅双重 opt-in 才运行的 `SubprocessSandboxExecutor`；
@@ -105,8 +106,8 @@
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `803 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `688 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `811 passed, 9 skipped`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集，为 `695 passed, 1 skipped`。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -243,7 +244,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 
 ### Phase 7：自动化
 
-- Binary Diff；
+- Binary Diff（✅ 符号级已完成：`diff OLD NEW` 报告函数集增删移与大小变化；函数体/CFG 级对比未做）；
 - Fuzz Target（✅ 静态版已完成：导出/JNI 排序与参数形状归类）/Harness（✅ 模板版已完成：参数映射 + 不可满足参数警告，只产源码不执行）/Seed；
 - Crash 聚类；
 - 报告流水线、批处理、CI Gate 和 Workflow。

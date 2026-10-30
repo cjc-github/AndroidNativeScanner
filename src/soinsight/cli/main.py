@@ -13,6 +13,9 @@ import yaml
 
 from ..analyzers import register_builtin_analyzers
 from ..application import AnalysisRequest, AnalysisService, ApplicationResponse
+from ..core.analyzer import AnalysisContext
+from ..core.models import AnalysisStatus, AnalysisTarget
+from ..infrastructure.config import RuntimeConfig
 from ..core.analyzer import AnalyzerRegistry, CancellationToken
 from ..core.models import Diagnostic, DiagnosticLevel
 from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
@@ -124,15 +127,14 @@ def _add_compatibility_aliases(subparsers: argparse._SubParsersAction) -> None:
             compatibility_alias=True,
         )
 
-    diff = _add_hidden_subparser(subparsers, "diff")
-    diff.add_argument("old", type=Path, nargs="?")
-    diff.add_argument("new", type=Path, nargs="?")
-    diff.set_defaults(
-        handler="reserved",
-        module_id="automation",
-        capability_id="automation.binary-diff",
-        compatibility_alias=True,
+    diff = subparsers.add_parser(
+        "diff", help="Diff the function symbol sets of two ELF images"
     )
+    diff.add_argument("old", type=Path)
+    diff.add_argument("new", type=Path)
+    diff.add_argument("--format", choices=("text", "json"), default="text")
+    diff.add_argument("-o", "--output")
+    diff.set_defaults(handler="diff", capability_id="automation.binary-diff")
 
 
 def _render_main_help() -> str:
@@ -1104,6 +1106,62 @@ def _handle_web(args: argparse.Namespace, stdout: TextIO) -> int:
     return 0
 
 
+def _handle_diff(
+    args: argparse.Namespace,
+    registry: AnalyzerRegistry,
+    renderers: RendererRegistry,
+    stdout: TextIO,
+) -> int:
+    """Run the symbol-level diff between the two images."""
+    target = AnalysisTarget(
+        path=args.old,
+        real_path=args.old.resolve(),
+        name=f"{args.old.name} -> {args.new.name}",
+        size=0,
+        sha256="diff",
+    )
+    context = AnalysisContext(
+        "run",
+        target,
+        RuntimeConfig(
+            extra={
+                "binary_diff": {
+                    "old_path": str(args.old),
+                    "new_path": str(args.new),
+                }
+            }
+        ),
+    )
+    try:
+        analyzer = registry.get("automation.binary-diff")
+    except AnalyzerNotFoundError:
+        stdout.write("automation.binary-diff is not registered.\n")
+        return 3
+    result = analyzer.analyze(target, context)
+    if result.status != AnalysisStatus.SUCCESS:
+        for diagnostic in result.diagnostics:
+            stdout.write(f"- [{diagnostic.level.value}] {diagnostic.message}\n")
+        return 4
+    response = ApplicationResponse(result=None, exit_code=0, diagnostics=[])
+    response.result = None
+    # Render through the analyzer's own text formatter for now: the unified
+    # result model expects a single target, which a two-input diff does not
+    # have. The JSON path dumps the raw data payload.
+    if args.format == "json":
+        import json
+
+        _write_output(
+            json.dumps(result.data, ensure_ascii=False, indent=2) + "\n",
+            args.output,
+            stdout,
+        )
+        return 0
+    text = analyzer.format_text(result)
+    _write_output((text or "") + "\n", args.output, stdout)
+    del response, renderers
+    return 0
+
+
 def _handle_reserved(args: argparse.Namespace, stdout: TextIO) -> int:
     capability_id = getattr(args, "capability_id", args.command)
     stdout.write(
@@ -1171,6 +1229,8 @@ def main(
         return _handle_web(args, output_stream)
     if args.handler == "config":
         return _handle_config(args, yaml_config_store, output_stream)
+    if args.handler == "diff":
+        return _handle_diff(args, analyzer_registry, renderer_registry, output_stream)
     if args.handler == "reserved":
         return _handle_reserved(args, output_stream)
     parser.error(f"Unknown handler: {args.handler}")

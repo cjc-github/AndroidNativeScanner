@@ -3,6 +3,7 @@
 from ..core.analyzer import AnalyzerRegistry
 from .advanced import AdvancedStringsAnalyzer
 from .algorithm import AdvancedAlgorithmAnalyzer
+from .binary_diff import AutomationBinaryDiffAnalyzer
 from .basic import BasicElfAnalyzer, BasicFileAnalyzer
 from .callgraph import BasicCallgraphAnalyzer
 from .cfg import BasicCfgAnalyzer
@@ -55,6 +56,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(DynamicTraceAnalyzer())
     registry.register(AutomationFuzzTargetAnalyzer())
     registry.register(AutomationHarnessAnalyzer())
+    registry.register(AutomationBinaryDiffAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDynamicLoadingAnalyzer())

@@ -142,13 +142,15 @@ low/medium/high/critical。三个内置规则
 
 | 命令 | 稳定能力 ID | 能力 | 状态 |
 |---|---|---|---|
-| `automation binary-diff OLD NEW` | `automation.binary-diff` | Binary Diff | 外壳 |
+| `automation binary-diff OLD NEW` | `automation.binary-diff` | Binary Diff | 已实现（符号级） |
 | `automation fuzz-target TARGET` | `automation.fuzz-target` | Fuzz Target 识别 | 已实现（静态版） |
 | `automation harness TARGET` | `automation.harness` | Harness 生成 | 已实现（模板型） |
 | `automation seed TARGET` | `automation.seed` | Seed 生成 | 外壳 |
 | `automation crash-cluster TARGET` | `automation.crash-cluster` | Crash 聚类 | 外壳 |
 | `automation report TARGET` | `automation.report` | 报告自动化 | 外壳 |
 | `automation workflow TARGET` | `automation.workflow` | 批处理、Profile、CI Gate 和工作流编排 | 外壳 |
+
+`automation.binary-diff` 比较 two ELF 镜像的**已定义函数符号集**（`diff OLD NEW` 或 YAML `binary_diff.old_path`/`new_path`）：按 mangled name 匹配，报告新增/移除/移动（同地址不同）/大小变化，函数体级与 CFG 级对比不在此能力范围。它是双输入能力：不进默认扫描集，单独通过 `diff` 命令或显式 `--enable` 运行。纯静态，秒级出结果。
 
 `automation.harness` 把 `automation.fuzz-target` 的候选变成 libFuzzer 风格的 C 模板：第一个缓冲区参数接到 fuzz 输入，识别出的长度参数接 `size`，其余参数填零值。它不猜第二缓冲区、回调与输出指针——这些以 `HARNESS_TEMPLATE_INCOMPLETE` 警告列出，等人工补桩。原型的返回类型：签名已带返回类型就原样 `extern`；签名只有 `name(...)` 时用元数据 `return_type`，两者都没有则按 `int` 假设并明说。喂了缓冲区但没识别到长度参数时同样警告（否则模板传 0，fuzz 不到东西）。模板只生成源码文本，不编译也不执行；`--format json` 携带完整 `source`。
 
