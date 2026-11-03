@@ -1,15 +1,13 @@
 """Simple HTTP server for SOInsight web interface."""
 
-import html
-import io
 import json
 import tempfile
 import threading
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from ..application import AnalysisRequest, AnalysisService
 from ..core.analyzer import AnalyzerRegistry
@@ -61,6 +59,8 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             self._serve_index()
         elif parsed.path == "/api/health":
             self._serve_json({"status": "ok"})
+        elif parsed.path == "/api/analyzers":
+            self._serve_analyzers()
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -85,6 +85,25 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(content.encode("utf-8"))
         except FileNotFoundError:
             self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, "Template not found")
+
+    def _serve_analyzers(self):
+        """List every analyzer the registry can run.
+
+        The page renders its selection UI from this response, so a newly
+        registered analyzer shows up without a template change. Entries whose
+        ids are unknown to the page fall back to displaying the raw id.
+        """
+        analyzers = [
+            {
+                "id": metadata.id,
+                "name": metadata.name,
+                "description": metadata.description,
+                "default_enabled": metadata.default_enabled,
+                "requires": list(metadata.requires),
+            }
+            for metadata in self.analyzer_registry.list()
+        ]
+        self._serve_json({"status": "ok", "analyzers": analyzers})
 
     def _serve_json(self, data: dict, status: HTTPStatus = HTTPStatus.OK):
         """Serve JSON response."""
@@ -116,18 +135,26 @@ class WebRequestHandler(BaseHTTPRequestHandler):
 
         filename, file_content = file_data
 
-        # Default to all analyzers if none specified
+        # Reject unknown ids up front: the planner would raise later, after the
+        # upload has already been written and analyzed, with a worse message.
+        unknown = [
+            analyzer_id
+            for analyzer_id in analyzers
+            if not self.analyzer_registry.contains(analyzer_id)
+        ]
+        if unknown:
+            self._serve_json(
+                {
+                    "success": False,
+                    "error": "未知的分析器: " + ", ".join(unknown),
+                },
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+
+        # Default to the default-enabled analyzers if none specified
         if not analyzers:
-            analyzers = [
-                "basic.file",
-                "basic.elf",
-                "basic.symbols",
-                "basic.dwarf",
-                "advanced.strings",
-                "security.hardening",
-                "security.dangerous-api",
-                "security.risk",
-            ]
+            analyzers = list(self.analyzer_registry.default_ids())
 
         # Save to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
@@ -163,7 +190,11 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             tmp_path.unlink(missing_ok=True)
 
     def _parse_multipart(self, body: bytes, boundary: bytes) -> tuple[tuple[str, bytes] | None, list[str]]:
-        """Parse multipart/form-data body and extract file and analyzers."""
+        """Parse multipart/form-data body and extract file and analyzers.
+
+        Only the framing CRLF is removed from each part's content; a binary
+        part is handed back verbatim.
+        """
         parts = body.split(b"--" + boundary)
 
         file_data = None
@@ -191,7 +222,12 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             if content_start == -1:
                 continue
 
-            content = part[content_start + 4:].rstrip(b"\r\n")
+            # Only the framing CRLF is dropped: a binary part must stay
+            # byte-identical, since rstrip would eat trailing 0x0D/0x0A that
+            # belong to the uploaded file itself.
+            content = part[content_start + 4:]
+            if content.endswith(b"\r\n"):
+                content = content[:-2]
 
             if field_name == "file" and filename:
                 file_data = (filename, content)
@@ -201,27 +237,38 @@ class WebRequestHandler(BaseHTTPRequestHandler):
 
         return file_data, analyzers
 
-    def _run_analysis(self, target_path: Path, progress_observer: ProgressObserver, analyzers: list[str]):
+    def _run_analysis(
+        self,
+        target_path: Path,
+        progress_observer: ProgressObserver,
+        analyzers: list[str],
+    ):
         """Run analysis on the target file."""
         runtime = AnalysisRuntime(self.analyzer_registry)
         config = ConfigLoader().load(cache_enabled=False)
         service = AnalysisService(runtime)
 
         request = AnalysisRequest(
-            target=str(target_path),
-            analyzer_ids=analyzers,
+            # AnalysisRequest.target is typed Path; a plain string reaches
+            # TargetResolver.resolve() and fails on Path-only methods.
+            target=target_path,
+            analyzer_ids=tuple(analyzers),
             profile=None,
         )
 
         return service.execute(request, config, observer=progress_observer)
 
 
-def create_server(host: str, port: int, analyzer_registry: AnalyzerRegistry) -> HTTPServer:
+def create_server(host: str, port: int, analyzer_registry: AnalyzerRegistry) -> ThreadingHTTPServer:
     """Create HTTP server with analyzer registry."""
     def handler_factory(*args, **kwargs):
         return WebRequestHandler(*args, analyzer_registry=analyzer_registry, **kwargs)
 
-    server = HTTPServer((host, port), handler_factory)
+    # ThreadingHTTPServer: analysis runs in-request and can take tens of
+    # seconds, so a serial server would stop answering even /api/health while
+    # one scan is in flight.
+    server = ThreadingHTTPServer((host, port), handler_factory)
+    server.daemon_threads = True
     return server
 
 

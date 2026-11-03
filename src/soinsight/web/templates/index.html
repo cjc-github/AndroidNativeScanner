@@ -115,6 +115,72 @@
             color: #666;
         }
         
+        .analyzer-selection {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .selection-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .analyzer-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        
+        .analyzer-option {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .analyzer-option:hover {
+            background: #e9ecef;
+        }
+        
+        .analyzer-option input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .analyzer-label {
+            font-size: 0.9em;
+            color: #495057;
+        }
+        
+        .selection-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .select-all-btn {
+            padding: 6px 12px;
+            font-size: 0.85em;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .select-all-btn:hover {
+            background: #5a6268;
+        }
+        
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -263,6 +329,14 @@
                 <div class="file-info" id="fileInfo">
                     <div class="file-name" id="fileName"></div>
                     <div class="file-size" id="fileSize"></div>
+                    <div class="analyzer-selection">
+                        <div class="selection-title">选择分析器：</div>
+                        <div class="analyzer-options" id="analyzerOptions"></div>
+                        <div class="selection-actions">
+                            <button type="button" class="select-all-btn" onclick="selectAllAnalyzers()">全选</button>
+                            <button type="button" class="select-all-btn" onclick="deselectAllAnalyzers()">全不选</button>
+                        </div>
+                    </div>
                     <button class="btn" id="analyzeBtn">开始分析</button>
                 </div>
             </div>
@@ -293,8 +367,10 @@
         const resultSection = document.getElementById('resultSection');
         const resultContent = document.getElementById('resultContent');
         const errorMessage = document.getElementById('errorMessage');
+        const analyzerOptions = document.getElementById('analyzerOptions');
         
         let selectedFile = null;
+        let availableAnalyzers = [];
         
         // 点击上传区域触发文件选择
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -339,9 +415,55 @@
             return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
         }
         
+        // 加载服务端已注册的分析器清单，渲染多选框
+        async function loadAnalyzers() {
+            try {
+                const response = await fetch('/api/analyzers');
+                const data = await response.json();
+                availableAnalyzers = data.analyzers || [];
+            } catch (error) {
+                // 拿不到清单时不阻塞上传：留空即表示"未选择"，由服务端取默认集
+                availableAnalyzers = [];
+                showError('无法获取分析器清单，将使用服务端默认分析器');
+            }
+            renderAnalyzerOptions();
+        }
+        
+        function renderAnalyzerOptions() {
+            if (availableAnalyzers.length === 0) {
+                analyzerOptions.innerHTML = '<div style="color:#999;font-size:0.9em;">加载中或暂不可用</div>';
+                return;
+            }
+            analyzerOptions.innerHTML = availableAnalyzers.map(analyzer => `
+                <label class="analyzer-option">
+                    <input type="checkbox" name="analyzer" value="${analyzer.id}" ${analyzer.default_enabled ? 'checked' : ''}>
+                    <span class="analyzer-label">${analyzer.name || analyzer.id}</span>
+                </label>
+            `).join('');
+        }
+        
+        function selectAllAnalyzers() {
+            analyzerOptions.querySelectorAll('input[name="analyzer"]').forEach(cb => cb.checked = true);
+        }
+        
+        function deselectAllAnalyzers() {
+            analyzerOptions.querySelectorAll('input[name="analyzer"]').forEach(cb => cb.checked = false);
+        }
+        
+        function getSelectedAnalyzers() {
+            return Array.from(analyzerOptions.querySelectorAll('input[name="analyzer"]:checked'))
+                .map(cb => cb.value);
+        }
+        
         // 开始分析
         analyzeBtn.addEventListener('click', async () => {
             if (!selectedFile) return;
+            
+            const selectedAnalyzers = getSelectedAnalyzers();
+            if (selectedAnalyzers.length === 0) {
+                showError('请至少选择一个分析器');
+                return;
+            }
             
             analyzeBtn.disabled = true;
             analyzeBtn.innerHTML = '<span class="loading"></span> 分析中...';
@@ -352,6 +474,8 @@
             
             const formData = new FormData();
             formData.append('file', selectedFile);
+            // 服务端按逗号分隔解析，见 _parse_multipart
+            formData.append('analyzers', selectedAnalyzers.join(','));
             
             try {
                 const response = await fetch('/api/analyze', {
@@ -407,6 +531,9 @@
             errorMessage.textContent = message;
             errorMessage.classList.add('show');
         }
+        
+        // 页面加载即拉取分析器清单，用户选文件前多选框就已就绪
+        loadAnalyzers();
     </script>
 </body>
 </html>

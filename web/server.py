@@ -73,6 +73,12 @@ SAMPLE_SUFFIXES = {".so", ".elf", ".o", ".dylib"}
 ANALYSIS_TIMEOUT = 180
 _ANALYSIS_LOCK = threading.Lock()
 
+# 分析结果的落盘目录。full-scan 的 JSON 可达数 MB，整块回传给浏览器再由
+# 前端渲染既慢又卡，所以服务端写盘、只把路径回给页面。
+REPORTS_DIR = REPO_ROOT / "reports"
+MAX_REPORTS_KEPT = 20
+_REPORTS_LOCK = threading.Lock()
+
 # The single in-flight /api/analyze child process. /api/cancel flips
 # ``cancelled`` and kills the process so the waiting request can return early
 # instead of burning the rest of the timeout.
@@ -186,6 +192,77 @@ def request_cancel() -> bool:
     return True
 
 
+def _save_report(payload: object, target_name: str) -> dict:
+    """Persist one analysis payload to ``reports/`` and describe it.
+
+    Returns ``{"path", "name", "size", "url"}`` on success, or
+    ``{"error": ...}`` when the write fails. A failed write must never fail
+    the analysis itself: the caller still returns the payload.
+    """
+    try:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"error": f"无法创建 reports 目录: {exc}"}
+
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(target_name).stem or "target")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    # 同秒内多次运行靠序号区分，避免互相覆盖
+    serial = 0
+    while True:
+        suffix = f"-{serial}" if serial else ""
+        name = f"{stem}-{stamp}{suffix}.json"
+        path = REPORTS_DIR / name
+        if not path.exists():
+            break
+        serial += 1
+
+    try:
+        # 直接落原始 stdout 文本比 json.dumps(payload) 更保真，也少一次序列化
+        text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=2)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return {"error": f"写入报告失败: {exc}"}
+
+    _prune_reports()
+    return {
+        "path": str(path),
+        "name": name,
+        "size": path.stat().st_size,
+        "url": f"/api/report?name={name}",
+    }
+
+
+def _prune_reports() -> None:
+    """Keep only the newest MAX_REPORTS_KEPT reports."""
+    with _REPORTS_LOCK:
+        try:
+            files = sorted(
+                (p for p in REPORTS_DIR.glob("*.json") if p.is_file()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            return
+        for stale in files[MAX_REPORTS_KEPT:]:
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+
+
+def _report_path(name: str) -> Path | None:
+    """Resolve a report filename inside REPORTS_DIR, or None if unsafe."""
+    # 只接受纯文件名：任何路径分隔符或父目录引用都拒绝，防止越权读取
+    if not re.fullmatch(r"[A-Za-z0-9._-]+\.json", name or ""):
+        return None
+    candidate = (REPORTS_DIR / name).resolve()
+    try:
+        candidate.relative_to(REPORTS_DIR.resolve())
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
 def _run_analysis(
     mode: str,
     capability: str,
@@ -286,6 +363,8 @@ def _run_analysis(
             )
         else:
             parse_error = f"CLI 未产生 JSON 输出（退出码 {process.returncode}）"
+    # 结果落盘，页面只拿路径；写入失败不影响分析本身
+    report = _save_report(stdout if payload is not None else None, target.name)
     return {
         # A non-zero exit code with a valid payload is still a real analysis
         # result (e.g. an analyzer reporting FAILED); the page renders it.
@@ -295,6 +374,7 @@ def _run_analysis(
         "exit_code": process.returncode,
         "duration_ms": duration_ms,
         "payload": payload,
+        "report": report,
         "stdout_tail": stdout[-4000:] if parse_error else "",
         "stderr_tail": (stderr or "")[-2000:],
     }
@@ -662,8 +742,38 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             self._send_json(record)
+        elif route == "/api/report":
+            self._serve_report(parsed.query)
         else:
             self._serve_static(route)
+
+    def _serve_report(self, query: str) -> None:
+        """Download a saved analysis report by filename."""
+        params = {key: values[0] for key, values in parse_qs(query).items()}
+        path = _report_path(params.get("name", ""))
+        if path is None:
+            self._send_json(
+                {"ok": False, "error": "报告不存在或文件名不合法"},
+                HTTPStatus.NOT_FOUND,
+            )
+            return
+        try:
+            body = path.read_bytes()
+        except OSError as exc:
+            self._send_json(
+                {"ok": False, "error": f"读取报告失败: {exc}"},
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header(
+            "Content-Disposition", f'attachment; filename="{path.name}"'
+        )
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib name
         parsed = urlparse(self.path)
