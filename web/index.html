@@ -453,6 +453,11 @@
   .panel-head b { font-size: 13.8px; }
   .panel-head .cap-id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .panel-head .v { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  /* 面板顶部的一句话说明：这个分析做什么、能拿到什么 */
+  .panel-desc {
+    margin: -4px 0 14px; font-size: 12.8px; line-height: 1.7;
+    color: var(--muted); max-width: 92ch;
+  }
   .raw-actions { display: flex; gap: 8px; margin-bottom: 10px; }
   .result-meta {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -1154,37 +1159,67 @@ var state = {
 };
 
 /* 静态展示元数据：服务端只提供 analyzer id，中文名与说明必须由页面维护。
-   新增 analyzer 时在这里补一条即可；没补也能正常显示（回退成 id）。 */
+   新增 analyzer 时在这里补一条即可；没补也能正常显示（回退成 id）。
+   desc 讲清楚「这个分析做什么、能拿到什么」，结果面板顶部展示。 */
 var CAP_META = {
-  "basic.file":          { name: "文件属性", brief: "大小 / 哈希 / 格式判定" },
-  "basic.elf":           { name: "ELF 头",   brief: "架构 / 段表 / 入口点" },
-  "basic.symbols":       { name: "符号表",   brief: "导出导入 / demangle / JNI" },
-  "basic.dwarf":         { name: "DWARF",    brief: "调试信息函数签名" },
-  "basic.types":         { name: "类型恢复", brief: "结构体 / 枚举 / 全局变量" },
-  "basic.cpp":           { name: "C++ 恢复", brief: "RTTI / vtable / 继承" },
-  "basic.disasm":        { name: "反汇编",   brief: "指令解码 / 函数体" },
-  "basic.cfg":           { name: "控制流图", brief: "基本块 / 跳转关系" },
-  "basic.callgraph":     { name: "调用图",   brief: "函数调用关系" },
-  "basic.dataflow":      { name: "数据流",   brief: "寄存器 / 变量追踪" },
-  "basic.dynamic":       { name: "动态链接", brief: "PLT / GOT / 重定位" },
-  "basic.xref":          { name: "交叉引用", brief: "符号 / 地址引用" },
-  "advanced.strings":    { name: "字符串",   brief: "提取 / 分类 / 敏感信息" },
-  "advanced.constants":  { name: "常量分析", brief: "整数 / 魔法值" },
-  "advanced.algorithm":  { name: "算法识别", brief: "加密 / 哈希特征" },
-  "advanced.file-format":{ name: "文件格式", brief: "容器 / 压缩识别" },
-  "advanced.library":    { name: "库识别",   brief: "第三方组件指纹" },
-  "advanced.compiler":   { name: "编译器",   brief: "工具链 / 优化级别" },
-  "advanced.protocol":   { name: "协议分析", brief: "消息结构 / 状态机" },
-  "advanced.obfuscation":{ name: "混淆检测", brief: "反调试 / 字符串加密" },
-  "dynamic.trace":       { name: "动态追踪", brief: "运行时调用记录" },
-  "security.hardening":  { name: "加固检查", brief: "PIE / NX / RELRO / Canary" },
-  "security.dynamic-loading": { name: "动态加载", brief: "dlopen / JNI 加载" },
-  "security.dangerous-api": { name: "危险 API", brief: "高危函数调用" },
-  "security.risk":       { name: "风险汇总", brief: "严重度 / 加权评分" },
-  "security.vulnerability": { name: "漏洞模式", brief: "危险 API 映射 CWE" },
-  "automation.fuzz-target": { name: "Fuzz 目标", brief: "入口函数识别" },
-  "automation.harness":  { name: "Harness",  brief: "测试桩生成" },
-  "automation.binary-diff": { name: "二进制对比", brief: "两版本符号差异" }
+  "basic.file":          { name: "文件属性", brief: "大小 / 哈希 / 格式判定",
+    desc: "读取目标文件本身的基础属性。产出文件名、字节大小、SHA-256 摘要、Magic 头与格式判定，用于确认样本身份并供后续比对。" },
+  "basic.elf":           { name: "ELF 头",   brief: "架构 / 段表 / 入口点",
+    desc: "解析 ELF 头与段表、节表。产出位数、端序、文件类型、机器架构、入口点、段与节数量，以及 GNU RELRO、NX、栈 Canary、CFI、PAC 等加固位。" },
+  "basic.symbols":       { name: "符号表",   brief: "导出导入 / demangle / JNI",
+    desc: "枚举动态符号表并恢复函数签名。产出导入与导出函数、导出数据、C++ demangle 后的可读名字、JNI 方法名及语言分类，支持搜索与导出 CSV。" },
+  "basic.dwarf":         { name: "DWARF",    brief: "调试信息函数签名",
+    desc: "解析调试信息中的编译单元与函数条目。产出函数签名、参数名与参数类型、返回值、声明文件与行号；stripped 构建会明确报告调试信息缺失。" },
+  "basic.types":         { name: "类型恢复", brief: "结构体 / 枚举 / 全局变量",
+    desc: "从 DWARF 恢复类型系统。产出函数签名清单、全局与局部变量、结构体 / 联合体 / 枚举等复合类型的定义。" },
+  "basic.cpp":           { name: "C++ 恢复", brief: "RTTI / vtable / 继承",
+    desc: "从 RTTI 与 vtable 还原 C++ 类结构。产出类名、虚函数表、继承关系、构造与析构函数、thunk 和 construction vtable，可判断是否 C++ 编写。" },
+  "basic.disasm":        { name: "反汇编",   brief: "指令解码 / 函数体",
+    desc: "反汇编可执行段并定位函数边界。产出代码区域清单、函数列表与逐条指令，是控制流图、数据流和交叉引用的基础。" },
+  "basic.cfg":           { name: "控制流图", brief: "基本块 / 跳转关系",
+    desc: "在反汇编结果上恢复过程内控制流。产出每个函数的基本块、跳转边与循环，用于判断分支复杂度和代码结构。" },
+  "basic.callgraph":     { name: "调用图",   brief: "函数调用关系",
+    desc: "解析直接调用、PLT 导入调用和间接调用点。产出 caller / callee 关系，用于判断哪些函数被谁调用、哪些入口可达。" },
+  "basic.dataflow":      { name: "数据流",   brief: "寄存器 / 变量追踪",
+    desc: "过程内 Use-Def 与可达定义分析。产出每个基本块的定义点、使用点与数据依赖，用于追踪参数在函数内部如何流动。" },
+  "basic.dynamic":       { name: "动态链接", brief: "PLT / GOT / 重定位",
+    desc: "解析动态段与重定位信息。产出依赖库（NEEDED）、SONAME、RPATH / RUNPATH、init/fini 构造函数入口和符号版本要求。" },
+  "basic.xref":          { name: "交叉引用", brief: "符号 / 地址引用",
+    desc: "把指令操作数还原为其指向的字符串字面量。产出「代码地址 → 字符串」的引用关系，用于定位报错文案、协议字段名等线索出处。" },
+  "advanced.strings":    { name: "字符串",   brief: "提取 / 分类 / 敏感信息",
+    desc: "提取、定位并分类可打印字符串。产出分类统计（URL、密钥、路径、配置项等）与完整字符串清单及所在偏移，是找线索最快的入口。" },
+  "advanced.constants":  { name: "常量分析", brief: "整数 / 魔法值",
+    desc: "扫描二进制中已知算法的常量表特征。产出命中的魔法值、所属算法族、出现偏移与所在节，是算法识别的底层证据。" },
+  "advanced.algorithm":  { name: "算法识别", brief: "加密 / 哈希特征",
+    desc: "交叉印证常量、符号名和字符串三路证据后给出判定。产出加密 / 哈希 / 密钥派生 / 压缩 / 编码等算法、证据强度（单一或已多源印证）与命中依据。" },
+  "advanced.file-format":{ name: "文件格式", brief: "容器 / 压缩识别",
+    desc: "按签名识别外层与内嵌文件格式。产出格式清单、类别统计（压缩包、镜像、证书等）以及是否已通过结构校验。" },
+  "advanced.library":    { name: "库识别",   brief: "第三方组件指纹",
+    desc: "用依赖名、符号和字符串指纹匹配第三方库。产出库名、版本线索、证据来源与置信强度，用于判断集成了哪些开源组件。" },
+  "advanced.compiler":   { name: "编译器",   brief: "工具链 / 优化级别",
+    desc: "从注释段、符号和特征识别构建工具链。产出编译器家族与版本、Build ID、Android 版本标识等线索，可反推 NDK 版本。" },
+  "advanced.protocol":   { name: "协议分析", brief: "消息结构 / 状态机",
+    desc: "识别网络协议与私有协议特征。产出协议族、消息结构线索（魔术头、长度字段、状态常量）与证据强度。" },
+  "advanced.obfuscation":{ name: "混淆检测", brief: "反调试 / 字符串加密",
+    desc: "汇总混淆与加壳证据。产出混淆信号列表（控制流扁平化、字符串加密、符号剥离、反调试等）、类别统计与印证强度。" },
+  "dynamic.trace":       { name: "动态追踪", brief: "运行时调用记录",
+    desc: "在显式授权且探测到隔离环境时，产出沙箱执行计划（超时、内存上限、执行方式）。默认拒绝执行目标，因此通常只给计划不给运行数据。" },
+  "security.hardening":  { name: "加固检查", brief: "PIE / NX / RELRO / Canary",
+    desc: "评估 ELF 安全加固位。结论汇总在「概览」Tab 的发现项中，覆盖 PIE、NX、RELRO、栈 Canary、CFI 与 PAC。" },
+  "security.dynamic-loading": { name: "动态加载", brief: "dlopen / JNI 加载",
+    desc: "评估库搜索路径与符号抢占带来的动态加载风险。产出 RPATH/RUNPATH 中的相对路径、可写路径、TEXTREL、符号抢占与 bind-now 情况。" },
+  "security.dangerous-api": { name: "危险 API", brief: "高危函数调用",
+    desc: "检测导入与导出的高危函数。产出命中的危险 API、按严重度的数量分布，以及调用点处的上下文证据。" },
+  "security.risk":       { name: "风险汇总", brief: "严重度 / 加权评分",
+    desc: "对所有 Finding 去重、聚合并加权评分。产出风险总分与等级、按严重度和置信度的分布、类别分布，以及最需要关注的 Top 发现项。" },
+  "security.vulnerability": { name: "漏洞模式", brief: "危险 API 映射 CWE",
+    desc: "由危险链接与加固事实推断漏洞类别。产出 CWE 编号映射、漏洞模式计数、加固类发现项与字符串指标。" },
+  "automation.fuzz-target": { name: "Fuzz 目标", brief: "入口函数识别",
+    desc: "从导出函数中挑选适合做模糊测试的入口。产出候选目标及其评分，以及解析器特征、缓冲区长度配对等启发式依据。" },
+  "automation.harness":  { name: "Harness",  brief: "测试桩生成",
+    desc: "为选定入口生成可编译的 Fuzz 测试桩骨架。产出 harness 源码；需要先运行 Fuzz 目标识别出可用入口。" },
+  "automation.binary-diff": { name: "二进制对比", brief: "两版本符号差异",
+    desc: "对比两个 ELF 的符号集合。产出新增、移除、移动和大小发生变化的函数清单，适合做版本回归与补丁影响面评估。" }
 };
 /* 离线兜底顺序（health 拿不到清单时用） */
 var CAP_META_ORDER = Object.keys(CAP_META);
@@ -1495,6 +1530,7 @@ function buildPresets(registered) {
       id: id,
       name: (meta && meta.name) || id,
       brief: (meta && meta.brief) || "",
+      desc: (meta && meta.desc) || "",
       unknown: !meta
     };
   });
@@ -1542,7 +1578,8 @@ function renderCapabilityGrid() {
   // 主行：英文能力 id；副行：中文名 + 简短说明。id 是 CLI / JSON 里的正式名称，
   // 放主位便于与服务端输出对照，中文短语只作辅助说明。
   var cardHtml = function (preset) {
-    return '<div class="cap-card" data-cap="' + esc(preset.id) + '" role="button" tabindex="0" aria-pressed="false">' +
+    return '<div class="cap-card" data-cap="' + esc(preset.id) + '" role="button" tabindex="0" aria-pressed="false"' +
+      (preset.desc ? ' title="' + esc(preset.desc) + '"' : "") + ">" +
       '<span class="check" aria-hidden="true">✓</span>' +
       '<div class="t"><span class="cmd">' + esc(preset.id) + "</span></div>" +
       '<div class="d"><b>' + esc(preset.name) + "</b>" +
@@ -2209,6 +2246,7 @@ function renderAnalyzerBody(id, result, slot) {
     : "";
 
   // 耗时与起止时刻都在左侧 tab 上，这里只留分析结果本身
+  var meta = CAP_META[id] || {};
   return '<div class="panel-head">' +
     "<b>" + esc(capabilityName(id)) + "</b>" +
     '<span class="cap-id">' + esc(id) + "</span>" +
@@ -2216,6 +2254,8 @@ function renderAnalyzerBody(id, result, slot) {
       esc((STATUS_LABEL[result.status] || ["未知"])[0]) + "</span>" +
     cache +
     "</div>" +
+    // 一句话说明这个分析做什么、能拿到什么，降低逐个分析器的认知成本
+    (meta.desc ? '<p class="panel-desc">' + esc(meta.desc) + "</p>" : "") +
     bodyHtml +
     textBlock +
     (diags ? '<div style="margin-top:10px">' + diags + "</div>" : "");
