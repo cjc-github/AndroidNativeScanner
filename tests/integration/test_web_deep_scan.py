@@ -246,6 +246,21 @@ class WebStaticRouteTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertIn("SOInsight", response.read().decode("utf-8"))
 
+    def test_static_assets_are_not_cached_heuristically(self):
+        """index.html must revalidate on every reload.
+
+        The console is a single file under active development. Without an
+        explicit Cache-Control the browser applies heuristic caching, so after
+        an edit a plain reload can still execute the previous version and the
+        page then behaves differently from the source on disk.
+        """
+        for route in ("/", "/index.html", "/so-scan.html"):
+            with self.subTest(route=route):
+                with urllib.request.urlopen(self.base + route) as response:
+                    cache = (response.headers.get("Cache-Control") or "").lower()
+                self.assertIn("no-cache", cache)
+                self.assertIn("must-revalidate", cache)
+
     def test_never_serves_server_source_or_launcher(self):
         for route in ("/server.py", "/start-web.bat", "/__pycache__/server.cpython-310.pyc"):
             with self.assertRaises(urllib.error.HTTPError) as ctx:

@@ -654,13 +654,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_bytes(self, body: bytes, content_type: str) -> None:
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def _discard_body(self) -> None:
         """Drain an unused request body so keep-alive connections stay in sync."""
         try:
@@ -685,7 +678,16 @@ class Handler(BaseHTTPRequestHandler):
                 {"ok": False, "error": f"文件不存在: {route}"}, HTTPStatus.NOT_FOUND
             )
             return
-        self._send_bytes(target.read_bytes(), content_type)
+        body = target.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        # index.html 是开发中的单文件控制台：没有缓存头时浏览器按启发式规则
+        # 缓存它，改了代码刷新后仍跑旧逻辑，表现为"页面行为和代码对不上"。
+        # no-cache + must-revalidate 让每次刷新都回源校验，同时允许 304 省流量。
+        self.send_header("Cache-Control", "no-cache, must-revalidate")
+        self.end_headers()
+        self.wfile.write(body)
 
     # -- routes ----------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
