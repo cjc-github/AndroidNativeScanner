@@ -103,7 +103,6 @@
 ### 6. 构建、脚本与测试
 
 - [x] 可编辑安装（`setup.py`/`setup.cfg`）与 console script；Wheel 构建脚本 `scripts/build_cli.sh`（`--install` 一键）
-- [x] 辅助脚本：`categorise_real_sos.py`（真实库 demangle 全量比对）、`audit_export_coverage.py`（pyelftools 基准导出覆盖率审计）、`crosscheck_sample_demangle.py`、`demangle_gap_summary.py`、`find_dwarf.py`
 - [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**513 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
 - [x] 文档守卫测试 `test_documentation_status.py`（防止文档与实现漂移）
 

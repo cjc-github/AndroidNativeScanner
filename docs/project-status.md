@@ -75,7 +75,7 @@
 - [x] ELF 解析：Header/PHDR/Section/Symbol、ELF32 与 ELF64、截断与越界降级；
 - [x] demangler：ABI 示例向量、真实 libstdc++/libc++/NDK 符号、畸形输入不回退；
 - [x] demangler 与 `cpp_demangle` 参考实现交叉校验（dev 依赖，缺失时跳过）；
-- [x] demangler 对真实共享库的全量比对（`scripts/categorise_real_sos.py`）；
+- [x] demangler 与 `cpp_demangle` 参考实现交叉校验（dev 依赖，缺失时跳过）；
 - [x] JNI 解码：普通/重载/转义/默认包；
 - [x] `basic.symbols`：导出函数、去重、stripped、选项、截断、非 ELF、JSON 可序列化；
 - [x] `security.dangerous-api`：精确匹配、FORTIFY 归一化、无类型导出单独归类、选项与严重度阈值；
@@ -112,7 +112,7 @@ Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgr
 
 ### 真实共享库验证
 
-用 `scripts/categorise_real_sos.py` 从 manylinux wheel 中取出真实 C++ 共享库（libproj、libtiff、libcurl、libsqlite3、libnghttp2，共 5 个）逐符号比对：
+曾用临时脚本从 manylinux wheel 中取出真实 C++ 共享库（libproj、libtiff、libcurl、libsqlite3、libnghttp2，共 5 个）逐符号比对（脚本已随开发期结束移除，结论仍有效）：
 
 | 指标 | 数量 |
 |---|---|
@@ -128,7 +128,7 @@ Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgr
 
 ### 导出枚举完备性审计
 
-用 `scripts/audit_export_coverage.py` 以 pyelftools 独立读取 `.dynsym` 作为基准，逐库核对枚举结果：
+曾用临时脚本以 pyelftools 独立读取 `.dynsym` 作为基准，逐库核对枚举结果（脚本已移除，结论仍有效）：
 
 | 指标 | 数量 |
 |---|---|

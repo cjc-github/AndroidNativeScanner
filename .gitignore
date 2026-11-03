@@ -186,6 +186,9 @@ test/
 target/
 # SOInsight local state
 .soinsight/
+# 开发期临时脚本下载/解压的基准语料（脚本已移除，规则保留以防复发）
+tmp_wheels/
+tmp_sos/
 
 
 # Input and output directories
