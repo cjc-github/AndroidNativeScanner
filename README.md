@@ -24,7 +24,8 @@ Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六�
 
 | 文档 | 内容 |
 |---|---|
-| [快速使用](docs/quickstart.md) | 安装、最常用命令和输出选项（一页） |
+| [快速使用](docs/quickstart.md) | 一键启动、安装、最常用命令和输出选项（一页） |
+| [pip 镜像源配置](docs/pip-mirrors.md) | 切换国内镜像，解决安装慢的问题 |
 | [模块体系](docs/module-system.md) | 六大产品模块、45 项能力及跨域依赖规则 |
 | [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
 | [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
@@ -36,6 +37,22 @@ Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六�
 | [V1 历史规划](design/design_v1.0.md) | 历史参考 |
 
 ## 快速运行
+
+第一次使用，直接在仓库根目录跑启动脚本，它会自动判断 Python 版本、创建虚拟环境、安装依赖并打开本地 Web 控制台：
+
+```bash
+./start.sh                                        # Linux / macOS
+powershell -ExecutionPolicy Bypass -File start.ps1   # Windows
+```
+
+```bash
+./start.sh --port 9000      # 换端口（默认 8791）
+./start.sh --no-open        # 不自动打开浏览器
+```
+
+镜像源在 `pip-mirrors.toml` 里配置（默认阿里云），换源只改 `active` 一行，详见 [pip 镜像源配置](docs/pip-mirrors.md)。完整启动日志写在 `logs/start.log`。
+
+直接用命令行：
 
 ```bash
 # 无安装运行
@@ -97,19 +114,17 @@ soinsight --help
 仓库自带一个只绑定回环地址的本地控制台（仅标准库，无需额外依赖）。它把浏览器和 CLI 连起来：页面选文件 → 勾选分析能力 → 后台以子进程跑 `python -m soinsight ... --format json` → 结果按 Analyzer 分 Tab 展示。
 
 ```bash
-# Windows：双击 web\start-web.bat，或
-py -3 web/server.py                  # 推荐 py -3：默认 python 可能是没装 PyYAML 的版本
-# Linux / macOS
-python3 web/server.py
-
-python3 web/server.py --port 9000    # 指定端口（默认 8765，被占用则顺延）
-python3 web/server.py --no-open      # 不自动打开浏览器
-python3 web/server.py --timeout 600  # 单次分析超时（默认 180 秒）
+./start.sh                       # 一键：建环境 + 装依赖 + 启动（推荐）
+python3 web/server.py            # 环境已就绪时直接起（默认 8765，被占用则顺延）
+python3 web/server.py --port 9000
+python3 web/server.py --no-open
+python3 web/server.py --timeout 600
 ```
 
 - 支持拖拽上传、服务器绝对路径、`in/` 目录样本三种目标来源；上传文件写入临时目录，分析后删除；
 - 分析能力支持任意多选（依赖自动补齐），也可切到「组合扫描」跑全部已实现 Analyzer；
 - 运行中可点「停止分析」终止子进程；结果可复制/下载 JSON，符号表与发现项可导出 CSV；
+- 结果 JSON 由服务端存到 `reports/`，页面只给路径和下载入口，不内联渲染数 MB 的完整数据；
 - `web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时日志 + 结果摘要；
 - 包内另有旧的 `soinsight web` 子命令（端口 8080，简易上传页），日常请使用 `web/server.py`。
 
@@ -117,32 +132,33 @@ python3 web/server.py --timeout 600  # 单次分析超时（默认 180 秒）
 
 ```text
 AndroidNativeScanner/
-├── main.py                       # V1 入口
+├── start.sh / start.ps1        # 一键启动：自动建 venv、装依赖、起 Web 控制台
+├── pip-mirrors.toml            # pip 镜像源配置（active 一行切换）
+├── main.py                     # V1 入口
 ├── src/
-│   ├── analyzer/                 # V1 具体分析器
-│   ├── cli.py                    # V1 CLI
-│   └── soinsight/                # V2 CLI 工具箱
-│       ├── modules/              # 六大产品能力域及能力目录
+│   ├── analyzer/               # V1 具体分析器
+│   ├── cli.py                  # V1 CLI
+│   └── soinsight/              # V2 CLI 工具箱
+│       ├── modules/            # 六大产品能力域及能力目录
 │       │   ├── basic/
 │       │   ├── advanced/
 │       │   ├── security/
 │       │   ├── dynamic/
 │       │   ├── ai/
 │       │   └── automation/
-│       ├── cli/                  # CLI 适配层
-│       ├── application/          # 应用服务层
-│       ├── core/                 # Analyzer/Rule/Planner/Runtime 等共享机制
-│       ├── analyzers/            # 具体 Analyzer 注册位置
-│       ├── renderers/            # Text/JSON/Markdown/HTML/SARIF 输出
-│       ├── infrastructure/       # 配置、工具、存储、插件边界
-│       │   ├── elf/              # 纯 Python ELF 解析 + C++ demangle + JNI 解码
-│       │   └── dwarf/            # 纯 Python DWARF 调试信息解析
-│       └── compatibility/        # V1 兼容适配预留
-├── tests/                        # V2 单元与集成测试
-├── web/                          # 本地 Web 控制台：server.py / index.html / so-scan.html / start-web.bat
-├── scripts/build_cli.sh          # Wheel 构建与入口校验
-├── docs/                         # 使用与开发文档
-└── design/                       # V2 主设计、V3 占位与 V1 历史规划
+│       ├── cli/                # CLI 适配层
+│       ├── application/        # 应用服务层
+│       ├── core/               # Analyzer/Rule/Planner/Runtime 等共享机制
+│       ├── analyzers/          # 具体 Analyzer 注册位置
+│       ├── renderers/          # Text/JSON/Markdown/HTML/SARIF 输出
+│       └── infrastructure/     # 配置、工具、存储、插件边界
+│           ├── elf/            # 纯 Python ELF 解析 + C++ demangle + JNI 解码
+│           └── dwarf/          # 纯 Python DWARF 调试信息解析
+├── tests/                      # V2 单元与集成测试
+├── web/                        # 本地 Web 控制台：server.py / index.html / so-scan.html
+├── scripts/build_cli.sh        # Wheel 构建与入口校验
+├── docs/                       # 使用与开发文档
+└── design/                     # V2 主设计、V3 占位与 V1 历史规划
 ```
 
 ## 当前能力边界

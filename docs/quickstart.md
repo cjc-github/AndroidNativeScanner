@@ -2,7 +2,39 @@
 
 SOInsight（命令 `soinsight`）对 Linux/Android ELF 动态库（`.so`）做本地静态分析。本页只覆盖最简用法；完整参数、YAML 字段与设计细节见 `docs/archive/` 与 `design/`。
 
+## 0. 一键启动（推荐）
+
+不想手动建环境、装依赖，用仓库根目录的启动脚本。它会自动判断 Python 版本（≥3.10）、创建/复用 `.venv`、按 `pip-mirrors.toml` 里的配置装依赖，然后启动本地 Web 控制台并在浏览器打开。
+
+```bash
+# Linux / macOS
+./start.sh
+
+# 指定端口（默认 8791，也可用环境变量 SOINSIGHT_PORT）
+./start.sh --port 9000
+
+# 不自动打开浏览器、调整单次分析超时
+./start.sh --no-open --timeout 600
+```
+
+```powershell
+# Windows（PowerShell）
+powershell -ExecutionPolicy Bypass -File start.ps1
+powershell -ExecutionPolicy Bypass -File start.ps1 -Port 9000
+```
+
+脚本行为：
+
+- 已存在 `.venv` 就直接复用，不会每次重装；
+- 依赖按 `requirements.txt` 的哈希判断是否要重装，改过依赖清单才会重新安装；
+- 完整过程写入 `logs/start.log`，出问题直接贴这个文件；
+- 额外参数会透传给 `web/server.py`（`--port` / `--host` / `--timeout` / `--no-open`）。
+
+换 pip 镜像源改 `pip-mirrors.toml` 的 `active` 一行即可，不用动脚本，详见 [pip 镜像源配置](pip-mirrors.md)。
+
 ## 1. 安装
+
+想直接用命令行而不是网页，有两种方式。
 
 源码目录内免安装运行：
 
@@ -18,6 +50,14 @@ python -m pip install -U pip setuptools wheel
 python -m pip install -e '.[dev]'
 soinsight --version
 ```
+
+国内网络装得慢时换镜像，例如阿里云：
+
+```bash
+python -m pip install -e '.[dev]' -i https://mirrors.aliyun.com/pypi/simple/
+```
+
+其他镜像和切换方式见 [pip 镜像源配置](pip-mirrors.md)。
 
 ## 2. 环境自检
 
@@ -69,15 +109,22 @@ soinsight scan libfoo.so
 不想敲命令时，可启动一个本地网页控制台，在浏览器里选择 .so 文件、勾选能力后一键分析，结果以卡片形式展示（ELF 头、符号表、发现项、DWARF 等）。
 
 ```bash
-# 启动：在项目根目录执行
-python web/server.py            # 默认 http://127.0.0.1:8791
+# 一键启动（自动建环境、装依赖），推荐
+./start.sh                        # Linux / macOS
+powershell -ExecutionPolicy Bypass -File start.ps1   # Windows
 
-# 或直接双击 web/start-web.bat（Windows）
+# 环境已就绪时，直接起服务
+python3 web/server.py             # 默认 http://127.0.0.1:8765，占用则顺延
+python3 web/server.py --port 9000 # 指定端口
+python3 web/server.py --no-open   # 不自动打开浏览器
 ```
 
 用浏览器打开提示的地址即可。支持三种目标来源：**拖拽 / 点击上传 .so 文件**、**填写服务器上已有的绝对路径**、**直接选 `in/` 目录里的样本**。分析后端就是 `soinsight` CLI（`--format json`），所以 CLI 能跑的能力，网页里都能跑。
 
+`web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时滚动日志 + 结果摘要，适合不想勾选能力、直接看全量的场景。
+
 > 仅监听本机 `127.0.0.1`，不上传任何数据到外部网络；非 ELF 文件或非法路径会被直接拒绝。
+> 分析结果 JSON 会存到 `reports/` 目录，「结果 JSON」Tab 里给出路径与下载入口，页面不内联渲染数 MB 的完整数据。
 
 ## 注意事项
 
