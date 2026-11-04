@@ -1184,6 +1184,8 @@ var CAP_META = {
     desc: "过程内 Use-Def 与可达定义分析。产出每个基本块的定义点、使用点与数据依赖，用于追踪参数在函数内部如何流动。" },
   "basic.dynamic":       { name: "动态链接", brief: "PLT / GOT / 重定位",
     desc: "解析动态段与重定位信息。产出依赖库（NEEDED）、SONAME、RPATH / RUNPATH、init/fini 构造函数入口和符号版本要求。" },
+  "basic.jni":           { name: "JNI 注册表", brief: "静态 / 动态注册",
+    desc: "还原 JNI 注册表。静态侧是 Java_* 导出（包名 / 类名 / 方法名 / 参数类型），动态侧从 RegisterNatives 消费的 JNINativeMethod 数组还原方法名、Java 方法描述符与 native 函数地址；strip 后函数只剩地址并如实标注，方法名为简名时所属 Java 类需运行时 FindClass 才知道。" },
   "basic.xref":          { name: "交叉引用", brief: "符号 / 地址引用",
     desc: "把指令操作数还原为其指向的字符串字面量。产出「代码地址 → 字符串」的引用关系，用于定位报错文案、协议字段名等线索出处。" },
   "advanced.strings":    { name: "字符串",   brief: "提取 / 分类 / 敏感信息",
@@ -2228,6 +2230,7 @@ function renderAnalyzerBody(id, result, slot) {
   if (id === "basic.file") bodyHtml = renderFileData(data);
   else if (id === "basic.elf") bodyHtml = renderElfData(data);
   else if (id === "basic.symbols") bodyHtml = renderSymbolsData(data);
+  else if (id === "basic.jni") bodyHtml = renderJniData(data);
   else if (id === "basic.dwarf") bodyHtml = renderDwarfData(data);
   else if (id === "advanced.strings") bodyHtml = renderStringsData(data);
   else if (id === "security.dangerous-api") bodyHtml = renderDangerousApiData(data);
@@ -2324,6 +2327,45 @@ function renderSymbolsData(d) {
     '<div style="margin-top:10px"><button class="small" data-role="sym-more" hidden>显示更多</button></div>';
 
   return countsHtml + toolsHtml;
+}
+
+function renderJniData(d) {
+  var regs = d.dynamic_registrations || [];
+  var countsHtml = '<div class="counts">' +
+    countBox(d.static_count, "静态注册") +
+    countBox(d.dynamic_count, "动态注册") +
+    countBox(d.dynamic_array_count, "注册数组") +
+    (d.on_load_present
+      ? '<div class="count-box"><div class="n">有</div><div class="l">JNI_OnLoad</div></div>'
+      : '<div class="count-box"><div class="n">无</div><div class="l">JNI_OnLoad</div></div>') +
+    "</div>";
+
+  var tableHtml = "";
+  if (regs.length) {
+    var rows = regs.map(function (r) {
+      var target = r.function_named ? r.function_symbol : r.function_address;
+      var nameNote = r.qualified
+        ? "全限定名"
+        : "简名 · 所属类需 FindClass";
+      return "<tr>" +
+        '<td class="wrap mono">' + esc(r.method_name) + "</td>" +
+        '<td class="wrap mono">' + esc(r.signature) + "</td>" +
+        '<td class="wrap mono">' + esc(target) + (r.function_named ? "" : "（无符号名）") + "</td>" +
+        '<td class="wrap small">' + esc(nameNote) + "</td>" +
+        '<td class="wrap small mono">' + esc(r.array_slot) + "</td>" +
+        "</tr>";
+    }).join("");
+    tableHtml = '<div class="table-wrap" style="margin-top:12px"><table class="data">' +
+      "<thead><tr><th>方法名</th><th>Java 签名</th><th>native 函数</th><th>命名</th><th>数组位置</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody></table></div>";
+  } else if (d.on_load_present || d.register_natives_imported) {
+    tableHtml = '<div class="note">检测到 JNI_OnLoad / RegisterNatives，但没有找到形似 JNINativeMethod 的数组。' +
+      "数组被混淆或位于非常规位置时会出现这种情况。</div>";
+  } else {
+    tableHtml = '<div class="note">该镜像不做动态 JNI 注册（没有 JNI_OnLoad，也没有导入 RegisterNatives）。</div>';
+  }
+
+  return countsHtml + tableHtml;
 }
 
 function renderDwarfData(d) {
@@ -2459,6 +2501,12 @@ var FIELD_LABELS = {
   finding: "发现项", diagnostic: "诊断", warning: "警告", protection: "保护项",
   dependency: "依赖", imported: "导入", exported: "导出", demangled: "已 demangle",
   jni: "JNI", dwarf: "DWARF", elf: "ELF",
+  static_count: "静态注册数", dynamic_count: "动态注册数",
+  dynamic_array_count: "注册数组数", dynamic_registrations: "动态注册表",
+  on_load_present: "JNI_OnLoad", register_natives_imported: "导入 RegisterNatives",
+  method_name: "方法名", signature: "Java 签名", qualified: "是否全限定名",
+  function_address: "函数地址", function_symbol: "函数符号", function_named: "是否有符号名",
+  array_slot: "数组位置", relocation_offsets: "重定位槽",
   relocation: "重定位", struct: "结构体", enum: "枚举", global: "全局变量",
   field: "字段", member: "成员", vtable: "虚表", caller: "调用方",
   callee: "被调用方", xref: "交叉引用", reference: "引用", string: "字符串",
