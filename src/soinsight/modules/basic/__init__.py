@@ -19,6 +19,7 @@ MODULE = ModuleDefinition(
         CapabilityDefinition("basic.callgraph", "callgraph", "Call Graph 恢复", "Caller/Callee 与跨函数调用关系。"),
         CapabilityDefinition("basic.dataflow", "dataflow", "Data Flow 分析", "Use-Def、数据依赖和基础传播关系。"),
         CapabilityDefinition("basic.xref", "xref", "交叉引用", "指令操作数到字符串字面量等数据地址的引用还原。"),
+        CapabilityDefinition("basic.jni", "jni", "JNI 注册表", "静态 Java_* 导出与 RegisterNatives 动态注册的统一还原。"),
     ),
 )
 

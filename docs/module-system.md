@@ -33,6 +33,9 @@ SOInsight V2 以 `design/design_v2.0.md` 为唯一主设计基线。一级模块
 | `basic dataflow` | `basic.dataflow` | Data Flow 分析 | 已实现 |
 | `basic dynamic` | `basic.dynamic` | 动态链接解析 | 已实现 |
 | `basic xref` | `basic.xref` | 交叉引用 | 已实现 |
+| `basic jni` | `basic.jni` | JNI 注册表 | 已实现（静态+动态） |
+
+`basic.jni` 把 JNI 注册表统一到一个视图里：静态侧是 `basic.symbols` 已经解码的 `Java_*` 导出（包名/类名/方法名/参数类型）；动态侧从 `RegisterNatives` 消费的 `JNINativeMethod` 数组还原——数组在 `.data.rel.ro`，每个指针槽带一条 `R_*_RELATIVE` 重定位（加载器必需，strip 也不会剥掉），据此把 name 字符串、Java 方法描述符和函数地址一一对应；函数地址能回查符号表就给函数名，strip 后只给地址并明确告警。方法名是简名时，所属 Java 类由运行时的 `FindClass` 决定，静态不可知，输出中如实标注。纯静态，不执行目标。
 
 `basic.symbols` 采集 `.dynsym`/`.symtab` 符号事实，并从 Itanium C++ mangled name 恢复参数类型、从 JNI native 方法名恢复 Java 包名/类名/方法名与参数类型。其依赖链为 `basic.file → basic.elf → basic.symbols`；mangled name 与 JNI 名之外的签名信息（DWARF 参数名、完整类型）不存在于二进制中，不做推测。
 
@@ -209,7 +212,7 @@ automation.harness
 已实现：
 
 - 六大模块注册目录 `src/soinsight/modules/`；
-- 45 项能力定义及命名空间校验；
+- 46 项能力定义及命名空间校验；
 - 软依赖（`optional_requires`）调度、软依赖缺席降级与按参与依赖分键的缓存；
 - 领域命令树；
 - `modules list/show`；
@@ -220,7 +223,7 @@ automation.harness
 
 未实现：
 
-- 45 项能力对应的具体 Analyzer/Rule/Provider；
+- 46 项能力对应的具体 Analyzer/Rule/Provider；
 - 双目标及复杂输入能力的统一 Request 模型；
 - 动态分析隔离执行器；
 - AI Provider、隐私策略和成本控制；

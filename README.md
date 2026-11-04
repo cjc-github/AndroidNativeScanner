@@ -26,7 +26,7 @@ Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六�
 |---|---|
 | [快速使用](docs/quickstart.md) | 一键启动、安装、最常用命令和输出选项（一页） |
 | [pip 镜像源配置](docs/pip-mirrors.md) | 切换国内镜像，解决安装慢的问题 |
-| [模块体系](docs/module-system.md) | 六大产品模块、45 项能力及跨域依赖规则 |
+| [模块体系](docs/module-system.md) | 六大产品模块、46 项能力及跨域依赖规则 |
 | [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
 | [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
 | [扩展开发指南](docs/extension-development.md) | 为能力实现 Analyzer、Rule、Profile、Renderer |

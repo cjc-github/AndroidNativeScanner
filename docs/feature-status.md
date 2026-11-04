@@ -24,7 +24,7 @@
 
 ### 2. V2 框架层（`soinsight`，六大共享机制）
 
-- [x] 六大产品模块目录与命名空间：`basic`/`advanced`/`security`/`dynamic`/`ai`/`automation`，45 项能力 Catalog（`src/soinsight/modules/*/__init__.py`）
+- [x] 六大产品模块目录与命名空间：`basic`/`advanced`/`security`/`dynamic`/`ai`/`automation`，46 项能力 Catalog（`src/soinsight/modules/*/__init__.py`）
 - [x] 领域化 CLI 命令树、`modules list/show`、`scan --module`（严格模式）与 `scan --module-available`（跨域展开）、隐藏 V1 兼容别名
 - [x] Target/Result/Finding/Diagnostic 统一模型（`core/models/`）
 - [x] Analyzer/Rule/Profile/Renderer SDK + Registry（`core/analyzer/`、`core/rules/`、`core/profiles/`）
@@ -40,7 +40,7 @@
 - [x] CLI 输出规范：状态列、分组 help、`doctor`、`--quiet`、TTY 颜色、窄终端自适应、`report` 二次渲染
 - [x] 退出码与错误语义：能力未实现 → `ANALYSIS_PLAN_ERROR`（预期外壳行为）
 
-### 3. V2 已实现的真正 Analyzer 与 Rule（29/45 能力）
+### 3. V2 已实现的真正 Analyzer 与 Rule（30/46 能力）
 
 | 能力 ID | 内容 | 位置 |
 |---|---|---|
@@ -57,6 +57,7 @@
 | `basic.dynamic` | 动态链接事实：依赖清单、`SONAME`、RPATH/RUNPATH、构造/析构入口、符号版本与需求、重定位与导入计数 | `analyzers/dynamic_link.py` + `infrastructure/elf/dynamic.py` |
 | `basic.xref` | 指令操作数到字符串字面量的交叉引用：逐函数重解码（x86 `rip-relative`/`absolute`、AArch64 `adr`/`adrp-add`/`register-load`、ARM 字面量池与 `movw`/`movt`），`exact`/`suffix` 匹配，控制流引用排除，寄存器追踪在写入与调用点失效；字符串表只收已加载的非代码分节，函数尺寸按分节裁剪 | `analyzers/xref.py` + `infrastructure/xref.py` |
 | `security.hardening` | PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC（基于 ELF/PHDR/符号表/GNU 属性） | `analyzers/security.py` |
+| `basic.jni` | JNI 注册表统一还原：静态 `Java_*` 导出（来自 basic.symbols）+ 动态 `RegisterNatives` 表（从 `.data.rel.ro` 的 RELATIVE 重定位还原 name/签名/函数地址，strip 后只给地址并告警） | `analyzers/jni.py` + `infrastructure/jni_dynamic.py` |
 | `automation.binary-diff` | 双输入符号级 Diff：按已定义函数符号集报告新增/移除/移动/大小变化；`default_enabled=False`，仅经 `diff OLD NEW` 或显式 `--enable` 运行 | `analyzers/binary_diff.py` + `infrastructure/binary_diff.py` |
 | `automation.harness` | 模板型 Harness 生成：libFuzzer 风格 C 骨架，缓冲区→data、长度→size、其余填零；回调/第二缓冲区/输出指针以警告列出，返回类型缺失时按 `int` 假设并明说；只产源码，不编译不执行 | `analyzers/harness.py` + `infrastructure/harness.py` |
 | `automation.fuzz-target` | 静态 Fuzz 入口识别：导出/JNI 排序、参数按形状归类（buffer/size/out-pointer/struct/callback/scalar）、缓冲区+长度对判定与启发式评分（标 `heuristic`），不执行目标 | `analyzers/fuzz_target.py` + `infrastructure/fuzz_targets.py` |
@@ -112,11 +113,11 @@
 
 ### 1. 能力外壳（Catalog + CLI 存在，返回 `ANALYSIS_PLAN_ERROR`）
 
-以下 16/45 项能力**只有目录和命令外壳，没有真实 Analyzer**：
+以下 16/46 项能力**只有目录和命令外壳，没有真实 Analyzer**：
 
 | 模块 | 未实现能力 |
 |---|---|
-| `basic`（0/12） | —（`basic` 十二项能力全部已实现） |
+| `basic`（0/13） | —（`basic` 十三项能力全部已实现） |
 | `advanced`（0/8） | —（`advanced` 八项能力全部已实现） |
 | `security`（0/5） | — |
 | `dynamic`（4/5） | `dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`（`dynamic.trace` 已接入但默认拒绝执行，采集器未接） |

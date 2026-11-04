@@ -142,6 +142,43 @@ def _render_dynamic(result) -> list[str]:
 _TEXT_XREF_LIMIT = 8
 
 
+def _render_jni(result) -> list[str]:
+    """Render the ``basic.jni`` facts, or nothing when not collected."""
+    jni_result = result.results.get("basic.jni")
+    if jni_result is None or not jni_result.data:
+        return []
+    data = jni_result.data
+    static_count = data.get("static_count", 0)
+    dynamic_count = data.get("dynamic_count", 0)
+    if not static_count and not dynamic_count:
+        return []
+    lines = [
+        "",
+        "JNI registrations:",
+        f"  Static (Java_* exports)   {static_count}",
+        f"  Dynamic (RegisterNatives) {dynamic_count}"
+        f" in {data.get('dynamic_array_count', 0)} arrays",
+    ]
+    for item in (data.get("dynamic_registrations") or [])[:_TEXT_JNI_LIMIT]:
+        target = (
+            item.get("function_symbol")
+            if item.get("function_named")
+            else item.get("function_address")
+        )
+        lines.append(
+            f"    {item.get('method_name')} {item.get('signature')} -> {target}"
+        )
+    remainder = dynamic_count - min(
+        len(data.get("dynamic_registrations") or []), _TEXT_JNI_LIMIT
+    )
+    if remainder > 0:
+        lines.append(f"    ... and {remainder} more")
+    return lines
+
+
+_TEXT_JNI_LIMIT = 12
+
+
 def _render_xrefs(result) -> list[str]:
     """Render the ``basic.xref`` facts, or nothing when not collected."""
     xref_result = result.results.get("basic.xref")
@@ -388,6 +425,7 @@ class TextRenderer(Renderer):
             lines.extend(_render_dynamic(result))
             lines.extend(_render_strings(result))
             lines.extend(_render_xrefs(result))
+            lines.extend(_render_jni(result))
             lines.extend(_render_formats(result))
             lines.extend(_render_libraries(result))
             lines.extend(_render_compilers(result))

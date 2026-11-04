@@ -70,6 +70,7 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.callgraph",
         "basic.dataflow",
         "basic.xref",
+        "basic.jni",
     ]
     assert payload["result"]["resolved_analyzers"] == [
         "basic.callgraph",
@@ -82,6 +83,7 @@ def test_basic_module_command_runs_available_basic_analysis(tmp_path, minimal_el
         "basic.xref",
         "basic.dwarf",
         "basic.symbols",
+        "basic.jni",
         "basic.types",
         "basic.cpp",
     ]
@@ -190,7 +192,7 @@ def test_cli_lists_product_modules_with_status_column():
     assert exit_code == 0
     assert stdout.getvalue().splitlines() == [
         "MODULE      NAME      CAPABILITIES  STATUS",
-        "basic       基础分析            12  implemented",
+        "basic       基础分析            13  implemented",
         "advanced    高级分析             8  implemented",
         "security    安全分析             5  implemented",
         "dynamic     动态分析             5  partial",
@@ -302,6 +304,7 @@ def test_cli_lists_plugins_as_table():
         "basic.dynamic            1.0.0   collector   yes     Dynamic Linking Analyzer",
         "basic.elf                1.0.0   collector   yes     ELF Header Analyzer",
         "basic.file               1.0.0   collector   yes     File Analyzer",
+        "basic.jni                1.0.0   collector   yes     JNI Registration Analyzer",
         "basic.symbols            1.0.0   collector   yes     Symbol Analyzer",
         "basic.types              1.0.0   collector   yes     Type Recovery Analyzer",
         "basic.xref               1.0.0   collector   yes     Cross-Reference Analyzer",
@@ -389,7 +392,7 @@ def test_cli_doctor_outputs_grouped_health_check():
     assert "  Executable            " in output
     assert "\nCapabilities:\n" in output
     assert "  Product modules        6\n" in output
-    assert "  Registered analyzers   29\n" in output
+    assert "  Registered analyzers   30\n" in output
     assert "\nLegacy tools (V1 pipeline only):\n" in output
     assert "  readelf               " in output
     assert "  nm                    " in output

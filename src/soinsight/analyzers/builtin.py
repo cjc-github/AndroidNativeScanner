@@ -16,6 +16,7 @@ from .harness import AutomationHarnessAnalyzer
 from .compiler import AdvancedCompilerAnalyzer
 from .obfuscation import AdvancedObfuscationAnalyzer
 from .protocol import AdvancedProtocolAnalyzer
+from .jni import BasicJniAnalyzer
 from .library import AdvancedLibraryAnalyzer
 from .dynamic_link import BasicDynamicAnalyzer
 from .disasm import BasicDisasmAnalyzer
@@ -57,6 +58,7 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(AutomationFuzzTargetAnalyzer())
     registry.register(AutomationHarnessAnalyzer())
     registry.register(AutomationBinaryDiffAnalyzer())
+    registry.register(BasicJniAnalyzer())
     registry.register(AdvancedStringsAnalyzer())
     registry.register(SecurityHardeningAnalyzer())
     registry.register(SecurityDynamicLoadingAnalyzer())

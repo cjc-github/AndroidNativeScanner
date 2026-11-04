@@ -128,7 +128,7 @@ python3 web/server.py --no-open   # 不自动打开浏览器
 
 ## 注意事项
 
-- 六大模块共 45 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`automation.fuzz-target`、`automation.harness`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
+- 六大模块共 46 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`basic.jni`、`automation.fuzz-target`、`automation.harness`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
 - `--module` 是严格展开（要求模块内能力全部已实现），日常请用 `--module-available`。
 - V1 旧入口仍可用：`python3 main.py libfoo.so`。
 
@@ -176,6 +176,6 @@ soinsight diff old.so new.so --format json
 ## 更多文档
 
 - 原详细使用文档（快速开始/使用手册/命令参考/YAML 配置）：`docs/archive/`
-- 模块体系与 45 项能力清单：`docs/module-system.md`
+- 模块体系与 46 项能力清单：`docs/module-system.md`
 - 项目状态与路线图：`docs/project-status.md`
 - 设计与扩展开发：`design/design_v2.0.md`、`docs/extension-development.md`
