@@ -101,11 +101,14 @@ def _render_jni(result) -> str:
             "<th>Naming</th><th>Array slot</th></tr>"
         )
         for entry in registrations:
-            target = (
-                entry.get("function_symbol")
-                if entry.get("function_named")
-                else f"{entry.get('function_address')} (no symbol name)"
-            )
+            # The address is worth showing either way: it locates the
+            # function in a disassembly, and without a symbol name it is the
+            # only handle on the target.
+            address = str(entry.get("function_address") or "")
+            if entry.get("function_named"):
+                target = f"{entry.get('function_symbol')} ({address})"
+            else:
+                target = f"{address} (no symbol name)"
             naming = (
                 "fully qualified"
                 if entry.get("qualified")

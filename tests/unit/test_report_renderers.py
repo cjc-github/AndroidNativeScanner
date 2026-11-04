@@ -74,6 +74,9 @@ def test_html_renderer_shows_the_dynamic_registration_table(tmp_path):
     assert "<code>send</code>" in text
     assert "(Ljava/lang/String;)V" in text
     assert "native_send" in text
+    # The address locates the function in a disassembly, so it is shown even
+    # when a symbol name is available.
+    assert "0xca2d" in text
     # A bare method name cannot reveal the Java class, and the report says so.
     assert "FindClass" in text
 
