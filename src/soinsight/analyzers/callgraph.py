@@ -151,35 +151,39 @@ def _collect(path, elf, options: dict, diagnostics: list, decoder: str) -> dict:
         )
         return _empty_data(elf.header.machine, decoder)
 
-    arch = disasm_layer.arch_name(elf.header.machine)
+    profile = disasm_layer.decoder_profile(elf)
+    arch = profile.family if profile is not None else None
     starts: list[tuple[int, str, int, str]] = []
     known: set[int] = set()
     for name, address, size, table in disasm_layer.symbol_functions(elf):
-        starts.append((address, name, size, "symbols"))
-        known.add(address)
+        # A Thumb function carries bit 0 in its symbol value; the code starts
+        # one byte lower, and the mode follows from that bit.
+        real = disasm_layer.normalize_function_address(profile, address)
+        starts.append((real, name, size, "symbols", address))
+        known.add(real)
     for region in regions:
         blob = data[region.offset : region.offset + region.size]
         for address in disasm_layer.prologue_starts(
             blob, region.address, arch, 4 if arch == "aarch64" else 1, known
         ):
-            starts.append((address, f"sub_{address:x}", 0, "prologue"))
+            starts.append((address, f"sub_{address:x}", 0, "prologue", address))
             known.add(address)
     starts.sort(key=lambda item: item[0])
 
     # Bound each function so decoding stops at the next boundary, and emit
     # ``(name, address, size, source)`` records for the graph builder.
     bounded: list[tuple[str, int, int, str]] = []
-    for index, (address, name, size, source) in enumerate(starts):
+    for index, (address, name, size, source, raw) in enumerate(starts):
         if size <= 0:
             if index + 1 < len(starts):
                 size = starts[index + 1][0] - address
             else:
                 size = _region_end(regions, address) - address
-        bounded.append((name, address, max(size, 0), source))
+        bounded.append((name, address, max(size, 0), source, raw))
 
     graph = build_call_graph(
         data, elf, bounded[: options["max_functions"]],
-        disasm_layer.decode_architecture,
+        disasm_layer.decoder_profile,
     )
 
     edges = graph.edges

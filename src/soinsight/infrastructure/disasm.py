@@ -16,14 +16,48 @@ from .elf import ElfFile, SectionHeader
 _SPEC = importlib.util.find_spec("capstone")
 _MODULE = None
 
-# ELF e_machine name -> (short arch name, capstone arch constant, mode name).
+# ELF e_flags bit: big-endian data with big-endian instruction encoding.
+EF_ARM_BE8 = 0x00800000
+
+# ELF e_machine name -> (family, Capstone architecture constant, bit width).
+#
+# The width is ``None`` when the machine says nothing about it (MIPS and
+# PowerPC exist in both), and fixed when it does: e_machine 3 is 32-bit x86
+# and e_machine 62 is 64-bit, whatever the ELF class claims.
 _ARCHITECTURES = {
-    "x86-64": ("x86", "CS_ARCH_X86", "CS_MODE_64"),
-    "AArch64": ("aarch64", "CS_ARCH_ARM64", "CS_MODE_LITTLE_ENDIAN"),
-    "ARM": ("arm", "CS_ARCH_ARM", "CS_MODE_LITTLE_ENDIAN"),
-    "x86": ("x86", "CS_ARCH_X86", "CS_MODE_32"),
-    "Intel 80386": ("x86", "CS_ARCH_X86", "CS_MODE_32"),
+    "x86": ("x86", "CS_ARCH_X86", 32),
+    "Intel 80386": ("x86", "CS_ARCH_X86", 32),
+    "x86-64": ("x86", "CS_ARCH_X86", 64),
+    "ARM": ("arm", "CS_ARCH_ARM", 32),
+    "AArch64": ("aarch64", "CS_ARCH_ARM64", 64),
+    "MIPS": ("mips", "CS_ARCH_MIPS", None),
+    "PowerPC": ("ppc", "CS_ARCH_PPC", 32),
+    "PowerPC64": ("ppc", "CS_ARCH_PPC", 64),
+    "S390": ("sysz", "CS_ARCH_SYSZ", 64),
+    "SuperH": ("sh", "CS_ARCH_SH", 32),
+    "SPARC": ("sparc", "CS_ARCH_SPARC", 32),
+    "SPARCv9": ("sparc", "CS_ARCH_SPARC", 64),
+    "68K": ("m68k", "CS_ARCH_M68K", 32),
+    "RISC-V": ("riscv", "CS_ARCH_RISCV", None),
+    # IA-64 has no Capstone architecture; it stays unsupported on purpose.
 }
+
+
+@dataclass(frozen=True)
+class DecoderProfile:
+    """How one image must be decoded."""
+
+    arch: int
+    """The Capstone architecture constant."""
+
+    mode: int
+    """The base Capstone mode."""
+
+    family: str
+    """Short family name: ``x86``, ``arm``, ``aarch64``, ``mips``, ``ppc`` ..."""
+
+    thumb_capable: bool = False
+    """True for ARM, where the mode depends on the function being decoded."""
 
 X86_PROLOGUE_PATTERNS = (b"\xf3\x0f\x1e\xfa", b"\x55\x48\x89\xe5")
 
@@ -66,26 +100,109 @@ def capstone_version() -> str | None:
     return module.__version__ if module is not None else None
 
 
-def decode_architecture(machine: str) -> tuple[str, int] | None:
-    """Map an ELF ``e_machine`` name to ``(capstone arch, capstone mode)``.
+def decoder_profile(elf: ElfFile) -> DecoderProfile | None:
+    """Build the decoder profile of an image, or ``None`` when unsupported.
 
     Returns ``None`` when the machine is unsupported or Capstone is absent,
     so callers fall back to boundary facts without decoding.
     """
-    pair = _ARCHITECTURES.get(machine)
-    if pair is None:
-        return None
     module = _load_capstone()
     if module is None:
         return None
-    _, arch_constant, mode_name = pair
-    return getattr(module, arch_constant), getattr(module, mode_name)
+    entry = _ARCHITECTURES.get(elf.header.machine)
+    if entry is None:
+        return None
+    family, arch_name, width = entry
+    arch = getattr(module, arch_name, None)
+    if arch is None:
+        return None
+
+    is64 = elf.header.elf_class == "ELF64"
+    if width is not None:
+        is64 = width == 64
+    big_endian = elf.header.endianness == "big"
+    if elf.header.machine == "ARM" and elf.header.flags & EF_ARM_BE8:
+        # BE8 keeps little-endian data with big-endian instruction encoding.
+        big_endian = True
+    mode = _mode_for(module, family, is64=is64, big_endian=big_endian)
+    if mode is None:
+        return None
+    return DecoderProfile(
+        arch=arch,
+        mode=mode,
+        family=family,
+        thumb_capable=(family == "arm"),
+    )
+
+
+def _mode_for(module, family: str, *, is64: bool, big_endian: bool) -> int | None:
+    """The Capstone mode for one architecture, bit width and byte order."""
+    endian = module.CS_MODE_BIG_ENDIAN if big_endian else module.CS_MODE_LITTLE_ENDIAN
+    if family == "x86":
+        return module.CS_MODE_64 if is64 else module.CS_MODE_32
+    if family in ("arm", "aarch64"):
+        return endian
+    if family == "mips":
+        width = module.CS_MODE_MIPS64 if is64 else module.CS_MODE_MIPS32
+        return width | endian
+    if family == "ppc":
+        width = module.CS_MODE_64 if is64 else module.CS_MODE_32
+        return width | endian
+    if family in ("sysz", "sparc"):
+        return module.CS_MODE_BIG_ENDIAN
+    if family == "sh":
+        return module.CS_MODE_SH4 | module.CS_MODE_LITTLE_ENDIAN
+    if family == "m68k":
+        return module.CS_MODE_BIG_ENDIAN | module.CS_MODE_M68K_040
+    if family == "riscv":
+        return module.CS_MODE_RISCV64 if is64 else module.CS_MODE_RISCV32
+    return None
+
+
+def mode_for_address(profile: DecoderProfile, address: int) -> int:
+    """The mode to decode the function at ``address`` with.
+
+    ARM needs the per-function decision: the symbol value of a Thumb
+    function carries bit 0, and the code starts one byte lower. The address
+    passed here must be the raw symbol value -- the normalized one has the
+    Thumb bit already cleared.
+    """
+    if profile.thumb_capable and address & 1:
+        return profile.mode | _module_constant("CS_MODE_THUMB", 16)
+    return profile.mode
+
+
+def normalize_function_address(profile: DecoderProfile | None, address: int) -> int:
+    """The address a function actually starts at.
+
+    For ARM the symbol value of a Thumb function has bit 0 set; the code
+    starts one byte lower.
+    """
+    if profile is not None and profile.thumb_capable:
+        return address & ~1
+    return address
+
+
+def _module_constant(name: str, fallback: int) -> int:
+    module = _load_capstone()
+    if module is None:
+        return fallback
+    return getattr(module, name, fallback)
 
 
 def arch_name(machine: str) -> str | None:
     """Return the short architecture name used for prologue scanning."""
-    pair = _ARCHITECTURES.get(machine)
-    return pair[0] if pair else None
+    entry = _ARCHITECTURES.get(machine)
+    return entry[0] if entry else None
+
+
+def resolvable_families() -> frozenset[str]:
+    """The architecture families whose references the xref layer can resolve.
+
+    Every family in the decoder table can be disassembled, but the reference
+    resolution is written per instruction set, so only these have one.
+    """
+    return frozenset({"x86", "arm", "aarch64"})
 
 
 def is_aarch64_blob_prologue(blob: bytes) -> bool:

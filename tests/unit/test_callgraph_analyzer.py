@@ -173,7 +173,7 @@ def test_plt_imports_maps_stub_to_relocated_symbol(tmp_path):
 
     from soinsight.infrastructure import disasm
 
-    imports = plt_imports(data, elf, disasm.decode_architecture)
+    imports = plt_imports(data, elf, disasm.decoder_profile)
 
     assert imports == {0x1020: "Java_com_example_Foo_nativeInit"}
 
@@ -188,7 +188,7 @@ def test_plt_imports_returns_empty_without_relocations(tmp_path):
 
     from soinsight.infrastructure import disasm
 
-    assert plt_imports(data, elf, disasm.decode_architecture) == {}
+    assert plt_imports(data, elf, disasm.decoder_profile) == {}
 
 
 def test_build_call_graph_handles_an_empty_function_list():
@@ -198,7 +198,7 @@ def test_build_call_graph_handles_an_empty_function_list():
 
     from soinsight.infrastructure import disasm
 
-    graph = build_call_graph(b"", elf, [], disasm.decode_architecture)
+    graph = build_call_graph(b"", elf, [], disasm.decoder_profile)
 
     assert graph.edges == ()
     assert graph.callers_of == ()
@@ -213,7 +213,7 @@ def test_build_call_graph_skips_zero_sized_functions():
     elf = parse_bytes(build_elf64_with_symbols(SAMPLE_SYMBOLS, text_bytes=X86_CODE))
     data = build_elf64_with_symbols(SAMPLE_SYMBOLS, text_bytes=X86_CODE)
 
-    graph = build_call_graph(data, elf, [("only", 0x1000, 0, "symbols")], disasm.decode_architecture)
+    graph = build_call_graph(data, elf, [("only", 0x1000, 0, "symbols")], disasm.decoder_profile)
 
     assert graph.edges == ()
 

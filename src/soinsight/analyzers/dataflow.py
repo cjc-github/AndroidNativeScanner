@@ -177,21 +177,23 @@ def _empty_data(machine: str, decoder: str | None) -> dict:
 def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list, bool]:
     """Build one data-flow result per function, honouring the budgets."""
     data = path.read_bytes()
-    arch = disasm_layer.arch_name(elf.header.machine)
-    arch_pair = disasm_layer.decode_architecture(elf.header.machine)
-    mode = arch_pair[1] if arch_pair else 0
+    profile = disasm_layer.decoder_profile(elf)
+    arch = profile.family if profile is not None else None
 
     starts: list[tuple[int, str, int, str]] = []
     known: set[int] = set()
     for name, address, size, table in disasm_layer.symbol_functions(elf):
-        starts.append((address, name, size, "symbols"))
-        known.add(address)
+        # A Thumb function carries bit 0 in its symbol value; the code starts
+        # one byte lower, and the mode follows from that bit.
+        real = disasm_layer.normalize_function_address(profile, address)
+        starts.append((real, name, size, "symbols", address))
+        known.add(real)
     for region in regions:
         blob = data[region.offset : region.offset + region.size]
         for address in disasm_layer.prologue_starts(
             blob, region.address, arch, 4 if arch == "aarch64" else 1, known
         ):
-            starts.append((address, f"sub_{address:x}", 0, "prologue"))
+            starts.append((address, f"sub_{address:x}", 0, "prologue", address))
             known.add(address)
     starts.sort(key=lambda item: item[0])
 
@@ -210,7 +212,7 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
             )
         )
 
-    for index, (address, name, size, source) in enumerate(
+    for index, (address, name, size, source, raw) in enumerate(
         starts[: options["max_functions"]]
     ):
         if size <= 0:
@@ -223,7 +225,10 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
         blob = _extent_bytes(data, regions, address, size)
         if blob is None:
             continue
-        decoded = disasm_layer.decode_bytes(blob, address, arch_pair[0], mode)
+        if profile is None:
+            continue
+        mode = disasm_layer.mode_for_address(profile, raw)
+        decoded = disasm_layer.decode_bytes(blob, address, profile.arch, mode)
         if not decoded:
             continue
         if len(decoded) > budget:

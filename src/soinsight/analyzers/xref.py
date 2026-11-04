@@ -20,7 +20,12 @@ from ..core.models import (
     Diagnostic,
     DiagnosticLevel,
 )
-from ..infrastructure.disasm import capstone_version, decode_architecture
+from ..infrastructure.disasm import (
+    capstone_version,
+    decoder_profile,
+    mode_for_address,
+    resolvable_families,
+)
 from ..infrastructure.elf import ElfFormatError, parse_elf
 from ..infrastructure.strings import extract_strings
 from ..infrastructure.xref import decode_references
@@ -75,14 +80,14 @@ class BasicXrefAnalyzer(Analyzer):
                 ],
             )
 
-        arch_pair = decode_architecture(elf.header.machine)
-        if arch_pair is None:
+        profile = decoder_profile(elf)
+        if profile is None or profile.family not in resolvable_families():
             diagnostics.append(
                 Diagnostic(
                     code="XREF_UNSUPPORTED_ARCH",
                     level=DiagnosticLevel.WARNING,
                     message=(
-                        f"No decoder for machine {elf.header.machine}; "
+                        f"No reference resolver for machine {elf.header.machine}; "
                         "cross-references are not resolved."
                     ),
                     analyzer_id=ANALYZER_ID,
@@ -135,13 +140,17 @@ class BasicXrefAnalyzer(Analyzer):
         xrefs: list[dict] = []
         referenced: set[str] = set()
         truncated = False
-        if arch_pair is not None and decoder_version is not None:
+        if (
+            profile is not None
+            and decoder_version is not None
+            and profile.family in resolvable_families()
+        ):
             with open(target.real_path, "rb") as stream:
                 xrefs, truncated = _resolve_references(
                     stream,
                     regions,
                     disasm_data.get("functions", []),
-                    arch_pair,
+                    profile,
                     table,
                     options,
                 )
@@ -293,7 +302,7 @@ def _resolve_references(
     stream,
     regions: list[dict],
     functions: list[dict],
-    arch_pair: tuple[int, int],
+    profile,
     table: _StringTable,
     options: dict,
 ) -> tuple[list[dict], bool]:
@@ -305,7 +314,7 @@ def _resolve_references(
     follows. Code that belongs to no function is decoded afterwards so that
     PLT stubs and similar regions are covered too.
     """
-    arch, mode = arch_pair
+    arch = profile.arch
     xrefs: list[dict] = []
     truncated = False
 
@@ -337,12 +346,12 @@ def _resolve_references(
         if not blob:
             continue
         xrefs, truncated = _collect(
-            blob, start, arch, mode, table, name, xrefs, options, truncated
+            blob, start, profile, table, name, xrefs, options, truncated
         )
     if not truncated:
         for region in mapped:
             xrefs, truncated = _collect_gaps(
-                stream, region, extents, arch, mode, table, xrefs, options
+                stream, region, extents, profile, table, xrefs, options
             )
             if truncated:
                 break
@@ -396,8 +405,7 @@ def _read(stream, offset: int, size: int) -> bytes:
 def _collect(
     blob: bytes,
     start_address: int,
-    arch: int,
-    mode: int,
+    profile,
     table: _StringTable,
     function: str | None,
     xrefs: list[dict],
@@ -405,7 +413,8 @@ def _collect(
     truncated: bool,
 ) -> tuple[list[dict], bool]:
     """Decode one blob and append the references that hit a string."""
-    for reference in decode_references(blob, start_address, arch, mode):
+    mode = mode_for_address(profile, start_address)
+    for reference in decode_references(blob, start_address, profile.arch, mode):
         if truncated:
             break
         if reference.kind in _CONTROL_FLOW_KINDS:
@@ -437,8 +446,7 @@ def _collect_gaps(
     stream,
     region: _Region,
     extents: list[tuple[_Region, int, int, str | None]],
-    arch: int,
-    mode: int,
+    profile,
     table: _StringTable,
     xrefs: list[dict],
     options: dict,
@@ -454,7 +462,7 @@ def _collect_gaps(
             blob = _read(stream, region.file_offset(cursor), start - cursor)
             if blob:
                 xrefs, truncated = _collect(
-                    blob, cursor, arch, mode, table, None, xrefs, options, truncated
+                    blob, cursor, profile, table, None, xrefs, options, truncated
                 )
                 if truncated:
                     return xrefs, truncated
@@ -467,7 +475,7 @@ def _collect_gaps(
         )
         if blob:
             xrefs, truncated = _collect(
-                blob, cursor, arch, mode, table, None, xrefs, options, truncated
+                blob, cursor, profile, table, None, xrefs, options, truncated
             )
     return xrefs, truncated
 

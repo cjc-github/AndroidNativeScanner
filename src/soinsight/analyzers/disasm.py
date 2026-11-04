@@ -11,11 +11,12 @@ from ..core.models import (
     DiagnosticLevel,
 )
 from ..infrastructure.disasm import (
-    arch_name,
     capstone_version,
-    decode_architecture,
     decode_bytes,
+    decoder_profile,
     executable_sections,
+    mode_for_address,
+    normalize_function_address,
     prologue_starts,
     symbol_functions,
 )
@@ -61,9 +62,9 @@ class BasicDisasmAnalyzer(Analyzer):
                 ],
             )
 
-        arch_pair = decode_architecture(elf.header.machine)
-        arch = arch_name(elf.header.machine)
-        if arch is None:
+        profile = decoder_profile(elf)
+        arch = profile.family if profile is not None else None
+        if profile is None:
             diagnostics.append(
                 Diagnostic(
                     code="DISASM_UNSUPPORTED_ARCH",
@@ -100,7 +101,7 @@ class BasicDisasmAnalyzer(Analyzer):
             )
 
         functions, instructions, truncated = _collect(
-            target.real_path, elf, arch, arch_pair, regions, options, diagnostics
+            target.real_path, elf, profile, regions, options, diagnostics
         )
         symbol_bounds = [
             item for item in functions if item["source"] == "symbols"
@@ -167,21 +168,23 @@ class BasicDisasmAnalyzer(Analyzer):
 def _collect(
     path,
     elf,
-    arch: str | None,
-    arch_pair: tuple[int, int] | None,
+    profile,
     regions,
     options: dict,
     diagnostics: list[Diagnostic],
 ) -> tuple[list[dict], list[dict], bool]:
     """Merge symbol bounds with prologue hits and decode instructions."""
     data = path.read_bytes()
-    mode = arch_pair[1] if arch_pair else 0
+    arch = profile.family if profile is not None else None
 
-    starts: list[tuple[int, str, int, str]] = []
+    # Each start keeps the raw symbol value next to the normalized address:
+    # the raw value carries the Thumb bit that selects the decode mode.
+    starts: list[tuple[int, str, int, str, int]] = []
     known: set[int] = set()
     for name, address, size, table in symbol_functions(elf):
-        starts.append((address, name, size, "symbols"))
-        known.add(address)
+        real = normalize_function_address(profile, address)
+        starts.append((real, name, size, "symbols", address))
+        known.add(real)
 
     truncated = False
     if arch is not None:
@@ -193,14 +196,14 @@ def _collect(
                 blob, region.address, arch, 4 if arch == "aarch64" else 1, known
             )
             for address in region_starts:
-                starts.append((address, f"sub_{address:x}", 0, "prologue"))
+                starts.append((address, f"sub_{address:x}", 0, "prologue", address))
                 known.add(address)
 
     starts.sort(key=lambda item: item[0])
     functions: list[dict] = []
     instructions: list[dict] = []
     budget = options["max_instructions"]
-    for index, (address, name, size, source) in enumerate(starts):
+    for index, (address, name, size, source, raw) in enumerate(starts):
         if index + 1 < len(starts):
             extent = starts[index + 1][0] - address
         else:
@@ -218,14 +221,15 @@ def _collect(
         if entry["size"] <= 0:
             functions.append(entry)
             continue
-        if budget <= 0 or arch_pair is None:
+        if budget <= 0 or profile is None:
             functions.append(entry)
             continue
         blob = _extent_bytes(data, regions, address, entry["size"])
         if blob is None:
             functions.append(entry)
             continue
-        decoded = decode_bytes(blob, address, arch_pair[0], mode)
+        mode = mode_for_address(profile, raw)
+        decoded = decode_bytes(blob, address, profile.arch, mode)
         if decoded and decoded[0].address > address:
             # The function may start before the first decoded instruction
             # only when the prologue scan misfires; keep the gap visible.

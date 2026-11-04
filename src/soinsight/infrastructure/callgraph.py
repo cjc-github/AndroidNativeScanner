@@ -139,7 +139,7 @@ def _adrp_ldr_target(instructions, position: int) -> int | None:
 def plt_imports(data: bytes, elf: ElfFile, decode) -> dict[int, str]:
     """Map each PLT stub address to the imported symbol it dispatches to.
 
-    ``decode(machine)`` returns the Capstone ``(arch, mode)`` pair or ``None``.
+    ``decode(elf)`` returns the decoder profile of the image or ``None``.
     """
     slots = relocation_slots(data, elf)
     if not slots:
@@ -150,16 +150,17 @@ def plt_imports(data: bytes, elf: ElfFile, decode) -> dict[int, str]:
     )
     if plt is None or plt.offset < 0 or plt.offset + plt.size > len(data):
         return {}
-    arch_pair = decode(elf.header.machine)
-    if arch_pair is None:
+    profile = decode(elf)
+    if profile is None:
         return {}
 
     from . import disasm
 
     blob = data[plt.offset : plt.offset + plt.size]
+    mode = disasm.mode_for_address(profile, plt.address)
     instructions = [
         (item.address, item.size, item.mnemonic, item.op_str)
-        for item in disasm.decode_bytes(blob, plt.address, arch_pair[0], arch_pair[1])
+        for item in disasm.decode_bytes(blob, plt.address, profile.arch, mode)
     ]
 
     symbols = _relocation_symbols(elf)
@@ -236,23 +237,29 @@ def build_call_graph(
     is the architecture decoder, so the caller controls the instruction source.
     """
     symbols = elf.symbols
-    function_starts = {address: name for name, address, _size, _source in functions}
+    # A bound is ``(name, address, size, source)`` plus the raw symbol value,
+    # which carries the Thumb bit that selects the decode mode.
+    bounds = [
+        item if len(item) == 5 else (*item, item[1]) for item in functions
+    ]
+    function_starts = {address: name for name, address, _size, _source, _raw in bounds}
     imports = plt_imports(data, elf, decode)
-    arch_pair = decode(elf.header.machine)
-    if arch_pair is None:
+    profile = decode(elf)
+    if profile is None:
         return CallGraph((), ())
 
     from . import disasm
 
     edges: list[CallEdge] = []
     callers: dict[int, set[int]] = {}
-    for name, address, size, _source in functions:
+    for name, address, size, _source, raw in bounds:
         if size <= 0:
             continue
         blob = _function_bytes(data, elf, address, size)
         if not blob:
             continue
-        for item in disasm.decode_bytes(blob, address, arch_pair[0], arch_pair[1]):
+        mode = disasm.mode_for_address(profile, raw)
+        for item in disasm.decode_bytes(blob, address, profile.arch, mode):
             if item.mnemonic not in _CALLS:
                 continue
             edge = _resolve_call(

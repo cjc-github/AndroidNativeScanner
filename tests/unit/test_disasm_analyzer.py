@@ -14,9 +14,12 @@ from soinsight.analyzers.disasm import BasicDisasmAnalyzer
 from soinsight.core.analyzer import AnalysisContext
 from soinsight.core.models import AnalysisStatus, AnalysisTarget
 from soinsight.infrastructure.config import RuntimeConfig
+from soinsight.infrastructure.elf import parse_elf
 from soinsight.infrastructure.disasm import (
     capstone_version,
-    decode_architecture,
+    decoder_profile,
+    mode_for_address,
+    normalize_function_address,
     prologue_starts,
     symbol_functions,
 )
@@ -172,8 +175,9 @@ def test_analyzer_decodes_aarch64_samples(tmp_path):
 
 
 def test_analyzer_warns_on_unsupported_machine(tmp_path):
-    sample = tmp_path / "libmips.so"
-    sample.write_bytes(build_elf64_with_symbols(SAMPLE_SYMBOLS, machine=8))
+    # IA-64 has no Capstone architecture.
+    sample = tmp_path / "libia64.so"
+    sample.write_bytes(build_elf64_with_symbols(SAMPLE_SYMBOLS, machine=50))
 
     result = _analyze(sample)
 
@@ -304,20 +308,94 @@ def test_prologue_starts_excludes_known_boundaries():
     assert starts == (0x1020, 0x1024)
 
 
+# Machine numbers as the ELF header carries them; the parser turns them into
+# the names the decoder table uses.
+_MACHINE_NUMBERS = {
+    "x86": 3,
+    "x86-64": 62,
+    "ARM": 40,
+    "AArch64": 183,
+    "MIPS": 8,
+    "PowerPC": 20,
+    "RISC-V": 243,
+    "IA-64": 50,
+}
+
+
+def _elf(tmp_path, machine: str):
+    """A minimal image whose ELF header names ``machine``."""
+    from conftest import build_elf64_with_symbols
+
+    blob = build_elf64_with_symbols([], machine=_MACHINE_NUMBERS[machine])
+    sample = tmp_path / f"lib{machine.replace('-', '_')}.so"
+    sample.write_bytes(blob)
+    return parse_elf(sample)
+
+
 @requires_capstone
-def test_decode_architecture_maps_supported_machines():
-    assert decode_architecture("x86-64") == (
-        capstone.CS_ARCH_X86,
-        capstone.CS_MODE_64,
-    )
-    assert decode_architecture("AArch64")[0] == capstone.CS_ARCH_ARM64
+def test_decoder_profile_maps_supported_machines(tmp_path):
+    """Every architecture in the table reaches a decoder with a sane mode."""
+    profile = decoder_profile(_elf(tmp_path, "x86-64"))
+    assert profile.arch == capstone.CS_ARCH_X86
+    assert profile.mode == capstone.CS_MODE_64
+
+    profile = decoder_profile(_elf(tmp_path, "AArch64"))
+    assert profile.arch == capstone.CS_ARCH_ARM64
+    assert profile.family == "aarch64"
+
     # The parser reports machine 3 as ``x86`` (the short EM_NAMES form), not as
     # the ``Intel 80386`` spelling objdump uses; both must reach a decoder.
-    assert decode_architecture("x86") == (
-        capstone.CS_ARCH_X86,
-        capstone.CS_MODE_32,
+    profile = decoder_profile(_elf(tmp_path, "x86"))
+    assert profile.arch == capstone.CS_ARCH_X86
+
+    # MIPS, PowerPC and RISC-V are common in embedded images.
+    assert decoder_profile(_elf(tmp_path, "MIPS")).arch == capstone.CS_ARCH_MIPS
+    assert decoder_profile(_elf(tmp_path, "PowerPC")).arch == capstone.CS_ARCH_PPC
+    assert decoder_profile(_elf(tmp_path, "RISC-V")).arch == capstone.CS_ARCH_RISCV
+
+
+@requires_capstone
+def test_decoder_profile_is_none_for_an_unsupported_machine(tmp_path):
+    # IA-64 has no Capstone architecture, so it stays unsupported on purpose.
+    assert decoder_profile(_elf(tmp_path, "IA-64")) is None
+
+
+@requires_capstone
+def test_arm_profile_is_thumb_capable(tmp_path):
+    profile = decoder_profile(_elf(tmp_path, "ARM"))
+    assert profile.thumb_capable is True
+    assert profile.family == "arm"
+
+
+@requires_capstone
+def test_thumb_mode_follows_the_function_address(tmp_path):
+    """A Thumb function has bit 0 set in its symbol value."""
+    profile = decoder_profile(_elf(tmp_path, "ARM"))
+    assert mode_for_address(profile, 0x1001) & capstone.CS_MODE_THUMB
+    assert not mode_for_address(profile, 0x1000) & capstone.CS_MODE_THUMB
+    assert normalize_function_address(profile, 0x1001) == 0x1000
+    assert normalize_function_address(profile, 0x1000) == 0x1000
+
+
+@requires_capstone
+def test_byte_order_decides_the_mode():
+    """The mode follows the byte order and the bit width of the image."""
+    from soinsight.infrastructure.disasm import _mode_for
+
+    assert _mode_for(capstone, "mips", is64=True, big_endian=True) & (
+        capstone.CS_MODE_BIG_ENDIAN
     )
-    assert decode_architecture("MIPS") is None
+    assert not _mode_for(capstone, "mips", is64=True, big_endian=False) & (
+        capstone.CS_MODE_BIG_ENDIAN
+    )
+    assert _mode_for(capstone, "x86", is64=False, big_endian=False) == (
+        capstone.CS_MODE_32
+    )
+    assert _mode_for(capstone, "x86", is64=True, big_endian=False) == (
+        capstone.CS_MODE_64
+    )
+    # A machine with no known mode builder stays unsupported.
+    assert _mode_for(capstone, "unknown", is64=True, big_endian=False) is None
 
 
 def test_capstone_version_matches_installed_module():
@@ -349,3 +427,117 @@ def test_format_text_returns_none_for_failed_results(tmp_path):
     result = _analyze(sample)
 
     assert BasicDisasmAnalyzer().format_text(result) is None
+
+
+# Thumb code taken from a real Android ARM library: ``push {r7, lr}``,
+# ``mov r7, sp``, ``sub sp, #0x20`` and ``ldr r2, [pc, #0x70]``.  The same
+# bytes read as ARM would be ``strbtmi`` and friends.
+THUMB_TEXT = bytes([0x80, 0xB5, 0x6F, 0x46, 0x88, 0xB0]) + b"\x00" * 0x1A
+
+
+@requires_capstone
+def test_arm_thumb_function_is_decoded_as_thumb(tmp_path):
+    """A Thumb symbol carries bit 0; decoding it in ARM mode is noise.
+
+    The ARM instruction set would read the same bytes as ``strbtmi`` and
+    friends, which desynchronises the whole stream.
+    """
+    sample = tmp_path / "libthumb.so"
+    sample.write_bytes(
+        build_elf64_with_symbols(
+            [("thumb_func", 1, 2, 1, 0x1001, 6)],
+            machine=40,
+            text_bytes=THUMB_TEXT,
+        )
+    )
+
+    result = _analyze(sample)
+
+    assert result.status == AnalysisStatus.SUCCESS
+    instructions = result.data["instructions"]
+    mnemonics = [item["mnemonic"] for item in instructions]
+    # ``push`` is the Thumb encoding; in ARM mode the same bytes decode as
+    # ``strbtmi``.
+    assert "push" in mnemonics
+    assert "strbtmi" not in mnemonics
+    assert result.data["arch"] == "arm"
+
+
+@requires_capstone
+def test_arm_function_address_is_reported_without_the_thumb_bit(tmp_path):
+    """The code starts one byte below the symbol value."""
+    sample = tmp_path / "libthumb.so"
+    sample.write_bytes(
+        build_elf64_with_symbols(
+            [("thumb_func", 1, 2, 1, 0x1001, 6)],
+            machine=40,
+            text_bytes=THUMB_TEXT,
+        )
+    )
+
+    result = _analyze(sample)
+
+    functions = {item["name"]: item for item in result.data["functions"]}
+    assert functions["thumb_func"]["address"] == "0x1000"
+    assert functions["thumb_func"]["instruction_count"] >= 3
+
+
+@requires_capstone
+def test_every_architecture_mode_is_accepted_by_capstone():
+    """A wrong mode constant is rejected by Capstone when the engine opens.
+
+    The table covers more architectures than the tests can ship binaries for,
+    so the mode combinations are checked against Capstone itself.
+    """
+    from soinsight.infrastructure.disasm import _mode_for
+
+    architectures = {
+        "x86": capstone.CS_ARCH_X86,
+        "arm": capstone.CS_ARCH_ARM,
+        "aarch64": capstone.CS_ARCH_ARM64,
+        "mips": capstone.CS_ARCH_MIPS,
+        "ppc": capstone.CS_ARCH_PPC,
+        "sysz": capstone.CS_ARCH_SYSZ,
+        "sparc": capstone.CS_ARCH_SPARC,
+        "sh": capstone.CS_ARCH_SH,
+        "m68k": capstone.CS_ARCH_M68K,
+        "riscv": capstone.CS_ARCH_RISCV,
+    }
+    combinations = [
+        ("x86", 32, False),
+        ("x86", 64, False),
+        ("arm", 32, False),
+        ("arm", 32, True),
+        ("aarch64", 64, False),
+        ("aarch64", 64, True),
+        ("mips", 32, False),
+        ("mips", 32, True),
+        ("mips", 64, False),
+        ("mips", 64, True),
+        ("ppc", 32, False),
+        ("ppc", 32, True),
+        ("ppc", 64, False),
+        ("ppc", 64, True),
+        ("sysz", 64, True),
+        ("sparc", 32, True),
+        ("sh", 32, False),
+        ("m68k", 32, True),
+        ("riscv", 32, False),
+        ("riscv", 64, False),
+    ]
+    for family, width, big_endian in combinations:
+        mode = _mode_for(
+            capstone, family, is64=(width == 64), big_endian=big_endian
+        )
+        assert mode is not None, f"{family}/{width} has no mode"
+        engine = capstone.Cs(architectures[family], mode)
+        # An invalid mode makes the engine reject every byte.
+        assert list(engine.disasm(b"\x00" * 8, 0x1000)) is not None
+
+
+@requires_capstone
+def test_only_x86_and_arm_have_a_reference_resolver():
+    """The xref layer resolves references per instruction set."""
+    from soinsight.infrastructure.disasm import resolvable_families
+
+    assert resolvable_families() == frozenset({"x86", "arm", "aarch64"})

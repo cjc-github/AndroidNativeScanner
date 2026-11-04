@@ -128,7 +128,7 @@ python3 web/server.py --no-open   # 不自动打开浏览器
 
 ## 注意事项
 
-- 六大模块共 46 项能力，已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`basic.jni`、`automation.fuzz-target`、`automation.harness`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
+- 六大模块共 46 项能力；架构上，ELF 解析覆盖 17 种 e_machine，指令解码覆盖 x86/x86-64/ARM/AArch64/MIPS/PowerPC/RISC-V/S390/SPARC/SuperH/68K（32 位 ARM 支持 Thumb），交叉引用的引用解析覆盖 x86/ARM/AArch64。已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`basic.jni`、`automation.fuzz-target`、`automation.harness`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
 - `--module` 是严格展开（要求模块内能力全部已实现），日常请用 `--module-available`。
 - V1 旧入口仍可用：`python3 main.py libfoo.so`。
 

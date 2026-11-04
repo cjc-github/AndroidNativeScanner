@@ -165,15 +165,17 @@ def _empty_data(machine: str, decoder: str | None) -> dict:
 def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list, bool]:
     """Build one CFG per function, honouring the instruction budget."""
     data = path.read_bytes()
-    arch = disasm_layer.arch_name(elf.header.machine)
-    arch_pair = disasm_layer.decode_architecture(elf.header.machine)
-    mode = arch_pair[1] if arch_pair else 0
+    profile = disasm_layer.decoder_profile(elf)
+    arch = profile.family if profile is not None else None
 
-    starts: list[tuple[int, str, int, str]] = []
+    # Each start keeps the raw symbol value next to the normalized address:
+    # the raw value carries the Thumb bit that selects the decode mode.
+    starts: list[tuple[int, str, int, str, int]] = []
     known: set[int] = set()
     for name, address, size, table in disasm_layer.symbol_functions(elf):
-        starts.append((address, name, size, "symbols"))
-        known.add(address)
+        real = disasm_layer.normalize_function_address(profile, address)
+        starts.append((real, name, size, "symbols", address))
+        known.add(real)
     for region in regions:
         blob = _region_bytes(data, region)
         if blob is None:
@@ -181,14 +183,14 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
         for address in disasm_layer.prologue_starts(
             blob, region.address, arch, 4 if arch == "aarch64" else 1, known
         ):
-            starts.append((address, f"sub_{address:x}", 0, "prologue"))
+            starts.append((address, f"sub_{address:x}", 0, "prologue", address))
             known.add(address)
     starts.sort(key=lambda item: item[0])
 
     functions: list[dict] = []
     budget = options["max_instructions"]
     truncated = False
-    for index, (address, name, size, source) in enumerate(starts):
+    for index, (address, name, size, source, raw) in enumerate(starts):
         if len(functions) >= options["max_functions"]:
             truncated = True
             diagnostics.append(
@@ -213,7 +215,10 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
         blob = _extent_bytes(data, regions, address, extent)
         if blob is None:
             continue
-        decoded = disasm_layer.decode_bytes(blob, address, arch_pair[0], mode)
+        if profile is None:
+            continue
+        mode = disasm_layer.mode_for_address(profile, raw)
+        decoded = disasm_layer.decode_bytes(blob, address, profile.arch, mode)
         if not decoded:
             continue
         if len(decoded) > budget:
