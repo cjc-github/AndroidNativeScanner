@@ -180,22 +180,9 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
     profile = disasm_layer.decoder_profile(elf)
     arch = profile.family if profile is not None else None
 
-    starts: list[tuple[int, str, int, str]] = []
-    known: set[int] = set()
-    for name, address, size, table in disasm_layer.symbol_functions(elf):
-        # A Thumb function carries bit 0 in its symbol value; the code starts
-        # one byte lower, and the mode follows from that bit.
-        real = disasm_layer.normalize_function_address(profile, address)
-        starts.append((real, name, size, "symbols", address))
-        known.add(real)
-    for region in regions:
-        blob = data[region.offset : region.offset + region.size]
-        for address in disasm_layer.prologue_starts(
-            blob, region.address, arch, 4 if arch == "aarch64" else 1, known
-        ):
-            starts.append((address, f"sub_{address:x}", 0, "prologue", address))
-            known.add(address)
-    starts.sort(key=lambda item: item[0])
+    # The boundary helper keeps the raw symbol value next to the normalized
+    # address: the raw value carries the Thumb bit that selects the mode.
+    starts = list(disasm_layer.function_boundaries(elf, data, regions, profile))
 
     functions: list[dict] = []
     budget = options["max_instructions"]

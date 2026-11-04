@@ -166,26 +166,10 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
     """Build one CFG per function, honouring the instruction budget."""
     data = path.read_bytes()
     profile = disasm_layer.decoder_profile(elf)
-    arch = profile.family if profile is not None else None
 
-    # Each start keeps the raw symbol value next to the normalized address:
-    # the raw value carries the Thumb bit that selects the decode mode.
-    starts: list[tuple[int, str, int, str, int]] = []
-    known: set[int] = set()
-    for name, address, size, table in disasm_layer.symbol_functions(elf):
-        real = disasm_layer.normalize_function_address(profile, address)
-        starts.append((real, name, size, "symbols", address))
-        known.add(real)
-    for region in regions:
-        blob = _region_bytes(data, region)
-        if blob is None:
-            continue
-        for address in disasm_layer.prologue_starts(
-            blob, region.address, arch, 4 if arch == "aarch64" else 1, known
-        ):
-            starts.append((address, f"sub_{address:x}", 0, "prologue", address))
-            known.add(address)
-    starts.sort(key=lambda item: item[0])
+    # The boundary helper keeps the raw symbol value next to the normalized
+    # address: the raw value carries the Thumb bit that selects the mode.
+    starts = list(disasm_layer.function_boundaries(elf, data, regions, profile))
 
     functions: list[dict] = []
     budget = options["max_instructions"]

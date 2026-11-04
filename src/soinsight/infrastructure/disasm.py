@@ -223,6 +223,71 @@ def executable_sections(elf: ElfFile) -> tuple[SectionHeader, ...]:
     )
 
 
+def function_boundaries(
+    elf: ElfFile,
+    blob: bytes,
+    regions,
+    profile: "DecoderProfile | None",
+) -> tuple[tuple[int, str, int, str, int], ...]:
+    """Function boundaries of an image, with the raw address of each.
+
+    Each record is ``(address, name, size, source, raw_address)``.  The raw
+    address keeps the symbol value that carried the Thumb bit; the address is
+    the normalized one, where the code actually starts.
+
+    Boundaries come from the symbol table first, then from a prologue scan:
+    a byte pattern for x86-64 and AArch64, and the decoder for ARM, whose
+    encodings a byte pattern cannot tell apart.
+    """
+    starts: list[tuple[int, str, int, str, int]] = []
+    known: set[int] = set()
+    for name, address, size, table in symbol_functions(elf):
+        real = normalize_function_address(profile, address)
+        starts.append((real, name, size, "symbols", address))
+        known.add(real)
+
+    arch = profile.family if profile is not None else None
+    if arch is not None:
+        for region in regions:
+            window = blob[region.offset : region.offset + region.size]
+            if not window:
+                continue
+            if arch == "arm":
+                from .arm_entries import arm_entry_candidates
+
+                for candidate in arm_entry_candidates(
+                    window, region.address, profile.arch, arm_modes(profile)
+                ):
+                    if candidate.address in known:
+                        continue
+                    raw = candidate.address | (1 if candidate.thumb else 0)
+                    starts.append(
+                        (
+                            candidate.address,
+                            f"sub_{candidate.address:x}",
+                            0,
+                            "prologue",
+                            raw,
+                        )
+                    )
+                    known.add(candidate.address)
+                continue
+            step = 4 if arch == "aarch64" else 1
+            for address in prologue_starts(
+                window, region.address, arch, step, known
+            ):
+                starts.append((address, f"sub_{address:x}", 0, "prologue", address))
+                known.add(address)
+
+    starts.sort(key=lambda item: item[0])
+    return tuple(starts)
+
+
+def arm_modes(profile: "DecoderProfile") -> tuple[int, ...]:
+    """The Capstone modes to try on ARM: the base mode and Thumb."""
+    return (profile.mode, profile.mode | _module_constant("CS_MODE_THUMB", 16))
+
+
 def symbol_functions(elf: ElfFile) -> tuple[tuple[str, int, int, str], ...]:
     """Defined function symbols as ``(name, address, size, table)``.
 
@@ -262,6 +327,8 @@ def prologue_starts(
             )
         elif arch == "aarch64":
             hit = is_aarch64_blob_prologue(blob[index : index + 4])
+        # ARM is absent on purpose: a byte-level scan cannot tell a Thumb
+        # prologue from Thumb-2 data, so the decoder decides there.
         if hit:
             starts.append(address)
     return tuple(starts)

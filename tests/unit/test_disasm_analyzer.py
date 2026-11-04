@@ -541,3 +541,58 @@ def test_only_x86_and_arm_have_a_reference_resolver():
     from soinsight.infrastructure.disasm import resolvable_families
 
     assert resolvable_families() == frozenset({"x86", "arm", "aarch64"})
+
+
+# ``push {r7, lr}`` in Thumb (halfword 0xB580) and ``stmdb sp!, {..., lr}`` in
+# ARM (halfword 0xE92D).
+THUMB_PUSH = bytes([0x80, 0xB5])
+ARM_PUSH = bytes([0x00, 0x40, 0x2D, 0xE9])
+
+
+def test_arm_has_no_byte_level_prologue_scan():
+    """A byte pattern cannot tell a Thumb prologue from Thumb-2 data.
+
+    On a real armeabi-v7a library the byte scan produced 566 candidate
+    boundaries of which only 199 began with a push, and it matched none of
+    the 90 functions the symbol table knew about.  ARM therefore uses the
+    decoder instead.
+    """
+    blob = b"\x00" * 4 + THUMB_PUSH + b"\x00" * 4 + ARM_PUSH + b"\x00" * 4
+
+    assert prologue_starts(blob, 0x1000, "arm", 2, set()) == ()
+
+
+@requires_capstone
+def test_arm_entry_candidates_use_the_decoder(tmp_path):
+    """The decoder decides which bytes open a function."""
+    from soinsight.infrastructure.arm_entries import arm_entry_candidates
+    from soinsight.infrastructure.disasm import decoder_profile
+
+    profile = decoder_profile(_elf(tmp_path, "ARM"))
+    # ``push {r7, lr}`` followed by more code.
+    blob = b"\x00" * 4 + bytes([0x80, 0xB5, 0x6F, 0x46, 0x88, 0xB0]) + b"\x00" * 8
+
+    candidates = arm_entry_candidates(
+        blob, 0x1000, profile.arch, (profile.mode, profile.mode | capstone.CS_MODE_THUMB)
+    )
+
+    addresses = [item.address for item in candidates]
+    assert 0x1004 in addresses
+    assert all(item.thumb for item in candidates if item.address == 0x1004)
+
+
+@requires_capstone
+def test_arm_entry_candidates_ignore_a_push_that_saves_pc(tmp_path):
+    """A push touching pc is a stack adjustment, not a function entry."""
+    from soinsight.infrastructure.arm_entries import arm_entry_candidates
+    from soinsight.infrastructure.disasm import decoder_profile
+
+    profile = decoder_profile(_elf(tmp_path, "ARM"))
+    # ``push {r0, r1, r8, sb, sl, fp, sp, pc}`` as Thumb-2 wide encoding.
+    blob = bytes([0xF0, 0xB5, 0xFF, 0xF0]) + b"\x00" * 12
+
+    candidates = arm_entry_candidates(
+        blob, 0x1000, profile.arch, (profile.mode, profile.mode | capstone.CS_MODE_THUMB)
+    )
+
+    assert candidates == ()

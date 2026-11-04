@@ -48,7 +48,7 @@
 | 指令解码 | x86、x86-64、ARM、AArch64、MIPS、PowerPC、RISC-V、S390、SPARC、SuperH、68K | 按 e_machine + 位宽 + 字节序选 Capstone 模式；IA-64 因 Capstone 无对应架构而不支持 |
 | 引用解析（交叉引用） | x86、ARM、AArch64 | 逐指令集实现；其余架构有解码器但无引用解析器，此时明确报 `XREF_UNSUPPORTED_ARCH` |
 
-32 位 ARM 的 **Thumb** 单独处理：ARM ELF 用符号值的 bit 0 标记 Thumb 函数，模式按函数逐个决定（现代 Android ARM 代码几乎全是 Thumb）。没有这一步，ARM 镜像会被按 ARM 模式解码，整条指令流失步——实测一个真实 armeabi-v7a 库，修复前解出 370 条指令且全是噪声，修复后是 2234 条正确指令，调用边从 17 条（0 条直接调用）变成 76 条（40 条直接调用）。
+32 位 ARM 的 **Thumb** 单独处理：ARM ELF 用符号值的 bit 0 标记 Thumb 函数，模式按函数逐个决定（现代 Android ARM 代码几乎全是 Thumb）。没有这一步，ARM 镜像会被按 ARM 模式解码，整条指令流失步——实测一个真实 armeabi-v7a 库，修复前解出 370 条指令且全是噪声，修复后是 2234 条正确指令，调用边从 17 条（0 条直接调用）变成 76 条（40 条直接调用）。ARM 的函数入口发现同样交给解码器：字节级序言扫描在 Thumb 库上误报率超过 60%，解码器判定后准确率 99.5%。
 
 ### 3. V2 已实现的真正 Analyzer 与 Rule（30/46 能力）
 

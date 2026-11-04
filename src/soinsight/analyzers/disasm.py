@@ -15,10 +15,8 @@ from ..infrastructure.disasm import (
     decode_bytes,
     decoder_profile,
     executable_sections,
+    function_boundaries,
     mode_for_address,
-    normalize_function_address,
-    prologue_starts,
-    symbol_functions,
 )
 from ..infrastructure.elf import ElfFormatError, parse_elf
 
@@ -177,27 +175,11 @@ def _collect(
     data = path.read_bytes()
     arch = profile.family if profile is not None else None
 
-    # Each start keeps the raw symbol value next to the normalized address:
-    # the raw value carries the Thumb bit that selects the decode mode.
-    starts: list[tuple[int, str, int, str, int]] = []
-    known: set[int] = set()
-    for name, address, size, table in symbol_functions(elf):
-        real = normalize_function_address(profile, address)
-        starts.append((real, name, size, "symbols", address))
-        known.add(real)
+    # The boundary helper keeps the raw symbol value next to the normalized
+    # address: the raw value carries the Thumb bit that selects the mode.
+    starts = list(function_boundaries(elf, data, regions, profile))
 
     truncated = False
-    if arch is not None:
-        for region in regions:
-            blob = _region_bytes(data, region)
-            if blob is None:
-                continue
-            region_starts = prologue_starts(
-                blob, region.address, arch, 4 if arch == "aarch64" else 1, known
-            )
-            for address in region_starts:
-                starts.append((address, f"sub_{address:x}", 0, "prologue", address))
-                known.add(address)
 
     starts.sort(key=lambda item: item[0])
     functions: list[dict] = []
