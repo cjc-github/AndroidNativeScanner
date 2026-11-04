@@ -113,3 +113,37 @@ def test_partial_signature_is_rejected():
     report = _report(bytes(blob))
 
     assert report.registrations == ()
+
+
+def test_rel_relative_shape_is_recovered():
+    """A 32-bit ARM image keeps the value inline; REL has no addend."""
+    blob = build_jni_image(
+        [("send", "(Ljava/lang/String;)V", NAMED_FN_ADDR)],
+        named_functions={NAMED_FN_ADDR: "native_send"},
+        relocation_shape="rel-relative",
+    )
+
+    report = _report(blob)
+
+    assert len(report.registrations) == 1
+    entry = report.registrations[0]
+    assert entry.method_name == "send"
+    assert entry.signature == "(Ljava/lang/String;)V"
+    assert entry.function_symbol == "native_send"
+
+
+def test_symbolic_function_pointer_is_recovered():
+    """ARM names the function pointer by symbol: the slot holds S + A."""
+    blob = build_jni_image(
+        [("send", "(Ljava/lang/String;)V", NAMED_FN_ADDR)],
+        named_functions={NAMED_FN_ADDR: "native_send"},
+        relocation_shape="rel-abs32-symbol",
+    )
+
+    report = _report(blob)
+
+    assert len(report.registrations) == 1
+    entry = report.registrations[0]
+    assert entry.method_name == "send"
+    assert entry.function_address == NAMED_FN_ADDR
+    assert entry.function_symbol == "native_send"

@@ -20,6 +20,12 @@ name (the common case -- the class comes from ``FindClass`` at run time and is
 not recoverable statically) or a fully-qualified one. Which of the two it is, is
 reported as a fact, never guessed.
 
+The relocation shapes differ per architecture, and all three occur in the wild:
+a 64-bit image stores the address in the RELA addend, a 32-bit ARM image uses
+``SHT_REL`` with the value inline in the section, and 32-bit ARM commonly names
+the function pointer by symbol (``R_ARM_ABS32``), which makes the slot hold
+``symbol + addend`` rather than a plain address.
+
 Instruction-level validation (proving the array is referenced from inside
 ``JNI_OnLoad``) needs the disassembly layer; without it the shape match stands
 on its own and the result says so.
@@ -122,7 +128,7 @@ def find_dynamic_registrations(elf, blob: bytes) -> JniDynamicReport:
         sections=elf.sections,
         dynsym=tuple(s for s in elf.symbols if s.table == ".dynsym"),
     )
-    targets = _relocation_targets(relocations, pointer_size)
+    targets = _relocation_targets(relocations, elf, blob, pointer_size)
 
     exec_ranges = tuple(
         (section.address, section.address + section.size)
@@ -211,16 +217,40 @@ def _imports_register_natives(elf) -> bool:
     )
 
 
-def _relocation_targets(relocations, pointer_size: int) -> dict[int, int]:
-    """Map each relocated slot to the virtual address it will hold."""
+def _relocation_targets(
+    relocations, elf, blob: bytes, pointer_size: int
+) -> dict[int, int]:
+    """Map each relocated slot to the virtual address the loader will write.
+
+    ``S + A`` is what the loader computes: for a symbolic relocation the
+    symbol's own address plus the addend, for a RELATIVE one just the addend.
+    A REL entry keeps its addend inline in the section, so it is read from
+    there instead of from the relocation record.
+    """
+    symbol_values = {
+        index: symbol.value
+        for index, symbol in enumerate(elf.symbols)
+        if symbol.table == ".dynsym"
+    }
     targets: dict[int, int] = {}
     for relocation in relocations:
-        if relocation.kind == "rela" and relocation.symbol_name is None:
-            # A RELATIVE addend is the absolute address the slot ends up with.
-            targets[relocation.offset] = relocation.addend
-        elif relocation.kind == "rel" and relocation.symbol_name is None:
-            # REL entries keep the value inline; addend is unused (always 0).
-            targets[relocation.offset] = relocation.addend
+        if relocation.kind == "rela":
+            addend = relocation.addend
+        else:
+            file_offset = _vaddr_to_offset(elf, relocation.offset)
+            if file_offset is None or file_offset + pointer_size > len(blob):
+                continue
+            addend = int.from_bytes(
+                blob[file_offset : file_offset + pointer_size], "little"
+            )
+        symbol_value = symbol_values.get(relocation.symbol_index, 0)
+        if relocation.symbol_name is None and symbol_value == 0:
+            # A RELATIVE relocation: the slot holds the address itself.
+            targets[relocation.offset] = addend
+        else:
+            target = symbol_value + addend
+            if target:
+                targets[relocation.offset] = target
     return targets
 
 

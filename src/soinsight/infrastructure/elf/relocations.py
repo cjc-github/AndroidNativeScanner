@@ -35,6 +35,7 @@ _RELOCATION_NAMES = {
     24: "PLT32",
     25: "COPY",
     26: "GLOB_DAT64",
+    23: "RELATIVE",
     37: "IRELATIVE",
     1027: "RELATIVE",
     1026: "GLOB_DAT",
