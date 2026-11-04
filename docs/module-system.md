@@ -153,6 +153,15 @@ low/medium/high/critical。三个内置规则
 | `automation report TARGET` | `automation.report` | 报告自动化 | 外壳 |
 | `automation workflow TARGET` | `automation.workflow` | 批处理、Profile、CI Gate 和工作流编排 | 外壳 |
 
+Web 控制台有**两个入口**，输出路径不同：
+
+| 入口 | 前端 | 结果渲染 | 启动方式 |
+| --- | --- | --- | --- |
+| 仓库根 `web/server.py` | `web/index.html`（自绘卡片 + Tab） | 前端按 `basic.jni` 等逐个渲染 | `./start.sh`、`web/start-web.sh`、`web/start-web.bat` |
+| 包内 `src/soinsight/web/server.py` | `src/soinsight/web/templates/index.html` | **服务端 HTML Renderer** | `soinsight web` |
+
+两者都调用同一套分析器，能力列表都从注册表动态生成（`basic.jni` 默认勾选）。差别在结果呈现：前者由前端渲染 `renderJniData` 等函数，后者直接插入服务端生成的 HTML，因此 **HTML Renderer 必须覆盖到每个分析器**，否则该分析器在 `soinsight web` 里完全不可见。HTML Renderer 现为 `basic.symbols` 与 `basic.jni` 写了专门段落，其余分析器走通用字段列表兜底——报告里因此不会出现「某个分析器不见了」的情况。
+
 `automation.binary-diff` 比较 two ELF 镜像的**已定义函数符号集**（`diff OLD NEW` 或 YAML `binary_diff.old_path`/`new_path`）：按 mangled name 匹配，报告新增/移除/移动（同地址不同）/大小变化，函数体级与 CFG 级对比不在此能力范围。它是双输入能力：不进默认扫描集，单独通过 `diff` 命令或显式 `--enable` 运行。纯静态，秒级出结果。
 
 `automation.harness` 把 `automation.fuzz-target` 的候选变成 libFuzzer 风格的 C 模板：第一个缓冲区参数接到 fuzz 输入，识别出的长度参数接 `size`，其余参数填零值。它不猜第二缓冲区、回调与输出指针——这些以 `HARNESS_TEMPLATE_INCOMPLETE` 警告列出，等人工补桩。原型的返回类型：签名已带返回类型就原样 `extern`；签名只有 `name(...)` 时用元数据 `return_type`，两者都没有则按 `int` 假设并明说。喂了缓冲区但没识别到长度参数时同样警告（否则模板传 0，fuzz 不到东西）。模板只生成源码文本，不编译也不执行；`--format json` 携带完整 `source`。
