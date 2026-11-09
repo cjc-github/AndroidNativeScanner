@@ -123,23 +123,25 @@ low/medium/high/critical。三个内置规则
 | 命令 | 稳定能力 ID | 能力 | 状态 |
 |---|---|---|---|
 | `dynamic trace` | `dynamic.trace` | Runtime Trace | 已接入（默认拒绝执行，仅出计划） |
-| `dynamic arguments` | `dynamic.arguments` | 参数采集 | 外壳 |
-| `dynamic memory` | `dynamic.memory` | 内存分析 | 外壳 |
-| `dynamic syscalls` | `dynamic.syscalls` | 系统调用分析 | 外壳 |
-| `dynamic coverage` | `dynamic.coverage` | 覆盖率分析 | 外壳 |
+| `dynamic arguments` | `dynamic.arguments` | 参数采集 | 已实现（计划版） |
+| `dynamic memory` | `dynamic.memory` | 内存分析 | 已实现（计划版） |
+| `dynamic syscalls` | `dynamic.syscalls` | 系统调用分析 | 已实现（计划版） |
+| `dynamic coverage` | `dynamic.coverage` | 覆盖率分析 | 已实现（计划版） |
 
 ### 2.5 AI 分析
 
-| 命令 | 稳定能力 ID | 能力 |
-|---|---|---|
-| `ai function-name` | `ai.function-name` | 函数命名 |
-| `ai parameter-semantics` | `ai.parameter-semantics` | 参数语义恢复 |
-| `ai struct-recovery` | `ai.struct-recovery` | 结构体恢复 |
-| `ai module-identification` | `ai.module-identification` | 模块识别 |
-| `ai algorithm-explanation` | `ai.algorithm-explanation` | 算法解释 |
-| `ai protocol-explanation` | `ai.protocol-explanation` | 协议解释 |
-| `ai vulnerability-explanation` | `ai.vulnerability-explanation` | 漏洞解释 |
-| `ai assembly-explanation` | `ai.assembly-explanation` | 汇编自然语言解释 |
+AI 族整体不实现：它需要 Provider 抽象（本地优先策略）、隐私防护、证据引用与成本治理。
+
+| 命令 | 稳定能力 ID | 能力 | 状态 |
+|---|---|---|---|
+| `ai function-name` | `ai.function-name` | 函数命名 | 外壳 |
+| `ai parameter-semantics` | `ai.parameter-semantics` | 参数语义恢复 | 外壳 |
+| `ai struct-recovery` | `ai.struct-recovery` | 结构体恢复 | 外壳 |
+| `ai module-identification` | `ai.module-identification` | 模块识别 | 外壳 |
+| `ai algorithm-explanation` | `ai.algorithm-explanation` | 算法解释 | 外壳 |
+| `ai protocol-explanation` | `ai.protocol-explanation` | 协议解释 | 外壳 |
+| `ai vulnerability-explanation` | `ai.vulnerability-explanation` | 漏洞解释 | 外壳 |
+| `ai assembly-explanation` | `ai.assembly-explanation` | 汇编自然语言解释 | 外壳 |
 
 ### 2.6 自动化
 
@@ -148,16 +150,16 @@ low/medium/high/critical。三个内置规则
 | `automation binary-diff OLD NEW` | `automation.binary-diff` | Binary Diff | 已实现（符号级） |
 | `automation fuzz-target TARGET` | `automation.fuzz-target` | Fuzz Target 识别 | 已实现（静态版） |
 | `automation harness TARGET` | `automation.harness` | Harness 生成 | 已实现（模板型） |
-| `automation seed TARGET` | `automation.seed` | Seed 生成 | 外壳 |
+| `automation seed TARGET` | `automation.seed` | Seed 生成 | 已实现 |
 | `automation crash-cluster TARGET` | `automation.crash-cluster` | Crash 聚类 | 外壳 |
-| `automation report TARGET` | `automation.report` | 报告自动化 | 外壳 |
+| `automation report TARGET` | `automation.report` | 报告自动化 | 已实现 |
 | `automation workflow TARGET` | `automation.workflow` | 批处理、Profile、CI Gate 和工作流编排 | 外壳 |
 
-Web 控制台有**两个入口**，输出路径不同：
+Web 控制台有**两个入口**，指向同一份实现（`soinsight/web/console.py`）：
 
 | 入口 | 前端 | 结果渲染 | 启动方式 |
 | --- | --- | --- | --- |
-| 仓库根 `web/server.py` | `web/index.html`（自绘卡片 + Tab） | 前端按 `basic.jni` 等逐个渲染 | `./start.sh`、`web/start-web.sh`、`web/start-web.bat` |
+| 仓库根 `web/server.py`（薄包装） | `src/soinsight/web/index.html`（自绘卡片 + Tab） | 前端按 `basic.jni` 等逐个渲染 | `./start.sh`、`web/start-web.sh`、`web/start-web.bat` |
 | 包内 `src/soinsight/web/server.py` | `src/soinsight/web/templates/index.html` | **服务端 HTML Renderer** | `soinsight web` |
 
 两者都调用同一套分析器，能力列表都从注册表动态生成（`basic.jni` 默认勾选）。差别在结果呈现：前者由前端渲染 `renderJniData` 等函数，后者直接插入服务端生成的 HTML，因此 **HTML Renderer 必须覆盖到每个分析器**，否则该分析器在 `soinsight web` 里完全不可见。HTML Renderer 现为 `basic.symbols` 与 `basic.jni` 写了专门段落，其余分析器走通用字段列表兜底——报告里因此不会出现「某个分析器不见了」的情况。
@@ -214,9 +216,14 @@ automation.harness
 配置里没有 `dynamic_execution.authorized: true` 就返回 `state: not-authorized`；
 授权后若探测不到 `bwrap`/`firejail`/`docker`/`unshare`，返回 `state: no-sandbox` 并拒绝执行；
 两者都满足时返回 `state: planned`，给出包裹后的 argv、超时与内存上限，但 `executed: false`——
-采集器与 `dlopen` 驱动尚未接入（`infrastructure/execution.py`）。
+采集器计划与 `dlopen` 驱动模板已接入（`infrastructure/dynamic/collector.py`），
+但**真实采集器仍未接入**（`infrastructure/execution.py`）。
 
 ## 5. 当前实现状态
+
+**36/46 项能力已接入真实 Analyzer**，其余 10 项只有目录与命令外壳（调用返回
+`ANALYSIS_PLAN_ERROR`，退出码 3）。逐项清单见 [功能实现状态清单](feature-status.md)，
+可运行 `soinsight modules list` 现场核对。
 
 已实现：
 
@@ -225,20 +232,27 @@ automation.harness
 - 软依赖（`optional_requires`）调度、软依赖缺席降级与按参与依赖分键的缓存；
 - 领域命令树；
 - `modules list/show`；
-- `scan --module-available basic,security` 对单目标已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
-- 单目标能力到 Runtime 的路由；
+- `scan --module-available basic,security` 对已注册能力进行展开（`--module` 为严格模式，模块内能力未全部实现时返回 `ANALYSIS_PLAN_ERROR`）；
+- 单目标与多目标能力到 Runtime 的路由（`scan` 接受多个路径与目录，`--include`/`--exclude` 过滤）；
 - 开发期旧扁平命令隐藏兼容别名；
-- 11 个真实 Analyzer：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`。
+- **基础分析 13 项**：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.dynamic`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.xref`、`basic.jni`；
+- **高级分析 8 项**：`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`；
+- **安全分析 5 项**：`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`；
+- **动态分析 5 项**（计划版，不执行目标）：`dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`；
+- **自动化 5 项**：`automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.report`；
+- 三条内置安全规则：`security.sensitive-string`、`security.hardcoded-url`、`security.encoded-payload`。
 
 未实现：
 
-- 46 项能力对应的具体 Analyzer/Rule/Provider；
-- 双目标及复杂输入能力的统一 Request 模型；
-- 动态分析隔离执行器；
-- AI Provider、隐私策略和成本控制；
-- 自动化工作流执行引擎。
+- AI 族 8 项（`ai.*`）：需要 Provider 抽象、隐私防护与成本治理；
+- `automation.crash-cluster`：输入来自真实 fuzz 崩溃语料；
+- `automation.workflow`：阶段编排引擎；
+- 动态分析的**真实采集器**（ptrace/frida/eBPF）与事件流；
+- 报告的机器可校验 JSON Schema、外部插件兼容协议、跨阶段资源预算；
+- License、CI 与 V1/V2 Golden 回归。
 
-因此“模块已搭建”表示产品目录、CLI 外壳和技术接入点已建立，不表示业务分析结果已经可用。
+“模块已搭建”只表示产品目录、CLI 外壳和技术接入点已建立；是否产出真实分析结果，
+以上面的状态列与 `modules list` 为准。
 
 ## 6. YAML 中的模块与能力引用
 

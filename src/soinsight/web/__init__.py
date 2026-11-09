@@ -1,5 +1,11 @@
-"""Web interface for SOInsight."""
+"""The SOInsight web console.
 
-from .server import run_server
+The console is a local, loopback-only web interface: it drives the same
+CLI the terminal uses and renders the results in the browser. It lives in the
+package so that ``soinsight web`` and the ``web/server.py`` script run the
+same code.
+"""
 
-__all__ = ["run_server"]
+from .console import main, run_console
+
+__all__ = ["main", "run_console"]

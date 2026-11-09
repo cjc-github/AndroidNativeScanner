@@ -18,7 +18,9 @@ V2 的产品结构以六个一级能力域组织，而不是按内部技术组�
 
 Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六大模块共享的内部实现机制，不是产品一级模块。
 
-> 截至 2026-10-29，六大模块目录、40 项原始能力、2 项自动化增强能力以及为动态链接与交叉引用新增的 3 项能力（`basic.dynamic`、`basic.xref`、`security.dynamic-loading`）的命令外壳已经建立（advanced 八项能力已全部落地），`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading` Analyzer（外加三条内置安全规则）已实现；其余 Analyzer 尚未迁移。未实现的领域命令返回 `ANALYSIS_PLAN_ERROR`，这是当前框架阶段的预期行为。
+> 里程碑快照（2026-10-29）：六大模块目录、40 项原始能力、2 项自动化增强能力以及为动态链接与交叉引用新增的 3 项能力（`basic.dynamic`、`basic.xref`、`security.dynamic-loading`）的命令外壳已经建立，advanced 八项能力已全部落地；当时 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading` Analyzer（外加三条内置安全规则）已实现，其余 Analyzer 当时尚未迁移。
+>
+> **现在完整、最新的实现/未实现清单见下文「SO 分析能力现状」一节（快照 2026-11-09，已实现 36/46）。**
 
 ## 文档导航
 
@@ -61,7 +63,7 @@ PYTHONPATH=src python3 -m soinsight modules list
 PYTHONPATH=src python3 -m soinsight modules show basic
 PYTHONPATH=src python3 -m soinsight doctor
 
-# 领域命令（basic.file/basic.elf/basic.symbols/basic.dwarf/basic.types/basic.cpp/advanced.strings/security.hardening/security.dangerous-api/security.vulnerability/security.risk 已实现；其余为能力外壳）
+# 领域命令（46 项能力中 36 项已实现，其余为能力外壳）
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 PYTHONPATH=src python3 -m soinsight basic symbols libfoo.so
 PYTHONPATH=src python3 -m soinsight basic dwarf libfoo.so --format json
@@ -69,6 +71,14 @@ PYTHONPATH=src python3 -m soinsight advanced strings libfoo.so
 PYTHONPATH=src python3 -m soinsight security hardening README.md
 PYTHONPATH=src python3 -m soinsight security dangerous-api libfoo.so
 PYTHONPATH=src python3 -m soinsight security risk libfoo.so --format json
+
+# 报告与种子
+PYTHONPATH=src python3 -m soinsight automation report libfoo.so --format json
+PYTHONPATH=src python3 -m soinsight automation seed libfoo.so
+
+# 多目标与目录批量扫描（--include/--exclude 过滤）
+PYTHONPATH=src python3 -m soinsight scan libfoo.so libbar.so --enable basic.file
+PYTHONPATH=src python3 -m soinsight scan libs/ --include '*.so' --format json
 
 # 创建并使用可复用 YAML 分析配置
 PYTHONPATH=src python3 -m soinsight config create quick-security
@@ -119,14 +129,18 @@ python3 web/server.py            # 环境已就绪时直接起（默认 8765，�
 python3 web/server.py --port 9000
 python3 web/server.py --no-open
 python3 web/server.py --timeout 600
+soinsight web                    # 同一控制台（包内入口，不自动打开浏览器）
 ```
+
+控制台实现在包内 `soinsight/web/console.py`，仓库根的 `web/server.py` 是它的薄包装，
+因此脚本与 `soinsight web` 跑的是同一份代码。
 
 - 支持拖拽上传、服务器绝对路径、`in/` 目录样本三种目标来源；上传文件写入临时目录，分析后删除；
 - 分析能力支持任意多选（依赖自动补齐），也可切到「组合扫描」跑全部已实现 Analyzer；
 - 运行中可点「停止分析」终止子进程；结果可复制/下载 JSON，符号表与发现项可导出 CSV；
 - 结果 JSON 由服务端存到 `reports/`，页面只给路径和下载入口，不内联渲染数 MB 的完整数据；
-- `web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时日志 + 结果摘要；
-- 包内另有旧的 `soinsight web` 子命令（端口 8080，简易上传页），日常请使用 `web/server.py`。
+- `src/soinsight/web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时日志 + 结果摘要；
+- `soinsight web` 与 `web/server.py` 是同一个控制台的两个入口，功能完全一致。
 
 ## 当前仓库结构
 
@@ -153,7 +167,10 @@ AndroidNativeScanner/
 │       ├── renderers/          # Text/JSON/Markdown/HTML/SARIF 输出
 │       └── infrastructure/     # 配置、工具、存储、插件边界
 │           ├── elf/            # 纯 Python ELF 解析 + C++ demangle + JNI 解码
-│           └── dwarf/          # 纯 Python DWARF 调试信息解析
+│           ├── dwarf/          # 纯 Python DWARF 调试信息解析
+│           ├── dynamic/        # 动态采集底座：授权门、驱动计划、dlopen harness
+│           ├── report_building.py  # 报告文档构建（按分析器分节）
+│           └── seed_gen.py     # 种子语料生成（格式/协议/常量事实）
 ├── tests/                      # V2 单元与集成测试
 ├── web/                        # 本地 Web 控制台：server.py / index.html / so-scan.html
 ├── scripts/build_cli.sh        # Wheel 构建与入口校验
@@ -161,35 +178,198 @@ AndroidNativeScanner/
 └── design/                     # V2 主设计、V3 占位与 V1 历史规划
 ```
 
-## 当前能力边界
+## SO 分析能力现状（实现 / 未实现）
 
-V1 已具备 ELF Header、符号、字符串、URL/敏感信息/Base64/JNI 检测以及批量扫描等能力。
+> 快照日期：2026-11-09。以 `PYTHONPATH=src python3 -m soinsight modules list` 与注册代码
+> `analyzers/builtin.py` 逐项核对：六大模块共 **46 项能力**，**36 项已接入真实 Analyzer（✅）**，
+> **10 项只有目录/命令外壳（保持未勾选）**。调用未实现能力返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
+> 逐项细节见 [项目状态与路线图](docs/project-status.md)、[功能实现状态清单](docs/feature-status.md)
+> 与 [未完成分析能力与技术债](docs/pending-capabilities.md)。
 
-V2 已具备：
+| 模块 | 能力数 | 已实现 |
+|---|---|---|
+| 基础分析 `basic` | 13 | ✅ 13 |
+| 高级分析 `advanced` | 8 | ✅ 8 |
+| 安全分析 `security` | 5 | ✅ 5 |
+| 动态分析 `dynamic` | 5 | ✅ 5 |
+| AI 分析 `ai` | 8 | ✅ 0 |
+| 自动化 `automation` | 7 | ✅ 5 |
+| **合计** | **46** | **✅ 36** |
 
-- 六大产品模块和能力目录；
-- 领域化 CLI 命令树与 `modules` 查询命令；
-- `scan --module` 跨域选择；
-- YAML 配置 Schema、创建/查看/校验/激活/set/unset 管理及活动配置；
-- YAML 模块/功能点选择、排除、runtime/output 和 capability options 合并；
-- Analyzer/Rule/Profile/Renderer 扩展接口；
-- Analyzer 依赖 DAG、stage 并发 Scheduler（`jobs > 1`）和失败隔离；
-- Analyzer 超时看门狗、外部取消令牌和进度观察者；
-- Target/Result/Finding/Diagnostic 统一模型；
-- Text/JSON/Markdown/HTML/SARIF Renderer、ToolRunner、ArtifactStore 基础边界；
-- Python 包安装和 Wheel 构建脚本。
+### 基础分析 `basic`（13/13）
 
-V2 已实现 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`advanced.strings`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`：
+- [x] `basic.file` — 文件属性、SHA-256、Magic 与格式识别
+- [x] `basic.elf` — ELF 类、字节序、类型、机器、入口与段表
+- [x] `basic.symbols` — `.dynsym`/`.symtab` 导出枚举 + Itanium C++ demangle + JNI 签名恢复
+- [x] `basic.dwarf` — DWARF 2-5 参数名/参数类型/返回类型/声明位置，渲染层与 `basic.symbols` 联合
+- [x] `basic.types` — ELF+DWARF 合并恢复函数签名、全局变量与 class/struct/union/enum 复合类型
+- [x] `basic.cpp` — RTTI/vtable/typeinfo + 构造析构克隆码 + 虚方法/继承（DWARF 基类与 RTTI 互证）
+- [x] `basic.dynamic` — 动态链接事实（`DT_NEEDED`/SONAME/RPATH/RUNPATH、构造析构入口、符号版本、重定位与导入计数）
+- [x] `basic.disasm` — Capstone 指令解码 + 函数边界恢复（符号优先，x86-64/AArch64 序言扫描补齐）
+- [x] `basic.cfg` — leader 切分基本块、边分类与回边环检测，间接目标不猜测
+- [x] `basic.callgraph` — 调用点解析 local/import/indirect，PLT 桩经 `.rela.*` 恢复导入符号名，含 `callers_of`
+- [x] `basic.dataflow` — 函数内 use-def + 跨块到达定义，声明为 `scope: intra-procedural`；另含**参数可控性（污点）**事实（以 ABI 传参寄存器为源，栈/帧指针不算参数），并按**污点函数库**识别 source/sink 调用
+- [x] `basic.xref` — 指令操作数到字符串字面量的交叉引用（x86/x86-64/AArch64/ARM）
+- [x] `basic.jni` — 静态 `Java_*` 导出 + 动态 `RegisterNatives` 表，strip 后降级为地址
 
-- `basic.symbols` 枚举导出函数并恢复签名：`.dynsym`/`.symtab` 符号事实、Itanium C++ mangled name 解出的参数类型、JNI native 方法名解出的 Java 包名/类名/方法名与参数类型。demangler 已在 5 个真实 C++ 共享库（2943 个导出函数）上与参考实现全量比对：1895 个 C++ 符号全部解出，0 个无法解码、0 个类型差异；
-- `basic.dwarf` 解析 DWARF 调试信息，补回参数名、参数类型、返回类型和声明位置，并在渲染层与 `basic.symbols` 按 mangled name 联合；
-- `basic.types` 合并 ELF 符号表与 DWARF，恢复函数签名、全局变量及 class/struct/union/enum 复合类型（成员、基类、枚举值），stripped 时不猜测类型；
-- `basic.cpp` 恢复 C++ 结构事实：RTTI/vtable/typeinfo 符号、构造/析构函数（C1-C5/D0-D5 克隆码全部支持）、虚方法与继承关系（DWARF 基类 + RTTI 符号双方印证）；只有定义符号才产生类证据，纯 C 结构不入类清单；
-- `advanced.strings` 对任意文件做纯 Python 可见串提取与去重，分类 JSON/URL/硬编码密钥/Token/JWT 与可解码 Base64，并归属 ELF 分节；截断在数据与诊断中显式声明；
-- `security.risk` 聚合 hardening/dangerous-api 发现项与字符串指标，按指纹去重计分并分档（权重可通过能力选项覆盖）；
-- 三条内置规则 `security.sensitive-string` / `security.hardcoded-url` / `security.encoded-payload` 随规则引擎自动把字符串事实转为可复核的发现项。
+### 高级分析 `advanced`（8/8）
 
-V2 尚未具备其他具体业务 Analyzer（反汇编/CFG/Call Graph/Data Flow、动态/AI/Automation、高级分析其余能力）、外部插件协议、完整报告、目录扫描以及动态/AI/Fuzz 执行能力。详细状态见[项目状态与路线图](docs/project-status.md)与[未完成分析能力与技术债](docs/pending-capabilities.md)。
+- [x] `advanced.strings` — 纯 Python 可见串提取与去重，分类 URL/敏感/Base64，并归属 ELF 分节
+- [x] `advanced.constants` — 已知算法常量表扫描（AES/MD5/SHA/CRC32/zlib/Base64/ChaCha20）
+- [x] `advanced.algorithm` — 常量表 + 符号名 + 字符串线索交叉判定，多源标 `corroborated`
+- [x] `advanced.protocol` — 协议特征与网络 import 交叉识别 21 个协议指纹
+- [x] `advanced.file-format` — 外层与内嵌格式魔数扫描 + 结构校验 `verified`
+- [x] `advanced.library` — `DT_NEEDED`/SONAME/符号前缀/版本串交叉识别 23 个库指纹
+- [x] `advanced.compiler` — `.comment`/note 横幅 + 符号佐证，提取版本号与 build-id
+- [x] `advanced.obfuscation` — 加壳/混淆签名、OLLVM 符号、分节熵阈值 + **控制流平坦化判定**（依据 `basic.cfg` 中「以间接跳转结束的基本块占比」，即状态机经调度表转移的形态）
+
+### 安全分析 `security`（5/5）
+
+- [x] `security.hardening` — PIE/NX/RELRO + 栈保护(Canary)/CFI/AArch64 PAC
+- [x] `security.dangerous-api` — 符号名精确匹配危险 API（FORTIFY 归一化 + 严重度阈值），计划内带调用点证据
+- [x] `security.vulnerability` — 危险 API 命中映射到 CWE 并生成漏洞模式 Finding，置信度 MEDIUM；**有污点证据时标记 `parameter_controllable`**，并为「污点到达的 sink」单独生成 Finding（携带 source→caller→sink 的完整链路）
+- [x] `security.risk` — hardening/dangerous-api/strings 三源聚合去重 + 风险分档
+- [x] `security.dynamic-loading` — 继承 RPATH、可写搜索路径、`DT_TEXTREL`、`DF_SYMBOLIC`
+- [x] 内置 Rule — `security.sensitive-string` / `security.hardcoded-url` / `security.encoded-payload`
+
+### 动态分析 `dynamic`（5/5）
+
+- [x] `dynamic.trace` — 授权门 → 沙箱探测 → dry-run 计划判定链；默认拒绝执行、不启动进程、不采集事件
+- [x] `dynamic.arguments` — 参数采集：候选入口与采样点 + 沙箱化驱动计划 + `dlopen` harness 源码
+- [x] `dynamic.memory` — 内存观测：映射/堆/栈观测白名单 + 沙箱化驱动计划
+- [x] `dynamic.syscalls` — 系统调用拦截：默认拒绝的 seccomp 过滤策略 + 重点关注 API
+- [x] `dynamic.coverage` — 覆盖率采集：与 `basic.cfg` 基本块对齐的覆盖点索引
+
+> 动态族全部是**计划版**：授权门（默认拒绝 + `allow_targets` 白名单）、沙箱探测（bwrap/firejail/docker/unshare）
+> 与计划/执行分离都已落地，但**不启动任何进程、不采集真实事件**，真实事件流仍需外部采集器。
+
+### AI 分析 `ai`（0/8）
+
+> AI 族整体不实现：需要 Provider 抽象（本地优先策略）、隐私防护、证据引用与成本治理，
+> 目前刻意不落地。
+
+- [ ] `ai.function-name`
+- [ ] `ai.parameter-semantics`
+- [ ] `ai.struct-recovery`
+- [ ] `ai.module-identification`
+- [ ] `ai.algorithm-explanation`
+- [ ] `ai.protocol-explanation`
+- [ ] `ai.vulnerability-explanation`
+- [ ] `ai.assembly-explanation`
+
+### 自动化 `automation`（5/7）
+
+- [x] `automation.binary-diff` — `diff OLD NEW` 符号级差异，`default_enabled=False`
+- [x] `automation.fuzz-target` — 静态 Fuzz 入口识别 + 参数形状归类，标 `heuristic`
+- [x] `automation.harness` — 模板型 libFuzzer 骨架生成，只产源码不执行
+- [x] `automation.seed` — 由格式/协议/常量事实生成种子语料（定向种子 + 通用种子兜底），可选归档
+- [x] `automation.report` — 汇总本次运行结果为 Text/JSON/Markdown/HTML/SARIF 报告（含规则引擎与分析器两侧的发现项），可选归档
+- [ ] `automation.crash-cluster`
+- [ ] `automation.workflow`
+
+### 框架层
+
+- [x] 六大模块目录与 `<module>.<capability>` 命名空间
+- [x] 领域 CLI 命令树、`modules list/show`、`scan --module/--module-available`
+- [x] **多目标扫描与目录批量展开**（`scan` 接受多个路径/目录，`--include`/`--exclude` 过滤，逐目标基线与门禁；**Web 控制台同样支持目录批量**）
+- [x] YAML 配置体系（Schema、`config create/list/show/validate/use/set/unset`）
+- [x] Analyzer/Rule/Profile/Renderer SDK 与依赖 DAG + stage 并发 Scheduler
+- [x] 运行时控制：超时看门狗、SIGINT 取消令牌、进度观察者
+- [x] Target/Result/Finding/Diagnostic 统一模型
+- [x] 文件缓存（代码指纹/目标 sha256/analyzer 版本三层命中）
+- [x] Text/JSON/Markdown/HTML/SARIF 输出
+- [x] entry point 插件自动发现
+- [x] CI Gate（`--fail-on`）与基线抑制（`--baseline`/`--update-baseline`）
+- [x] 控制流平坦化判定（基于 CFG 图形态）
+- [x] 参数可控性（污点）分析，函数内传播 + source→sink 跨函数链路
+- [x] **外部可配置的污点函数库**（`configs/taint-functions.yaml`，支持 `--taint-library` 替换）
+- [x] 动态采集器计划与 `dlopen` harness 模板（五项动态能力共用同一底座）
+- [ ] 机器可校验的报告 JSON Schema
+- [ ] 外部插件兼容协议
+- [ ] 跨阶段并行资源预算
+- [ ] License、CI、V1/V2 Golden 回归
+
+### 污点函数库（source / sink）
+
+污点分析用一张**函数表**判断「数据从哪来」与「数据流到哪去」。表是数据不是代码，
+因此可以整份替换：
+
+```bash
+# 内置表（默认）：configs/taint-functions.yaml
+PYTHONPATH=src python3 -m soinsight scan libfoo.so \
+    --enable basic.symbols --enable basic.callgraph --enable basic.dataflow \
+    --enable security.vulnerability --taint-library configs/taint-functions.yaml
+
+# 项目自己的表
+PYTHONPATH=src python3 -m soinsight scan libfoo.so --taint-library my-taint.yaml
+```
+
+表文件格式（YAML）：
+
+```yaml
+version: 1
+sources:
+  - name: recv          # 报告里显示的标识
+    match: ^recv(@|$)   # 匹配链接名（mangled symbol）的正则
+    kind: return        # return | argument | argument_any
+    cwe: CWE-20
+    description: 从套接字读取字节。
+sinks:
+  - name: system
+    match: ^system(@|$)
+    kind: argument
+    argument: 0          # 第几个参数带污点（0 起）
+    severity: critical
+    cwe: CWE-78
+```
+
+`match_demangled: true` 让正则匹配 demangle 后的名字。`propagators` 段落描述「把污点从
+第 N 个参数复制到第 M 个参数」的函数（如 `strcpy`）。文件缺失或格式错误只产生一条
+`DATAFLOW_TAINT_LIBRARY_INVALID` 警告，其余分析照常进行。
+
+检出结果形如 `getenv() -> lprofGetPathPrefix() -> strlen()`，并带上调用点、寄存器、
+CWE 与严重度。置信度仍为 MEDIUM——链路证明的是数据来源，不是可利用性。
+
+### 如何核验
+
+```bash
+PYTHONPATH=src python3 -m soinsight modules list                      # 已实现/外壳一目了然
+PYTHONPATH=src python3 -m soinsight dynamic arguments libfoo.so       # 计划版：默认拒绝执行
+PYTHONPATH=src python3 -m soinsight automation report libfoo.so       # 多格式报告
+PYTHONPATH=src python3 -m soinsight automation seed libfoo.so         # 种子语料
+PYTHONPATH=src python3 -m soinsight scan libs/ --include '*.so'       # 目录批量扫描
+PYTHONPATH=src python3 -m soinsight scan libfoo.so --module-available basic,security,advanced
+```
+
+> **改动分析器逻辑后请带 `--no-cache` 复核。** 运行缓存按「代码指纹 + 目标 sha256 + 分析器版本」分键，
+> 代码指纹覆盖包内所有 `.py`，因此正常改代码会自动失效；但同一进程内指纹只算一次，
+> 手工连续验证时容易读到旧条目。用 `soinsight cache prune` 清理旧版本条目。
+
+### 本轮实现的核实结论（2026-11-09）
+
+清单不是按代码写的，而是逐项在**真实样本**（`in/libfuzzgoat.so`）上跑出来的：
+
+| 核实项 | 方式 | 结论 |
+|---|---|---|
+| 实现计数 | 重算注册表与能力目录 | 36/46，AI 族 8 项 + `automation.crash-cluster`/`workflow` 仅有外壳 |
+| 控制流平坦化 | 真实 CFG 构建 + 真实库回归 | 真实未混淆库 124 个函数**零误报** |
+| 参数可控性 | 与调用图做地址交叉验证 | 危险 API 的调用点地址在调用图与污点事实中一致 |
+| 动态族安全性 | 替换 `subprocess` 为探针 | 授权后仍**零次**子进程调用，`executed` 全为 false |
+| 多目标扫描 | 真实目录与多文件 | 目标数正确、逐目标成文、失败聚合 |
+| 报告 | CLI | 汇总先运行的全部分析器，5 种格式齐备 |
+| 种子 | CLI | 按事实分类、内容哈希去重 |
+
+核实过程中修掉了三个真实缺陷，都属于「单测通过但功能是死的」：
+
+1. **平坦化检测在真实二进制上从不生效**——原判据要求基本块出度 ≥ 4，而恢复出的基本块最多 2 个后继，
+   该条件永远不可能满足；单测喂的是手工构造的字典，所以测试通过而功能失效。
+   现改为以「以间接跳转结束的基本块占比」为判据。
+2. **改判据后误报 19/124**——普通代码的返回点与 switch 同样是高入度汇合点。
+   现只用间接跳转占比，普通代码误报归零。
+3. **污点把 `rsp`/`rbp` 当成参数源**——寄存器折叠让 64 位的栈/帧指针与 32 位同名；
+   且解码器对两种位宽都报 `x86`，现按位宽选择参数寄存器。
+
+端到端回归在 `tests/integration/test_implemented_capabilities.py`，全部基于真实样本而非合成夹具。
 
 ## 开发原则
 

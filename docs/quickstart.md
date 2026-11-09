@@ -121,16 +121,39 @@ python3 web/server.py --no-open   # 不自动打开浏览器
 
 用浏览器打开提示的地址即可。支持三种目标来源：**拖拽 / 点击上传 .so 文件**、**填写服务器上已有的绝对路径**、**直接选 `in/` 目录里的样本**。分析后端就是 `soinsight` CLI（`--format json`），所以 CLI 能跑的能力，网页里都能跑。
 
-`web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时滚动日志 + 结果摘要，适合不想勾选能力、直接看全量的场景。
+`src/soinsight/web/so-scan.html` 是单独的「深度分析台」：一键全量扫描 + 实时滚动日志 + 结果摘要，适合不想勾选能力、直接看全量的场景。
 
 > 仅监听本机 `127.0.0.1`，不上传任何数据到外部网络；非 ELF 文件或非法路径会被直接拒绝。
 > 分析结果 JSON 会存到 `reports/` 目录，「结果 JSON」Tab 里给出路径与下载入口，页面不内联渲染数 MB 的完整数据。
 
 ## 注意事项
 
-- 六大模块共 46 项能力；架构上，ELF 解析覆盖 17 种 e_machine，指令解码覆盖 x86/x86-64/ARM/AArch64/MIPS/PowerPC/RISC-V/S390/SPARC/SuperH/68K（32 位 ARM 支持 Thumb），交叉引用的引用解析覆盖 x86/ARM/AArch64。已实现的是 `basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.dynamic`、`basic.xref`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`basic.jni`、`automation.fuzz-target`、`automation.harness`；调用未实现的能力会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
+- 六大模块共 46 项能力；架构上，ELF 解析覆盖 17 种 e_machine，指令解码覆盖 x86/x86-64/ARM/AArch64/MIPS/PowerPC/RISC-V/S390/SPARC/SuperH/68K（32 位 ARM 支持 Thumb），交叉引用的引用解析覆盖 x86/ARM/AArch64。已实现 **36/46** 项：`basic.file`、`basic.elf`、`basic.symbols`、`basic.dwarf`、`basic.types`、`basic.cpp`、`basic.dynamic`、`basic.disasm`、`basic.cfg`、`basic.callgraph`、`basic.dataflow`、`basic.xref`、`basic.jni`、`advanced.strings`、`advanced.constants`、`advanced.algorithm`、`advanced.protocol`、`advanced.file-format`、`advanced.library`、`advanced.compiler`、`advanced.obfuscation`、`security.hardening`、`security.dangerous-api`、`security.vulnerability`、`security.risk`、`security.dynamic-loading`、`dynamic.trace`、`dynamic.arguments`、`dynamic.memory`、`dynamic.syscalls`、`dynamic.coverage`、`automation.binary-diff`、`automation.fuzz-target`、`automation.harness`、`automation.seed`、`automation.report`；未实现的（AI 族 8 项与 `automation.crash-cluster`/`automation.workflow`）调用会返回 `ANALYSIS_PLAN_ERROR`（退出码 3）。
 - `--module` 是严格展开（要求模块内能力全部已实现），日常请用 `--module-available`。
 - V1 旧入口仍可用：`python3 main.py libfoo.so`。
+
+## 目录批量扫描
+
+```bash
+PYTHONPATH=src python3 -m soinsight scan libs/ --include '*.so'
+PYTHONPATH=src python3 -m soinsight scan libfoo.so libbar.so --enable basic.file
+```
+
+`--include`/`--exclude` 按文件名或相对路径过滤，逐目标执行并聚合退出码。
+
+Web 控制台同样支持：服务器路径填目录即可批量分析，页面会按目标列出结果并给出汇总。
+
+`web/server.py` 与 `soinsight web` 是同一控制台的两个入口（实现都在包内 `soinsight/web/console.py`）。
+
+## 污点函数库
+
+污点分析判断「数据从哪来、流到哪去」用的函数表是数据，可整份替换：
+
+```bash
+PYTHONPATH=src python3 -m soinsight scan libfoo.so --taint-library my-taint.yaml
+```
+
+默认用 `configs/taint-functions.yaml`（13 个 source、20 个 sink、6 个 propagator）。格式与自定义方式见 README 的「污点函数库」一节。
 
 ## CI 用法（Gate 与基线）
 

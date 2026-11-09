@@ -826,9 +826,14 @@
                 <button class="small" id="use-sample">使用样本</button>
               </div>
               <div class="row">
-                <input id="path-input" placeholder="服务器绝对路径，如 E:\libs\libfoo.so" spellcheck="false">
+                <input id="path-input" placeholder="服务器绝对路径（文件或目录），如 E:\libs" spellcheck="false">
                 <button class="small" id="use-path">使用路径</button>
               </div>
+              <div class="row">
+                <input id="include-input" placeholder="只分析匹配的文件，如 *.so（可留空）" spellcheck="false">
+                <input id="exclude-input" placeholder="排除匹配的文件，如 *test*（可留空）" spellcheck="false">
+              </div>
+              <p class="hint">填目录时会展开其中的文件批量分析，规则与命令行 <code>--include</code>/<code>--exclude</code> 一致。</p>
             </details>
           </div>
 
@@ -1145,6 +1150,8 @@ var state = {
   health: null,
   samples: [],
   target: null,
+  include: "",            // 批量扫描时的包含/排除过滤（与 CLI 的 --include/--exclude 同义）
+  exclude: "",
   mode: "multi",          // "multi"（多选能力）或 "scan"（组合扫描全部）
   capabilities: [],       // 多选的能力 id
   activeTab: "summary",
@@ -1206,6 +1213,14 @@ var CAP_META = {
     desc: "汇总混淆与加壳证据。产出混淆信号列表（控制流扁平化、字符串加密、符号剥离、反调试等）、类别统计与印证强度。" },
   "dynamic.trace":       { name: "动态追踪", brief: "运行时调用记录",
     desc: "在显式授权且探测到隔离环境时，产出沙箱执行计划（超时、内存上限、执行方式）。默认拒绝执行目标，因此通常只给计划不给运行数据。" },
+  "dynamic.arguments":   { name: "参数采集", brief: "入口参数取值",
+    desc: "列出可观测的入口参数与采样点，产出候选入口签名与建议采样位置。默认只给沙箱执行计划，不实际运行目标，因此目前不返回真实参数取值。" },
+  "dynamic.memory":      { name: "内存观测", brief: "映射 / 堆栈白名单",
+    desc: "给出运行期可观测的内存范围白名单（按依赖库与链接信息推导）。默认只给沙箱执行计划，不实际读取进程内存。" },
+  "dynamic.syscalls":    { name: "系统调用", brief: "seccomp 拦截策略",
+    desc: "生成默认拒绝的系统调用过滤策略，并标出需要重点观察的危险 API。默认只给沙箱执行计划，不实际拦截调用。" },
+  "dynamic.coverage":    { name: "覆盖率",   brief: "基本块覆盖对齐",
+    desc: "把覆盖率采集点对齐到已恢复的控制流基本块，产出块号索引与基本块数量。默认只给沙箱执行计划，不实际采集覆盖率。" },
   "security.hardening":  { name: "加固检查", brief: "PIE / NX / RELRO / Canary",
     desc: "评估 ELF 安全加固位。结论汇总在「概览」Tab 的发现项中，覆盖 PIE、NX、RELRO、栈 Canary、CFI 与 PAC。" },
   "security.dynamic-loading": { name: "动态加载", brief: "dlopen / JNI 加载",
@@ -1221,7 +1236,11 @@ var CAP_META = {
   "automation.harness":  { name: "Harness",  brief: "测试桩生成",
     desc: "为选定入口生成可编译的 Fuzz 测试桩骨架。产出 harness 源码；需要先运行 Fuzz 目标识别出可用入口。" },
   "automation.binary-diff": { name: "二进制对比", brief: "两版本符号差异",
-    desc: "对比两个 ELF 的符号集合。产出新增、移除、移动和大小发生变化的函数清单，适合做版本回归与补丁影响面评估。" }
+    desc: "对比两个 ELF 的符号集合。产出新增、移除、移动和大小发生变化的函数清单，适合做版本回归与补丁影响面评估。" },
+  "automation.seed":      { name: "种子语料", brief: "格式 / 协议种子生成",
+    desc: "依据已识别的文件格式、协议特征和算法常量生成种子语料。产出种子清单、大小与哈希，以及每条种子的来源依据；无上游事实时退化为通用字节种子。" },
+  "automation.report":    { name: "报告归档", brief: "多格式报告 / 归档",
+    desc: "把本次分析结果汇总为多格式报告（Text / JSON / Markdown / HTML / SARIF）。产出各格式正文、失败格式记录与可选的报告归档路径。" }
 };
 /* 离线兜底顺序（health 拿不到清单时用） */
 var CAP_META_ORDER = Object.keys(CAP_META);
@@ -1503,6 +1522,9 @@ function useTypedPath() {
   if (!value) return;
   var name = value.split(/[\\/]/).pop() || value;
   state.target = { kind: "path", name: name, size: null, path: value };
+  // The filters travel with the target: a directory is expanded with them.
+  state.include = ($("include-input").value || "").trim();
+  state.exclude = ($("exclude-input").value || "").trim();
   renderTargetChip("服务器路径");
 }
 
@@ -1796,6 +1818,8 @@ function runAnalysis() {
     headers["X-Filename"] = state.target.name;
   } else {
     params.set("path", state.target.path);
+    if (state.include) params.set("include", state.include);
+    if (state.exclude) params.set("exclude", state.exclude);
   }
 
   fetch("/api/analyze?" + params.toString(), { method: "POST", headers: headers, body: body })
@@ -2037,7 +2061,70 @@ function setRawJson(text, report) {
     "</div>";
 }
 
+/* ================= 批量结果 ================= */
+
+/* 批量运行：逐目标的结果 + 汇总。目标之间互不影响，
+   失败的列在汇总里，成功的可以逐个查看。 */
+function renderBatchResults(data) {
+  var payload = data.payload || {};
+  var summary = payload.summary || {};
+  var documents = payload.results || {};
+  var paths = Object.keys(documents);
+
+  emptyState.hidden = true;
+  resultBody.hidden = false;
+
+  var exitOk = data.exit_code === 0;
+  var html =
+    '<span class="chip ' + (exitOk ? "ok" : "warn") + '">退出码 ' + esc(data.exit_code) + "</span>" +
+    '<span class="chip info">目标 ' + esc(summary.target_count || paths.length) + " 个</span>" +
+    '<span class="chip info">完成 ' + esc(summary.completed_count || paths.length) + " 个</span>" +
+    '<span class="chip ' + (summary.failed_count ? "warn" : "ok") + '">失败 ' +
+      esc(summary.failed_count || 0) + " 个</span>" +
+    '<span class="chip info">发现项 ' + esc(summary.finding_count || 0) + " 条</span>" +
+    '<div class="meta-line">' +
+      '<span class="meta-label">等价命令：</span>' +
+      '<code class="cmd">' + esc((data.command || []).join(" ")) + "</code>" +
+      '<button class="small" id="copy-cmd">复制命令</button>' +
+    "</div>";
+  resultMeta.innerHTML = html;
+
+  var body = "";
+  if (summary.failed_count) {
+    body += '<div class="notice">' +
+      "<b>失败的目标：</b><br>" +
+      (summary.failed || []).map(function (p) { return esc(p); }).join("<br>") +
+      "</div>";
+  }
+  body += '<div class="panel"><h3>逐目标结果</h3>';
+  paths.forEach(function (path) {
+    var scan = documents[path] || {};
+    var findings = (scan.findings || []).length;
+    var analyzers = Object.keys(scan.results || {}).length;
+    body += '<div class="meta-line">' +
+      '<code class="cmd">' + esc(path) + "</code>" +
+      '<span class="chip info">' + esc(analyzers) + " 个分析器</span>" +
+      '<span class="chip ' + (findings ? "warn" : "ok") + '">' + esc(findings) + " 条发现项</span>" +
+      "</div>";
+  });
+  body += "</div>";
+  resultBody.innerHTML = body;
+
+  var cmdBtn = $("copy-cmd");
+  if (cmdBtn) {
+    cmdBtn.addEventListener("click", function (e) {
+      copyText((data.command || []).join(" "), e.currentTarget);
+    });
+  }
+}
+
 function renderResults(data) {
+  // A batch run returns one document per target plus a summary, while a
+  // single run returns a single scan document.
+  if (data.payload && data.payload.summary) {
+    renderBatchResults(data);
+    return;
+  }
   var scan = data.payload && data.payload.result;
   if (!scan) {
     showError("服务未返回分析结果。" + (data.error ? "\n" + data.error : ""));
