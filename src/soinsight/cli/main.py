@@ -12,16 +12,26 @@ from typing import Any, Sequence, TextIO
 import yaml
 
 from ..analyzers import register_builtin_analyzers
-from ..application import AnalysisRequest, AnalysisService, ApplicationResponse
+from ..application import (
+    AnalysisRequest,
+    AnalysisService,
+    ApplicationResponse,
+    BatchRequest,
+)
 from ..core.analyzer import AnalysisContext
 from ..core.models import AnalysisStatus, AnalysisTarget
 from ..infrastructure.config import RuntimeConfig
-from ..core.analyzer import AnalyzerRegistry, CancellationToken
+from ..core.analyzer import (
+    AnalyzerNotFoundError,
+    AnalyzerRegistry,
+    CancellationToken,
+)
 from ..core.models import Diagnostic, DiagnosticLevel
 from ..core.profiles import ProfileRegistry, create_builtin_profile_registry
 from ..core.runtime import AnalysisRuntime, ProgressEvent, ProgressObserver
 from ..core.runtime.cache import code_version
 from ..infrastructure.config import AnalysisConfig, ConfigLoader, YamlConfigStore
+from ..infrastructure.serialization import to_primitive
 from ..infrastructure.plugins import PluginLoader
 from ..modules import ModuleCatalog, create_builtin_module_catalog
 from ..renderers import RendererRegistry, create_default_renderer_registry
@@ -180,7 +190,26 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     scan = subparsers.add_parser("scan", help="Run a composed cross-domain analysis plan")
-    scan.add_argument("target", type=Path)
+    scan.add_argument(
+        "targets",
+        type=Path,
+        nargs="+",
+        help="One or more files or directories to analyze",
+    )
+    scan.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Only analyze files matching this glob (repeatable)",
+    )
+    scan.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Skip files matching this glob (repeatable)",
+    )
     scan.add_argument(
         "--module",
         default="",
@@ -193,8 +222,9 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
     )
     scan.add_argument(
         "--enable",
-        default="",
-        help="Comma-separated capability/analyzer ids",
+        action="append",
+        default=[],
+        help="Capability/analyzer ids to run (comma-separated, repeatable)",
     )
     scan.add_argument("--profile", default=None)
     scan.add_argument(
@@ -466,8 +496,10 @@ def _resolve_analysis_selection(
             if registry.contains(analyzer_id)
         )
 
-    enable_expression = getattr(args, "enable", "")
-    if enable_expression:
+    enable_expressions = getattr(args, "enable", "") or []
+    if isinstance(enable_expressions, str):
+        enable_expressions = [enable_expressions]
+    for enable_expression in enable_expressions:
         selected.extend(
             item.strip() for item in enable_expression.split(",") if item.strip()
         )
@@ -598,10 +630,11 @@ def _handle_analysis(
         extra = {
             "analysis_config": analysis_config.name,
             "analysis_config_source": str(analysis_config.source or ""),
-            "capability_options": analysis_config.capability_options,
+            "capability_options": dict(analysis_config.capability_options),
         }
         if analysis_config.dynamic_execution:
             extra["dynamic_execution"] = analysis_config.dynamic_execution
+
     try:
         runtime_config = ConfigLoader().load(
             jobs=args.jobs if args.jobs is not None else yaml_runtime.get("jobs"),
@@ -634,23 +667,107 @@ def _handle_analysis(
     if not effective_profile and analysis_config:
         effective_profile = analysis_config.analysis.profile
     observer = _CliProgressObserver(sys.stderr, enabled=not runtime_config.quiet)
+
+    targets = _requested_targets(args)
+    batch_mode = len(targets) > 1 or any(
+        _is_directory(item) for item in targets
+    )
     with _CancellationScope() as scope:
-        response = service.execute(
-            AnalysisRequest(
-                target=args.target,
-                analyzer_ids=analyzer_ids,
-                profile=effective_profile,
-                baseline=getattr(args, "baseline", None),
-                update_baseline=getattr(args, "update_baseline", None),
-                fail_on=getattr(args, "fail_on", None),
-            ),
-            runtime_config,
-            observer=observer,
-            cancellation=scope.token,
+        if batch_mode:
+            response = service.execute_batch(
+                BatchRequest(
+                    targets=tuple(targets),
+                    analyzer_ids=analyzer_ids,
+                    profile=effective_profile,
+                    baseline=getattr(args, "baseline", None),
+                    update_baseline=getattr(args, "update_baseline", None),
+                    fail_on=getattr(args, "fail_on", None),
+                    include=tuple(getattr(args, "include", None) or ()),
+                    exclude=tuple(getattr(args, "exclude", None) or ()),
+                ),
+                runtime_config,
+                observer=observer,
+                cancellation=scope.token,
+            )
+        else:
+            response = service.execute(
+                AnalysisRequest(
+                    target=targets[0],
+                    analyzer_ids=analyzer_ids,
+                    profile=effective_profile,
+                    baseline=getattr(args, "baseline", None),
+                    update_baseline=getattr(args, "update_baseline", None),
+                    fail_on=getattr(args, "fail_on", None),
+                ),
+                runtime_config,
+                observer=observer,
+                cancellation=scope.token,
+            )
+    if batch_mode:
+        return _render_batch_response(
+            response, output_format, output, renderers, stdout
         )
     if runtime_config.quiet and output_format == "text" and response.exit_code == 0:
         return response.exit_code
     return _render_response(response, output_format, output, renderers, stdout)
+
+
+def _requested_targets(args: argparse.Namespace) -> list[Path]:
+    """The targets the command asked for, whatever its shape."""
+    targets = list(getattr(args, "targets", None) or [])
+    if targets:
+        return targets
+    single = getattr(args, "target", None)
+    return [single] if single is not None else []
+
+
+def _is_directory(path: Path) -> bool:
+    try:
+        return Path(path).expanduser().is_dir()
+    except OSError:
+        return False
+
+
+def _render_batch_response(
+    response,
+    output_format: str,
+    output: str | None,
+    renderers: RendererRegistry,
+    stdout: TextIO,
+) -> int:
+    """Render a multi-target run."""
+    summary = response.summary()
+    if output_format == "json":
+        payload = {
+            "results": {
+                path: to_primitive(result)
+                for path, result in response.results.items()
+            },
+            "summary": summary,
+            "diagnostics": to_primitive(response.diagnostics),
+            "exit_code": response.exit_code,
+        }
+        _write_output(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            output,
+            stdout,
+        )
+        return response.exit_code
+
+    chunks: list[str] = []
+    for path, result in response.results.items():
+        single = ApplicationResponse(result=result, diagnostics=response.diagnostics)
+        chunks.append(f"===== {path} =====")
+        chunks.append(renderers.get(output_format).render(single).rstrip("\n"))
+    chunks.append("===== 汇总 =====")
+    chunks.append(
+        f"目标 {summary['target_count']} 个，完成 {summary['completed_count']} 个，"
+        f"失败 {summary['failed_count']} 个，发现项 {summary['finding_count']} 条"
+    )
+    for path in response.failed:
+        chunks.append(f"  失败: {path}")
+    _write_output("\n".join(chunks) + "\n", output, stdout)
+    return response.exit_code
 
 
 def _module_payload(module) -> dict[str, object]:
@@ -1092,18 +1209,21 @@ def _handle_config(
 
 
 def _handle_web(args: argparse.Namespace, stdout: TextIO) -> int:
-    """Launch the web interface."""
-    from ..web import run_server
-    
-    stdout.write(f"Starting SOInsight web interface on {args.host}:{args.port}\n")
+    """Launch the web console.
+
+    The console is the same one the ``web/server.py`` script starts, so
+    there is a single implementation with the full feature set.
+    """
+    from ..web import run_console
+
+    stdout.write(f"Starting SOInsight web console on {args.host}:{args.port}\n")
     stdout.write("Press Ctrl+C to stop\n")
-    
+
     try:
-        run_server(args.host, args.port)
+        return run_console(args.host, args.port, open_browser=False)
     except KeyboardInterrupt:
-        stdout.write("\nWeb server stopped\n")
-    
-    return 0
+        stdout.write("\nWeb console stopped\n")
+        return 0
 
 
 def _handle_diff(
