@@ -211,6 +211,15 @@ def build_parser(catalog: ModuleCatalog | None = None) -> argparse.ArgumentParse
         help="Skip files matching this glob (repeatable)",
     )
     scan.add_argument(
+        "--taint-library",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to a taint source/sink library (YAML). Defaults to the "
+            "built-in configs/taint-functions.yaml"
+        ),
+    )
+    scan.add_argument(
         "--module",
         default="",
         help="Comma-separated product modules, e.g. basic,security",
@@ -635,6 +644,16 @@ def _handle_analysis(
         if analysis_config.dynamic_execution:
             extra["dynamic_execution"] = analysis_config.dynamic_execution
 
+    # A command-line library path overrides the configured one, so a run can
+    # be pointed at a project's own source and sink table without editing
+    # the YAML configuration.
+    library_path = getattr(args, "taint_library", None)
+    if library_path:
+        options = dict(extra.get("capability_options") or {})
+        dataflow_options = dict(options.get("basic.dataflow") or {})
+        dataflow_options["taint_library"] = str(library_path)
+        options["basic.dataflow"] = dataflow_options
+        extra["capability_options"] = options
     try:
         runtime_config = ConfigLoader().load(
             jobs=args.jobs if args.jobs is not None else yaml_runtime.get("jobs"),
