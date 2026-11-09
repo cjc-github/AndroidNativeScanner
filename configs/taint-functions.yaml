@@ -1,0 +1,352 @@
+# SOInsight 污点函数库（内置默认）
+#
+# 这里是「数据从哪来」与「数据流到哪去」的函数表。表是数据不是代码，
+# 因此可以整份替换：把配置指向自己的文件即可（见 capability_options）。
+#
+# 字段说明：
+#   name         报告里显示的标识
+#   match        正则，匹配**链接名**（mangled symbol）；`match_demangled: true` 则匹配 demangle 后的名字
+#   kind         return       污点值是函数返回值
+#                argument     污点值是第 `argument` 个参数（0 起）
+#                argument_any 任一参数都可能带污点
+#   argument     参数序号（0 起），仅 kind=argument 时有意义
+#   severity     该 sink 命中时的严重度
+#   cwe          关联的 CWE
+#   category     报告分组
+#   description  这个函数做什么
+
+version: 1
+origin: builtin
+
+sources:
+  # --- 外部输入：网络 ---
+  - name: recv
+    match: ^recv(@|$)
+    kind: return
+    cwe: CWE-20
+    category: io
+    description: 从套接字读取字节，返回值即外部数据。
+
+  - name: recvfrom
+    match: ^recvfrom(@|$)
+    kind: return
+    cwe: CWE-20
+    category: io
+    description: 从套接字读取数据并返回。
+
+  - name: recvmsg
+    match: ^recvmsg(@|$)
+    kind: return
+    cwe: CWE-20
+    category: io
+    description: 接收套接字消息。
+
+  - name: read
+    match: ^(read|__read_chk|__read_alias_chk)($|@)
+    kind: return
+    cwe: CWE-20
+    category: io
+    description: 从文件描述符读取，返回读取到的字节数。
+
+  - name: fgets
+    match: ^fgets(@|$)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: io
+    description: 从流读入一行，写入第一个参数指向的缓冲区。
+
+  - name: fread
+    match: ^fread(@|$)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: io
+    description: 从流读取，写入第一个参数指向的缓冲区。
+
+  - name: getenv
+    match: ^getenv(@|$)
+    kind: return
+    cwe: CWE-20
+    category: env
+    description: 读取环境变量。
+
+  - name: getenv_r
+    match: ^getenv_r(@|$)
+    kind: argument
+    argument: 1
+    cwe: CWE-20
+    category: env
+    description: 读取环境变量并写入第二个参数。
+
+  - name: scanf
+    match: ^(__isoc99_)?sscanf(@|$)
+    kind: argument_any
+    cwe: CWE-20
+    category: io
+    description: 按格式解析输入，可能写入任一参数。
+
+  - name: sscanf
+    match: ^(__isoc99_)?sscanf(@|$)
+    kind: argument_any
+    cwe: CWE-20
+    category: io
+    description: 按格式解析字符串。
+
+  - name: gets
+    match: ^gets(@|$)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: io
+    description: 从标准输入读入一行（无边界检查）。
+
+  - name: fscanf
+    match: ^(__isoc99_)?fscanf(@|$)
+    kind: argument_any
+    cwe: CWE-20
+    category: io
+    description: 从流按格式读入。
+
+  - name: argv
+    match: ^(main|__libc_start_main)($|@)
+    kind: argument
+    argument: 1
+    cwe: CWE-20
+    category: entry
+    description: 命令行参数由调用方传入。
+
+sinks:
+  # --- 命令执行 ---
+  - name: system
+    match: ^system(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-78
+    category: exec
+    description: 把参数交给 shell 执行。
+
+  - name: popen
+    match: ^popen(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-78
+    category: exec
+    description: 以命令字符串启动子进程。
+
+  - name: execl
+    match: ^exec[lv]e?p?(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-78
+    category: exec
+    description: 执行新程序。
+
+  - name: execve
+    match: ^execve(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-78
+    category: exec
+    description: 执行新程序。
+
+  # --- 格式化输出（格式串漏洞）---
+  - name: printf
+    match: ^printf(@|$)
+    kind: argument
+    argument: 0
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 格式化输出，格式串可被外部控制即为漏洞。
+
+  - name: fprintf
+    match: ^fprintf(@|$)
+    kind: argument
+    argument: 1
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 格式化输出到流。
+
+  - name: sprintf
+    match: ^sprintf(@|$)
+    kind: argument
+    argument: 1
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 格式化写入缓冲区。
+
+  - name: snprintf
+    match: ^snprintf(@|$)
+    kind: argument
+    argument: 2
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 带长度限制的格式化写入。
+
+  - name: vsprintf
+    match: ^vsprintf(@|$)
+    kind: argument
+    argument: 1
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 变参格式化写入。
+
+  - name: vsnprintf
+    match: ^vsnprintf(@|$)
+    kind: argument
+    argument: 2
+    severity: high
+    cwe: CWE-134
+    category: format
+    description: 变参带长度格式化写入。
+
+  - name: syslog
+    match: ^syslog(@|$)
+    kind: argument
+    argument: 1
+    severity: medium
+    cwe: CWE-134
+    category: format
+    description: 写入系统日志。
+
+  # --- 内存与路径 ---
+  - name: memcpy
+    match: ^(memcpy|__memcpy_chk|memmove|__memmove_chk)($|@)
+    kind: argument
+    argument: 1
+    severity: medium
+    cwe: CWE-120
+    category: memory
+    description: 复制内存，源长度若受外部控制即可越界写。
+
+  - name: strcpy
+    match: ^(strcpy|__strcpy_chk|strcat|__strcat_chk)($|@)
+    kind: argument
+    argument: 1
+    severity: medium
+    cwe: CWE-120
+    category: memory
+    description: 字符串复制，无长度限制。
+
+  - name: strlen
+    match: ^strlen(@|$)
+    kind: argument
+    argument: 0
+    severity: low
+    cwe: CWE-120
+    category: memory
+    description: 求字符串长度，作为长度参数参与计算。
+
+  - name: open
+    match: ^open(@|$)
+    kind: argument
+    argument: 0
+    severity: medium
+    cwe: CWE-73
+    category: path
+    description: 按路径打开文件，路径可控即为路径穿越。
+
+  - name: fopen
+    match: ^fopen(@|$)
+    kind: argument
+    argument: 0
+    severity: medium
+    cwe: CWE-73
+    category: path
+    description: 按路径打开文件。
+
+  - name: unlink
+    match: ^(unlink|remove)($|@)
+    kind: argument
+    argument: 0
+    severity: medium
+    cwe: CWE-73
+    category: path
+    description: 按路径删除文件。
+
+  - name: dlopen
+    match: ^dlopen(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-829
+    category: loading
+    description: 按路径加载动态库。
+
+  # --- 权限 ---
+  - name: chmod
+    match: ^chmod(@|$)
+    kind: argument
+    argument: 0
+    severity: medium
+    cwe: CWE-732
+    category: permission
+    description: 修改文件权限。
+
+  - name: setuid
+    match: ^(setuid|setgid|seteuid|setegid)($|@)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-266
+    category: permission
+    description: 改变进程身份。
+
+propagators:
+  # --- 传播器：把污点从输入复制到输出 ---
+  - name: strcpy
+    match: ^(strcpy|__strcpy_chk)($|@)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 把第一个参数的内容复制到第二个参数。
+
+  - name: strncpy
+    match: ^(strncpy|__strncpy_chk)($|@)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 复制字符串到第二个参数。
+
+  - name: memcpy
+    match: ^(memcpy|__memcpy_chk|memmove|__memmove_chk)($|@)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 把第一个参数的内容复制到第二个参数。
+
+  - name: strcat
+    match: ^(strcat|__strcat_chk)($|@)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 把第一个参数追加到第二个参数。
+
+  - name: sprintf
+    match: ^sprintf(@|$)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 把格式化结果写入第二个参数。
+
+  - name: snprintf
+    match: ^snprintf(@|$)
+    kind: argument
+    argument: 0
+    cwe: CWE-20
+    category: propagation
+    description: 把格式化结果写入第三个参数。

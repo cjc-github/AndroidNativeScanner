@@ -17,7 +17,7 @@ the security rules.
 from dataclasses import dataclass
 from typing import Callable
 
-__all__ = ["FormatHit", "scan"]
+__all__ = ["FormatHit", "magic_bytes", "scan"]
 
 _MAX_OFFSETS_PER_FORMAT = 64
 
@@ -142,6 +142,19 @@ _SIGNATURES: tuple[tuple[str, str, bytes, Callable[[bytes, int], bool]], ...] = 
     ("riff", "audio", b"RIFF", _verify_riff),
     ("ogg", "audio", b"OggS", lambda blob, offset: True),
 )
+
+
+def magic_bytes(format_id: str) -> bytes | None:
+    """The signature bytes of a known format, or ``None`` when unknown.
+
+    The seed generator uses this to build a container seed that starts with
+    the right header, so the format is recognised on the first try instead of
+    after a long random walk.
+    """
+    for candidate, _category, signature, _verify in _SIGNATURES:
+        if candidate == format_id:
+            return signature
+    return None
 
 
 def scan(blob: bytes, *, max_hits: int = 200) -> tuple[FormatHit, ...]:

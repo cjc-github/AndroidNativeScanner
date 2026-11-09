@@ -11,7 +11,13 @@ independently, each match carries the evidence it was based on, and the
 
 from dataclasses import dataclass
 
-__all__ = ["ProtocolEvidence", "ProtocolHit", "ProtocolReport", "identify"]
+__all__ = [
+    "ProtocolEvidence",
+    "ProtocolHit",
+    "ProtocolReport",
+    "identify",
+    "seed_template",
+]
 
 
 @dataclass(frozen=True)
@@ -212,3 +218,32 @@ _PROTOCOLS: tuple[dict, ...] = (
         "symbols": ("peerconnection", "rtc_", "stun_"),
     },
 )
+
+
+#: Minimal, well-formed messages used as fuzz seeds. They are small on purpose:
+#: a seed only has to reach the parser, not to be a valid conversation.
+_SEED_TEMPLATES = {
+    "http": b"GET / HTTP/1.1\r\nHost: localhost\r\nUser-Agent: soinsight\r\n\r\n",
+    "https": b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
+    "websocket": b"GET / HTTP/1.1\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+    "tls": b"\x16\x03\x01\x00\x50\x01\x00\x00\x4c\x03\x03",
+    "dtls": b"\x16\xfe\xfd\x00\x50",
+    "dns": b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00",
+    "mqtt": b"\x10\x0d\x00\x04MQTT\x04\x02\x00\x3c\x00\x00",
+    "smtp": b"EHLO soinsight\r\nQUIT\r\n",
+    "ftp": b"USER anonymous\r\nPASS soinsight@\r\n",
+    "redis": b"*1\r\n$4\r\nPING\r\n",
+    "grpc": b"\x00\x00\x00\x00\x00",
+    "rtmp": b"connect\x00",
+    "rtsp": b"OPTIONS rtsp://localhost/ RTSP/1.0\r\n\r\n",
+    "postgresql": b"\x00\x00\x00\x08\x04\xd2\x16\x2f",
+}
+
+
+def seed_template(protocol_id: str) -> bytes | None:
+    """A minimal message for a known protocol, or ``None`` when unknown.
+
+    The seed generator prefers this over a raw marker string, because a
+    well-formed header reaches deeper into the parser than a bare keyword.
+    """
+    return _SEED_TEMPLATES.get(protocol_id)

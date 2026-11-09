@@ -3,6 +3,7 @@
 from typing import Optional
 
 from ..core.analyzer import Analyzer, AnalyzerKind, AnalyzerMetadata
+from ..infrastructure.taint_paths import analyse_taint_paths
 from ..core.models import (
     AnalysisResult,
     AnalysisStatus,
@@ -677,12 +678,18 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
         description="Infer vulnerability classes from dangerous linkage facts.",
         kind=AnalyzerKind.DETECTOR,
         requires=("security.dangerous-api",),
+        optional_requires=(
+            "basic.dataflow",
+            "basic.callgraph",
+            "basic.symbols",
+        ),
     )
 
     def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
         del target
         dangerous = context.require("security.dangerous-api")
         findings: list[Finding] = []
+        taint_paths = self._taint_paths(context)
         patterns: dict[str, int] = {}
         counts_by_cwe: dict[str, int] = {}
         counts_by_severity: dict[str, int] = {}
@@ -729,6 +736,33 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
             call_sites = _call_sites_of(source)
             if call_sites:
                 evidence["call_sites"] = call_sites
+            controllable, taint_details = _taint_at_call_sites(context, call_sites)
+            if controllable:
+                evidence["parameter_controllable"] = True
+                evidence["taint"] = taint_details
+                evidence["evidence_level"] = "call-site+taint"
+                message = (
+                    f"The library reaches and calls '{canonical}' ({category}) at "
+                    f"{call_site_count} site(s); this matches {cwe}. The "
+                    f"argument at the call site derives from the function's own "
+                    f"parameters, so the caller controls it (taint analysis, "
+                    f"intra-procedural)."
+                )
+            path = _path_for_sink(taint_paths, canonical)
+            if path is not None:
+                evidence["taint_path"] = path.as_dict()
+                evidence["taint_source"] = path.source
+                evidence["taint_chain"] = (
+                    f"{path.source}() -> {path.caller}() -> {path.sink}()"
+                )
+                evidence["evidence_level"] = "call-site+taint"
+                message = (
+                    f"The library calls '{canonical}' ({category}) at "
+                    f"{path.call_site:#x} with data that originates from "
+                    f"'{path.source}'; the value travels "
+                    f"{path.source}() -> {path.caller}() -> {path.sink}(). "
+                    f"This matches {cwe}."
+                )
             findings.append(
                 Finding(
                     rule_id=f"security.vulnerability.{cwe}",
@@ -737,7 +771,9 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
                     category="vulnerability",
                     severity=source.severity,
                     # Confidence stays MEDIUM even with a confirmed call site:
-                    # a call proves use, not attacker-controlled input.
+                    # a call proves use, not attacker-controlled input. The taint
+                    # evidence shows that the caller controls the argument, which
+                    # is not the same claim.
                     confidence=Confidence.MEDIUM,
                     message=message,
                     fingerprint=f"vuln:{cwe}:{canonical}",
@@ -746,12 +782,29 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
                 )
             )
 
+        # The tainted sinks are tracked separately: the set above holds the
+        # (CWE, API) pairs of the linkage findings, which is a different
+        # kind of key.
+        findings.extend(self._taint_findings(taint_paths, set()))
+
         return AnalysisResult(
             analyzer_id=self.metadata.id,
             analyzer_version=self.metadata.version,
             status=AnalysisStatus.SUCCESS,
             data={
                 "vulnerability_count": len(findings),
+                "taint_path_count": len(taint_paths),
+                "taint_sources": sorted({path.source for path in taint_paths}),
+                "taint_sinks": sorted({path.sink for path in taint_paths}),
+                "parameter_controllable_count": sum(
+                    1
+                    for finding in findings
+                    if any(
+                        entry.get("parameter_controllable")
+                        for entry in (finding.evidence or ())
+                        if isinstance(entry, dict)
+                    )
+                ),
                 "vulnerability_patterns": patterns,
                 "counts_by_cwe": counts_by_cwe,
                 "counts_by_severity": counts_by_severity,
@@ -760,6 +813,88 @@ class SecurityVulnerabilityAnalyzer(Analyzer):
             },
             findings=findings,
         )
+
+    def _taint_paths(self, context):
+        """The source-to-sink paths the taint analysis found.
+
+        The analysis needs the symbol table (to resolve the source names),
+        the call graph (to know where the sinks are called) and the data
+        flow (to know which register carried the tainted value). Any of them
+        may be absent, and then there are simply no paths.
+        """
+        symbols = context.optional("basic.symbols")
+        callgraph = context.optional("basic.callgraph")
+        dataflow = context.optional("basic.dataflow")
+        if symbols is None or callgraph is None or dataflow is None:
+            return ()
+        library = _taint_library(context)
+        if library is None:
+            return ()
+        try:
+            return analyse_taint_paths(
+                library=library,
+                symbols=symbols.data or {},
+                callgraph=callgraph.data or {},
+                dataflow=dataflow.data or {},
+            )
+        except Exception:  # pragma: no cover - 分析失败时的兜底
+            return ()
+
+    def _taint_findings(self, taint_paths, seen) -> list[Finding]:
+        """The findings for the sinks that are reached by tainted data.
+
+        A sink that the dangerous-API detector does not know about is still
+        a sink: the taint path is the stronger evidence, because it names
+        the source the data came from. The sink's own CWE comes from the
+        taint library.
+        """
+        produced: list[Finding] = []
+        for path in taint_paths:
+            if path.sink_symbol in seen:
+                continue
+            seen.add(path.sink_symbol)
+            cwe = path.cwe or "CWE-20"
+            title = f"Untrusted data reaches {path.sink}()"
+            message = (
+                f"Data from '{path.source}' reaches {path.sink}() at "
+                f"{path.call_site:#x} through {path.caller}(); the value "
+                f"travels {path.source}() -> {path.caller}() -> {path.sink}()."
+            )
+            evidence = {
+                "cwe": cwe,
+                "api": path.sink,
+                "api_category": path.category,
+                "usage": "taint-path",
+                "evidence_level": "call-site+taint",
+                "call_site_count": 1,
+                "call_sites": (hex(path.call_site),),
+                "source_analyzer": "basic.dataflow",
+                "taint_path": path.as_dict(),
+                "taint_source": path.source,
+                "taint_chain": (
+                    f"{path.source}() -> {path.caller}() -> {path.sink}()"
+                ),
+            }
+            produced.append(
+                Finding(
+                    rule_id=f"security.vulnerability.taint.{path.sink}",
+                    rule_version=self.metadata.version,
+                    title=title,
+                    category="vulnerability",
+                    severity=Severity(path.severity)
+                    if path.severity in {item.value for item in Severity}
+                    else Severity.HIGH,
+                    # The path proves where the data came from, not that it
+                    # reaches a dangerous operation, so the confidence stays
+                    # MEDIUM.
+                    confidence=Confidence.MEDIUM,
+                    message=message,
+                    fingerprint=f"taint:{path.source}:{path.sink}:{path.call_site:x}",
+                    evidence=[evidence],
+                    remediation=None,
+                )
+            )
+        return produced
 
     def format_text(self, result: AnalysisResult) -> Optional[str]:
         """Format vulnerability analysis result as text."""
@@ -964,3 +1099,76 @@ def _stripped_diagnostic(analyzer_id: str, symbols) -> list[Diagnostic]:
             )
         ]
     return []
+
+
+def _taint_at_call_sites(context, call_sites) -> tuple[bool, list[dict]]:
+    """Whether a tainted value reaches one of the call sites.
+
+    ``basic.dataflow`` reports, per function, the calls whose arguments derive
+    from that function's parameters. When one of those calls is also a call
+    site of a dangerous API, the argument is controlled by the caller.
+
+    The analysis is intra-procedural, so the claim is "the caller controls
+    this argument", never "an attacker controls it".
+    """
+    if not call_sites:
+        return False, []
+    dataflow = context.optional("basic.dataflow")
+    if dataflow is None:
+        return False, []
+    tainted: dict[str, list[dict]] = {}
+    for function in (dataflow.data or {}).get("functions") or ():
+        for flow in function.get("taint_flows") or ():
+            if not isinstance(flow, dict) or flow.get("kind") != "call-argument":
+                continue
+            address = str(flow.get("address") or "").lower()
+            if not address:
+                continue
+            tainted.setdefault(address, []).append(
+                {
+                    "call_site": flow.get("address"),
+                    "source": flow.get("source"),
+                    "target": flow.get("target"),
+                    "depth": flow.get("depth"),
+                    "function": function.get("name"),
+                }
+            )
+    if not tainted:
+        return False, []
+    matched: list[dict] = []
+    for site in call_sites:
+        for detail in tainted.get(str(site).lower(), ()):
+            matched.append(detail)
+    return bool(matched), matched[:10]
+
+
+
+def _taint_library(context):
+    """The taint library the data-flow analyzer used, if it loaded one.
+
+    The library is a configuration, so both analyzers have to agree on it.
+    The data-flow analyzer records the path it used; when that is absent the
+    default location is tried, and a library that cannot be read means there
+    are no source-to-sink paths.
+    """
+    from ..infrastructure.taint_library import (
+        DEFAULT_LIBRARY_PATH,
+        TaintLibraryError,
+        load_taint_library,
+    )
+
+    extra = getattr(getattr(context, "config", None), "extra", None) or {}
+    declared = extra.get("capability_options", {}).get("basic.dataflow", {})
+    path = declared.get("taint_library") or str(DEFAULT_LIBRARY_PATH)
+    try:
+        return load_taint_library(path)
+    except TaintLibraryError:
+        return None
+
+
+def _path_for_sink(paths, sink_symbol: str):
+    """The first taint path that ends in the given sink function."""
+    for path in paths:
+        if path.sink_symbol == sink_symbol:
+            return path
+    return None

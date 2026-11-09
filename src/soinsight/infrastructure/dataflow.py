@@ -10,6 +10,13 @@ Intra-procedural analysis comes first: each basic block gets the defs and
 uses it contains, and a forward data-flow pass propagates reaching
 definitions across block boundaries. Inter-procedural propagation is out of
 scope; the facts never claim it.
+
+On top of that, :func:`propagate_taint` answers a narrower question: does a
+value that came in as an ABI argument reach a given register? The sources are
+the calling convention's argument registers, so a tainted register means
+"this value is derived from what the caller passed in". The pass is
+intra-procedural and may-analysis: it never claims a value *cannot* be
+attacker-controlled, only where it *is* derived from an argument.
 """
 
 from __future__ import annotations
@@ -284,3 +291,373 @@ def _block_kills(block: BlockFlow) -> dict[str, Definition]:
     for definition in block.defs:
         kills[definition.location] = definition
     return kills
+
+
+#: Where a function's return value lands, per architecture family.
+_RETURN_REGISTER = {
+    "x86": "rax",
+    "x86-64": "rax",
+    "aarch64": "x0",
+    "arm": "r0",
+}
+
+#: The registers the calling convention passes arguments in. They are the
+#: taint sources of an intra-procedural analysis.
+#: The decoder reports the family as ``x86`` for both bit widths, so the
+#: argument registers are chosen by the profile's width.
+_ARGUMENT_SOURCES = {
+    "x86-64": ("rdi", "rsi", "rdx", "rcx", "r8", "r9"),
+    # The 32-bit SysV convention passes the first four arguments on the
+    # stack; ``eax``/``edx``/``ecx``/``esi`` are only the varargs
+    # registers, so they are not sources of a general argument.
+    "x86": (),
+    "aarch64": tuple(f"x{index}" for index in range(8)),
+}
+
+#: Registers that hold the stack pointer or the frame pointer. They are never
+#: caller-supplied values, so a taint that starts there would be meaningless.
+_NON_ARGUMENT_REGISTERS = frozenset({"rsp", "rbp", "esp", "ebp", "sp"})
+
+#: Registers a call may clobber. The taint of these is dropped at a call,
+#: because the callee may write them.
+_CALLER_SAVED = {
+    "x86-64": ("rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"),
+    "x86": ("eax", "ecx", "edx", "esi", "edi", "ebp", "esp"),
+    "aarch64": tuple(f"x{index}" for index in range(18)),
+}
+
+_CALL_MNEMONICS = frozenset({"call", "bl", "blr"})
+
+
+@dataclass(frozen=True)
+class TaintRecord:
+    """One taint fact: a register that holds a tainted value."""
+
+    source: str
+    """Where the value came from: an argument register, or a source function."""
+    target: str
+    """The register that received the tainted value."""
+    address: int
+    """Where the tainted value was produced (or consumed at a call)."""
+    depth: int
+    """How many definitions away the value is from the source."""
+    kind: str
+    """``copy`` for a register-to-register move, ``call-argument`` when a
+    tainted value is handed to a call, ``source-return`` when a source
+    function's return value enters the flow, ``source-argument`` when a
+    source function's argument is the tainted one."""
+    origin: str = ""
+    """The source function the value came from, when there is one."""
+
+
+@dataclass(frozen=True)
+class TaintFlow:
+    """The taint facts of one function."""
+
+    records: tuple[TaintRecord, ...] = ()
+    tainted_registers: tuple[str, ...] = ()
+    sources: tuple[str, ...] = ()
+    """The source functions whose data entered this function."""
+
+    @property
+    def count(self) -> int:
+        return len(self.records)
+
+
+def argument_sources(arch: str, *, is64: bool = True) -> tuple[str, ...]:
+    """The argument registers of ``arch``, normalized to their parent.
+
+    ``arch`` is the decoder's family name, which is ``x86`` for both bit
+    widths, so ``is64`` decides whether the SysV x86-64 registers apply.
+    """
+    if arch == "x86":
+        arch = "x86-64" if is64 else "x86"
+    table = _ARGUMENT_SOURCES.get(arch)
+    if table is None:
+        return ()
+    resolved: list[str] = []
+    for name in table:
+        parent = normalise_register(name, "x86" if arch in ("x86", "x86-64") else arch)
+        if parent is None or parent in _NON_ARGUMENT_REGISTERS:
+            continue
+        if parent not in resolved:
+            resolved.append(parent)
+    return tuple(resolved)
+
+
+def _is_memory_destination(operands: str) -> bool:
+    """Whether the instruction writes through a memory operand.
+
+    The shared operand heuristic treats the first register in the operand
+    text as the destination. For ``mov [rdi], rax`` that register is a base
+    pointer, not a destination, so the taint pass must not kill it.
+    """
+    first = operands.split(",")[0] if operands else ""
+    return "[" in first
+
+
+def propagate_taint(
+    instructions,
+    graph: ControlFlowGraph,
+    arch: str,
+    *,
+    sources: tuple[str, ...] | None = None,
+    max_depth: int = 64,
+    is64: bool = True,
+    source_targets: dict | None = None,
+) -> TaintFlow:
+    """Propagate taint from the ABI argument registers through a function.
+
+    ``instructions`` yields ``(address, size, mnemonic, operands)`` records and
+    ``graph`` is that function's CFG, so the propagation follows the real
+    control flow instead of the address order.
+
+    A register is tainted when it holds a value derived from an argument
+    register. Writing a register kills its taint unless the written value
+    itself reads a tainted register, and a call kills the taint of the
+    registers it may clobber -- while the taint *into* the call is recorded,
+    because a tainted argument reaching a call is the fact that matters.
+
+    ``source_targets`` maps a call target address to a source function from
+    the taint library. Calling such a function makes its return value (or
+    the buffer of its argument) tainted, which is how data that originates
+    outside the program enters the flow.
+    """
+    if not graph.blocks:
+        return TaintFlow()
+
+    source_registers = (
+        tuple(sources) if sources is not None else argument_sources(arch, is64=is64)
+    )
+    if not source_registers:
+        return TaintFlow()
+
+    grouped = _group_by_block(
+        sorted(instructions, key=lambda item: item[0]), graph.blocks
+    )
+    callersaved = {
+        normalise_register(name, "x86" if arch in ("x86", "x86-64") else arch)
+        for name in _CALLER_SAVED.get(arch, ())
+    }
+    callersaved.discard(None)
+
+    # ``state`` maps a register to (source register, depth, definition address).
+    incoming: dict[int, dict[str, tuple[str, int, int]]] = {
+        block.start: {} for block in graph.blocks
+    }
+    outgoing: dict[int, dict[str, tuple[str, int, int]]] = {
+        block.start: {} for block in graph.blocks
+    }
+    if graph.entry is not None and graph.entry in incoming:
+        incoming[graph.entry] = {
+            name: (name, 0, 0) for name in source_registers if name
+        }
+
+    targets = dict(source_targets or {})
+
+    records: list[TaintRecord] = []
+    seen_records: set[tuple] = set()
+
+    for _round in range(len(graph.blocks) + 1):
+        changed = False
+        for block in graph.blocks:
+            state = dict(incoming[block.start])
+            produced, flows = _transfer(
+                grouped.get(block.start, ()),
+                state,
+                arch,
+                callersaved,
+                source_registers,
+                max_depth,
+                targets,
+                is64,
+            )
+            for flow in flows:
+                key = (flow.source, flow.target, flow.address, flow.kind)
+                if key not in seen_records:
+                    seen_records.add(key)
+                    records.append(flow)
+            if produced != outgoing[block.start]:
+                outgoing[block.start] = produced
+                changed = True
+            for successor in block.successors:
+                if successor not in incoming:
+                    # A successor outside the recovered graph (a call target
+                    # that is not a block of this function) carries no state.
+                    continue
+                merged = _merge(incoming[successor], produced)
+                if merged != incoming[successor]:
+                    incoming[successor] = merged
+                    changed = True
+        if not changed:
+            break
+
+    tainted = tuple(
+        sorted(
+            {
+                name
+                for state in outgoing.values()
+                for name in state
+            }
+        )
+    )
+    return TaintFlow(records=tuple(records), tainted_registers=tainted)
+
+
+def _merge(
+    incoming: dict[str, tuple[str, int, int]],
+    produced: dict[str, tuple[str, int, int]],
+) -> dict[str, tuple[str, int, int]]:
+    """Merge a predecessor's state into a block's incoming state."""
+    merged = dict(incoming)
+    for name, value in produced.items():
+        current = merged.get(name)
+        if current is None or value[1] < current[1]:
+            merged[name] = value
+    return merged
+
+
+def _transfer(
+    records,
+    state: dict[str, tuple[str, int, int]],
+    arch: str,
+    callersaved: set,
+    argument_registers: tuple[str, ...],
+    max_depth: int,
+    source_targets: dict | None = None,
+    is64: bool = True,
+) -> tuple[dict[str, tuple[str, int, int]], list[TaintRecord]]:
+    """Run one block's instructions and return the state and the taint facts."""
+    flows: list[TaintRecord] = []
+    targets = source_targets or {}
+    for address, _size, mnemonic, operands in records:
+        reads, writes = instruction_locations(mnemonic, operands, arch)
+
+        if mnemonic in _CALL_MNEMONICS:
+            # A call hands over whatever sits in the argument registers of the
+            # calling convention, so that is where the taint is consumed --
+            # not in the operand text, which names the callee, not the
+            # arguments. A tainted value handed over is exactly the fact the
+            # security analyzers look for.
+            for name in argument_registers:
+                value = state.get(name)
+                if value is not None:
+                    flows.append(
+                        TaintRecord(
+                            source=value[0],
+                            target=name,
+                            address=address,
+                            depth=value[1],
+                            kind="call-argument",
+                        )
+                    )
+            # The callee may write the caller-saved registers, so their taint
+            # is dropped here -- before the source call contributes, because
+            # a source's return value lands in one of them.
+            for name in callersaved:
+                state.pop(name, None)
+            _apply_source_call(
+                address, operands, arch, state, flows, targets, argument_registers
+            )
+            continue
+
+        if _is_memory_destination(operands):
+            # A store through a pointer: the pointer is read, not written.
+            continue
+
+        for name in sorted(writes):
+            value = None
+            for read in sorted(reads):
+                candidate = state.get(read)
+                if candidate is not None and candidate[1] < max_depth:
+                    value = candidate
+                    break
+            if value is None:
+                state.pop(name, None)
+                continue
+            state[name] = (value[0], value[1] + 1, address)
+            flows.append(
+                TaintRecord(
+                    source=value[0],
+                    target=name,
+                    address=address,
+                    depth=value[1] + 1,
+                    kind="copy",
+                )
+            )
+    return state, flows
+
+
+def _apply_source_call(
+    address: int,
+    operands: str,
+    arch: str,
+    state: dict[str, tuple[str, int, int]],
+    flows: list[TaintRecord],
+    source_targets: dict,
+    argument_registers: tuple[str, ...],
+) -> None:
+    """Let a source function contribute taint to the caller's registers.
+
+    A source with kind ``return`` taints the return register, because the
+    value it produces lands there. A source with kind ``argument`` taints
+    the register that carried the buffer the source wrote into.
+    """
+    if not source_targets:
+        return
+    target = _direct_call_target(operands)
+    if target is None:
+        return
+    source = source_targets.get(target)
+    if source is None:
+        return
+
+    kind = str(source.get("kind") or "return")
+    symbol = str(source.get("symbol") or "")
+    if kind == "argument":
+        index = int(source.get("argument") or 0)
+        if index >= len(argument_registers):
+            return
+        register = argument_registers[index]
+        flows.append(
+            TaintRecord(
+                source=symbol or str(source.get("name") or ""),
+                target=register,
+                address=address,
+                depth=0,
+                kind="source-argument",
+                origin=symbol,
+            )
+        )
+        state[register] = (symbol or str(source.get("name") or ""), 0, address)
+        return
+
+    family = "x86-64" if arch in ("x86", "x86-64") else arch
+    register = _RETURN_REGISTER.get(family)
+    if register is None:
+        return
+    flows.append(
+        TaintRecord(
+            source=symbol or str(source.get("name") or ""),
+            target=register,
+            address=address,
+            depth=0,
+            kind="source-return",
+            origin=symbol,
+        )
+    )
+    state[register] = (symbol or str(source.get("name") or ""), 0, address)
+
+
+def _direct_call_target(operands: str) -> int | None:
+    """The address a direct call jumps to, or ``None``."""
+    for part in reversed(operands.split(",")):
+        candidate = part.strip().lstrip("#").strip()
+        if not candidate:
+            continue
+        if candidate.startswith("0x") or candidate.isdigit():
+            try:
+                return int(candidate, 0)
+            except ValueError:
+                return None
+    return None

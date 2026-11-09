@@ -12,7 +12,13 @@ from ..core.models import (
 )
 from ..infrastructure import disasm as disasm_layer
 from ..infrastructure.cfg import build_cfg
-from ..infrastructure.dataflow import analyse
+from ..infrastructure.callgraph import plt_imports
+from ..infrastructure.dataflow import analyse, propagate_taint
+from ..infrastructure.taint_library import (
+    DEFAULT_LIBRARY_PATH,
+    TaintLibraryError,
+    load_taint_library,
+)
 from ..infrastructure.elf import ElfFormatError, parse_elf
 
 ANALYZER_ID = "basic.dataflow"
@@ -21,6 +27,10 @@ _DEFAULT_OPTIONS = {
     "max_functions": 500,
     "max_instructions": 20000,
     "max_pairs": 20000,
+    "taint": True,
+    "taint_max_depth": 64,
+    # The taint library is data, so the user may point it at their own file.
+    "taint_library": str(DEFAULT_LIBRARY_PATH),
 }
 
 _SOURCE_LABELS = {"symbols": "符号", "prologue": "序言扫描"}
@@ -74,7 +84,11 @@ class BasicDataflowAnalyzer(Analyzer):
                 analyzer_id=ANALYZER_ID,
                 analyzer_version=self.metadata.version,
                 status=AnalysisStatus.SUCCESS,
-                data=_empty_data(elf.header.machine, decoder_version),
+                data=_empty_data(
+                    elf.header.machine,
+                    decoder_version,
+                    "enabled" if options["taint"] else "disabled",
+                ),
                 diagnostics=diagnostics,
             )
 
@@ -92,7 +106,11 @@ class BasicDataflowAnalyzer(Analyzer):
                 analyzer_id=ANALYZER_ID,
                 analyzer_version=self.metadata.version,
                 status=AnalysisStatus.SUCCESS,
-                data=_empty_data(elf.header.machine, decoder_version),
+                data=_empty_data(
+                    elf.header.machine,
+                    decoder_version,
+                    "enabled" if options["taint"] else "disabled",
+                ),
                 diagnostics=diagnostics,
             )
 
@@ -108,6 +126,14 @@ class BasicDataflowAnalyzer(Analyzer):
                 "machine": elf.header.machine,
                 "decoder": decoder_version,
                 "scope": "intra-procedural",
+                "taint": "enabled" if options["taint"] else "disabled",
+                "taint_scope": "intra-procedural",
+                "taint_function_count": sum(
+                    1 for item in functions if item.get("taint_count")
+                ),
+                "taint_flow_count": sum(
+                    item.get("taint_count", 0) for item in functions
+                ),
                 "function_count": len(functions),
                 "block_count": sum(item["block_count"] for item in functions),
                 "def_count": sum(item["def_count"] for item in functions),
@@ -136,6 +162,9 @@ class BasicDataflowAnalyzer(Analyzer):
             f"定义: {data.get('def_count', 0):,} 个",
             f"使用: {data.get('use_count', 0):,} 个",
             f"到达定义对: {data.get('reaching_pair_count', 0):,} 对",
+            f"污点: {data.get('taint', 'N/A')}"
+            f"（函数 {data.get('taint_function_count', 0):,} 个，"
+            f"事实 {data.get('taint_flow_count', 0):,} 条）",
         ]
         if data.get("truncated"):
             lines.append("注意: 函数或定义对已按上限截断")
@@ -159,11 +188,15 @@ class BasicDataflowAnalyzer(Analyzer):
         return "\n".join(lines)
 
 
-def _empty_data(machine: str, decoder: str | None) -> dict:
+def _empty_data(machine: str, decoder: str | None, taint: str = "unavailable") -> dict:
     return {
         "machine": machine,
         "decoder": decoder,
         "scope": "intra-procedural",
+        "taint": taint,
+        "taint_scope": "intra-procedural",
+        "taint_function_count": 0,
+        "taint_flow_count": 0,
         "function_count": 0,
         "block_count": 0,
         "def_count": 0,
@@ -179,6 +212,9 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
     data = path.read_bytes()
     profile = disasm_layer.decoder_profile(elf)
     arch = profile.family if profile is not None else None
+
+    library = _load_library(options, diagnostics)
+    source_targets = _source_targets(library, elf, data)
 
     # The boundary helper keeps the raw symbol value next to the normalized
     # address: the raw value carries the Thumb bit that selects the mode.
@@ -239,6 +275,29 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
         ]
         graph = build_cfg(records)
         flow = analyse(records, graph, arch, options["max_pairs"])
+        taint_records = []
+        if options["taint"] and arch:
+            taint_flow = propagate_taint(
+                records,
+                graph,
+                arch,
+                max_depth=options["taint_max_depth"],
+                is64=profile.is64,
+                source_targets=source_targets,
+            )
+            taint_records = [
+                {
+                    "source": item.source,
+                    "target": item.target,
+                    "address": hex(item.address),
+                    "depth": item.depth,
+                    "kind": item.kind,
+                    # The symbol the taint came from. It is empty for the
+                    # facts that start at the function's own arguments.
+                    "origin": item.origin,
+                }
+                for item in taint_flow.records
+            ]
         functions.append(
             {
                 "name": name,
@@ -250,6 +309,8 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
                 "def_count": flow.def_count,
                 "use_count": flow.use_count,
                 "reaching_pair_count": flow.reaching_pairs,
+                "taint_count": len(taint_records),
+                "taint_flows": taint_records,
                 "blocks": [
                     {
                         "start": hex(block.start),
@@ -310,4 +371,98 @@ def _resolve_options(context) -> dict:
             except (TypeError, ValueError):
                 value = _DEFAULT_OPTIONS[key]
             resolved[key] = max(1, min(value, 1_000_000))
+    if "taint_max_depth" in declared:
+        try:
+            value = int(declared["taint_max_depth"])
+        except (TypeError, ValueError):
+            value = _DEFAULT_OPTIONS["taint_max_depth"]
+        resolved["taint_max_depth"] = max(1, min(value, 1024))
+    taint = declared.get("taint")
+    if isinstance(taint, bool):
+        resolved["taint"] = taint
+    elif isinstance(taint, str):
+        resolved["taint"] = taint.strip().lower() in ("1", "true", "yes", "on")
+    library = declared.get("taint_library")
+    if isinstance(library, str) and library.strip():
+        resolved["taint_library"] = library.strip()
     return resolved
+
+
+def _load_library(options: dict, diagnostics: list):
+    """The taint library, or an empty one when it cannot be read.
+
+    A missing or malformed library is a warning, not a failure: the rest of
+    the data-flow facts stay valid, only the source-driven taint is lost.
+    """
+    path = options.get("taint_library") or ""
+    if not path:
+        return None
+    try:
+        return load_taint_library(path)
+    except TaintLibraryError as exc:
+        diagnostics.append(
+            Diagnostic(
+                code="DATAFLOW_TAINT_LIBRARY_INVALID",
+                level=DiagnosticLevel.WARNING,
+                message=f"污点函数库不可用：{exc}",
+                analyzer_id=ANALYZER_ID,
+            )
+        )
+        return None
+
+
+def _source_targets(library, elf, data: bytes) -> dict:
+    """Map the address of every source function to its library entry.
+
+    An imported function has no address of its own -- it is called through
+    its PLT stub -- so the table is keyed by the stub's address, which is
+    what the call instruction actually jumps to. The stub is found through
+    the PLT section and the relocation entries, the same way the call graph
+    resolves its imports.
+    """
+    if library is None or library.is_empty or elf is None:
+        return {}
+    targets: dict[int, dict] = {}
+    try:
+        stubs = plt_imports(data, elf, disasm_layer.decoder_profile)
+    except Exception:  # pragma: no cover - 缺失解码器时的兜底
+        stubs = {}
+
+    for address, symbol in stubs.items():
+        source = library.find_source(symbol)
+        if source is None:
+            continue
+        targets.setdefault(
+            address,
+            {
+                "name": source.name,
+                "symbol": symbol,
+                "kind": source.kind,
+                "argument": source.argument,
+                "cwe": source.cwe,
+                "severity": source.severity,
+                "category": source.category,
+            },
+        )
+
+    # A library that defines the source itself is called directly, so its
+    # own symbol address is the target.
+    for symbol in elf.symbols:
+        if not symbol.name or not symbol.value:
+            continue
+        source = library.find_source(symbol.name)
+        if source is None:
+            continue
+        targets.setdefault(
+            symbol.value,
+            {
+                "name": source.name,
+                "symbol": symbol.name,
+                "kind": source.kind,
+                "argument": source.argument,
+                "cwe": source.cwe,
+                "severity": source.severity,
+                "category": source.category,
+            },
+        )
+    return targets

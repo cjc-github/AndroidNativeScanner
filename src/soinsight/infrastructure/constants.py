@@ -155,3 +155,15 @@ def families() -> tuple[str, ...]:
         if signature.family not in seen:
             seen.append(signature.family)
     return tuple(seen)
+
+
+def signature_words(algorithm: str) -> tuple[bytes, ...]:
+    """The constant words of a known algorithm, or an empty tuple.
+
+    The seed generator uses this to reproduce the constant table at a known
+    offset, so a fuzz seed reaches the code path that consumes the table.
+    """
+    for signature in SIGNATURES:
+        if signature.algorithm == algorithm:
+            return signature.words
+    return ()

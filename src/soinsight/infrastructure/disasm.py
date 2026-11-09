@@ -56,6 +56,10 @@ class DecoderProfile:
     family: str
     """Short family name: ``x86``, ``arm``, ``aarch64``, ``mips``, ``ppc`` ..."""
 
+    is64: bool = True
+    """Whether the image is 64-bit. The family alone does not say so: both
+    x86 widths report ``x86``."""
+
     thumb_capable: bool = False
     """True for ARM, where the mode depends on the function being decoded."""
 
@@ -131,6 +135,7 @@ def decoder_profile(elf: ElfFile) -> DecoderProfile | None:
         arch=arch,
         mode=mode,
         family=family,
+        is64=is64,
         thumb_capable=(family == "arm"),
     )
 
