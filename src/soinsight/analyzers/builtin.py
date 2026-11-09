@@ -32,6 +32,12 @@ from .security import (
 from .symbols import BasicSymbolsAnalyzer
 from .types import BasicTypesAnalyzer
 from .xref import BasicXrefAnalyzer
+from .automation_report import AutomationReportAnalyzer
+from .automation_seed import AutomationSeedAnalyzer
+from .dynamic_arguments import DynamicArgumentsAnalyzer
+from .dynamic_coverage import DynamicCoverageAnalyzer
+from .dynamic_memory import DynamicMemoryAnalyzer
+from .dynamic_syscalls import DynamicSyscallAnalyzer
 
 
 def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
@@ -65,3 +71,9 @@ def register_builtin_analyzers(registry: AnalyzerRegistry) -> None:
     registry.register(SecurityDangerousApiAnalyzer())
     registry.register(SecurityRiskAnalyzer())
     registry.register(SecurityVulnerabilityAnalyzer())
+    registry.register(AutomationSeedAnalyzer())
+    registry.register(AutomationReportAnalyzer())
+    registry.register(DynamicArgumentsAnalyzer())
+    registry.register(DynamicMemoryAnalyzer())
+    registry.register(DynamicSyscallAnalyzer())
+    registry.register(DynamicCoverageAnalyzer())
