@@ -1,0 +1,7 @@
+include README.md
+include pip-mirrors.toml
+include configs/*.yaml
+recursive-include src/soinsight/web *.html
+recursive-include src/soinsight/configs *.yaml
+recursive-include docs *.md
+recursive-include design *.md
