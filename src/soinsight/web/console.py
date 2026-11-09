@@ -89,6 +89,8 @@ _ANALYSIS_LOCK = threading.Lock()
 # 前端渲染既慢又卡，所以服务端写盘、只把路径回给页面。
 REPORTS_DIR = REPO_ROOT / "reports"
 MAX_REPORTS_KEPT = 20
+# 同一秒内并发落盘时最多尝试的序号数，超过即放弃（防御性上限，正常远达不到）
+MAX_REPORT_SERIAL_TRIES = 1000
 _REPORTS_LOCK = threading.Lock()
 
 # The single in-flight /api/analyze child process. /api/cancel flips
@@ -110,6 +112,35 @@ if str(SRC_DIR) not in sys.path:
 from soinsight.version import __version__  # noqa: E402
 
 _STATE: dict[str, object] = {"catalog": None, "error": None, "analyzer_ids": []}
+
+# Whether the console is reachable beyond this machine. Loopback-only (the
+# default) keeps every feature open: the only client is the local user. When
+# the server binds a non-loopback interface (cloud deploy via ``PORT``), the
+# ``path`` parameter becomes an unauthenticated read primitive -- any absolute
+# path on the host could be analyzed and its facts returned to a stranger --
+# so remote callers are restricted to the project's own samples/reports tree.
+_REMOTE_BIND = False
+
+
+def _path_allowed(candidate: Path) -> bool:
+    """Whether ``candidate`` may be analyzed, given how the server is bound.
+
+    On loopback the local user already has full file access, so nothing is
+    restricted. On a remote bind the target must live under the project root
+    (the samples in ``in/`` or a user-provided directory inside it); the temp
+    upload path is exempt because the caller supplied those bytes, not a host
+    path.
+    """
+    if not _REMOTE_BIND:
+        return True
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return False
+    # Uploaded bytes go to a system temp path, but those never travel through
+    # the ``path`` parameter, so only host-supplied paths reach this check.
+    roots = (REPO_ROOT.resolve(), SAMPLES_DIR.resolve())
+    return any(resolved == root or root in resolved.parents for root in roots)
 
 
 def _load_catalog() -> None:
@@ -218,22 +249,32 @@ def _save_report(payload: object, target_name: str) -> dict:
 
     stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(target_name).stem or "target")
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    # 同秒内多次运行靠序号区分，避免互相覆盖
-    serial = 0
-    while True:
+    # 同秒内多次运行靠序号区分。检查与写入必须是原子的：并发请求若都用
+    # exists() 判断再 write，会同时判定"不存在"而互相覆盖，所以这里用
+    # O_CREAT|O_EXCL 原子创建——文件已存在时 open 直接失败，再递增序号重试。
+    text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=2)
+    data = text.encode("utf-8")
+    name = None
+    path = None
+    for serial in range(MAX_REPORT_SERIAL_TRIES):
         suffix = f"-{serial}" if serial else ""
         name = f"{stem}-{stamp}{suffix}.json"
         path = REPORTS_DIR / name
-        if not path.exists():
-            break
-        serial += 1
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            continue
+        except OSError as exc:
+            return {"error": f"写入报告失败: {exc}"}
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+        except OSError as exc:
+            return {"error": f"写入报告失败: {exc}"}
+        break
+    else:
+        return {"error": f"写入报告失败: 无法为 {stem}-{stamp} 生成唯一文件名"}
 
-    try:
-        # 直接落原始 stdout 文本比 json.dumps(payload) 更保真，也少一次序列化
-        text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False, indent=2)
-        path.write_text(text, encoding="utf-8")
-    except OSError as exc:
-        return {"error": f"写入报告失败: {exc}"}
 
     _prune_reports()
     return {
@@ -439,12 +480,24 @@ def _job_log(job: dict, text: str) -> None:
 
 
 def _prune_jobs() -> None:
+    """Keep at most MAX_JOBS_KEPT jobs, evicting only finished ones.
+
+    A job that is still running must never be evicted: its worker thread
+    holds ``_ANALYSIS_LOCK`` and owns the upload temp file, so dropping its
+    record would leave an orphaned thread and a temp file nobody unlinks.
+    When every job is still running the dict is allowed to exceed the cap
+    temporarily; they get pruned as they finish.
+    """
     with _JOBS_LOCK:
         overflow = len(_JOBS) - MAX_JOBS_KEPT
-        if overflow > 0:
-            oldest = sorted(_JOBS, key=lambda key: _JOBS[key]["started"])[:overflow]
-            for key in oldest:
-                _JOBS.pop(key, None)
+        if overflow <= 0:
+            return
+        finished = sorted(
+            (key for key in _JOBS if _JOBS[key].get("done")),
+            key=lambda key: _JOBS[key]["started"],
+        )
+        for key in finished[:overflow]:
+            _JOBS.pop(key, None)
 
 
 def _finish_job(job: dict, **fields: object) -> None:
@@ -897,6 +950,19 @@ class Handler(BaseHTTPRequestHandler):
                         HTTPStatus.BAD_REQUEST,
                     )
                     return
+                if not _path_allowed(candidate):
+                    # Remote bind: an arbitrary host path would be an
+                    # unauthenticated local-file read, so confine targets to
+                    # the project tree. Loopback keeps full access.
+                    self._send_json(
+                        {
+                            "ok": False,
+                            "error": "远程访问只允许分析项目目录内的文件，"
+                            "请改用文件上传，或在服务器本机访问",
+                        },
+                        HTTPStatus.FORBIDDEN,
+                    )
+                    return
                 if candidate.is_dir():
                     # The directory is handed to the CLI, which expands it
                     # with the same rules as a command line run. Doing it
@@ -1051,7 +1117,7 @@ def run_console(
     The command line (``soinsight web``) and the script (``web/server.py``)
     both come through here, so there is one server and one set of rules.
     """
-    global ANALYSIS_TIMEOUT
+    global ANALYSIS_TIMEOUT, _REMOTE_BIND
 
     ANALYSIS_TIMEOUT = max(10, timeout)
 
@@ -1062,6 +1128,9 @@ def run_console(
         port = int(env_port)
         if host == "127.0.0.1":
             host = "0.0.0.0"
+    # Anything other than a loopback bind is reachable off-machine, which
+    # switches the path allowlist on (see _path_allowed).
+    _REMOTE_BIND = host not in ("127.0.0.1", "localhost", "::1")
 
     _load_catalog()
     if _STATE["error"]:
