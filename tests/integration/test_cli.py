@@ -1228,7 +1228,7 @@ def test_cli_dynamic_trace_plans_when_authorized(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "soinsight.analyzers.dynamic_trace.detect_sandbox",
+        "soinsight.infrastructure.dynamic.collector.detect_sandbox",
         lambda: __import__(
             "soinsight.infrastructure.execution", fromlist=["SandboxSpec"]
         ).SandboxSpec(name="bwrap", prefix=("bwrap", "--unshare-all")),

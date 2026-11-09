@@ -49,7 +49,7 @@ def test_without_authorization_nothing_is_planned(tmp_path):
 
 def test_authorized_without_a_sandbox_refuses_to_run(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "soinsight.analyzers.dynamic_trace.detect_sandbox", lambda: None
+        "soinsight.infrastructure.dynamic.collector.detect_sandbox", lambda: None
     )
 
     result = _analyze(_write(tmp_path), dynamic_execution={"authorized": True})
@@ -62,7 +62,7 @@ def test_authorized_without_a_sandbox_refuses_to_run(tmp_path, monkeypatch):
 def test_authorized_with_a_sandbox_reports_a_plan_only(tmp_path, monkeypatch):
     sandbox = SandboxSpec(name="bwrap", prefix=("bwrap", "--unshare-all"))
     monkeypatch.setattr(
-        "soinsight.analyzers.dynamic_trace.detect_sandbox", lambda: sandbox
+        "soinsight.infrastructure.dynamic.collector.detect_sandbox", lambda: sandbox
     )
 
     result = _analyze(_write(tmp_path), dynamic_execution={"authorized": True})
@@ -95,7 +95,7 @@ def test_allow_list_is_enforced_by_the_analyzer(tmp_path):
 def test_options_are_clamped_and_applied(tmp_path, monkeypatch):
     sandbox = SandboxSpec(name="bwrap", prefix=("bwrap",))
     monkeypatch.setattr(
-        "soinsight.analyzers.dynamic_trace.detect_sandbox", lambda: sandbox
+        "soinsight.infrastructure.dynamic.collector.detect_sandbox", lambda: sandbox
     )
 
     result = _analyze(
@@ -115,7 +115,7 @@ def test_format_text_reports_each_state(tmp_path, monkeypatch):
 
     sandbox = SandboxSpec(name="bwrap", prefix=("bwrap", "--unshare-all"))
     monkeypatch.setattr(
-        "soinsight.analyzers.dynamic_trace.detect_sandbox", lambda: sandbox
+        "soinsight.infrastructure.dynamic.collector.detect_sandbox", lambda: sandbox
     )
     planned = _analyze(_write(tmp_path), dynamic_execution={"authorized": True})
     planned_text = DynamicTraceAnalyzer().format_text(planned)
@@ -128,3 +128,48 @@ def test_format_text_is_none_for_a_failed_result(tmp_path):
     result.status = AnalysisStatus.FAILED
 
     assert DynamicTraceAnalyzer().format_text(result) is None
+
+
+def test_the_trace_shares_the_collector_substrate(tmp_path):
+    """The trace must go through the same gate as the other collectors."""
+    from soinsight.infrastructure.dynamic import collector
+
+    result = _analyze(_write(tmp_path))
+
+    assert result.data["state"] == "not-authorized"
+    # The collector plan names the trace driver and the watched points.
+    assert result.data["spec"]["driver"] == "soinsight-trace-collector"
+    assert "dlopen" in result.data["event_kinds"]
+    assert "calls" in result.data["event_kinds"]
+    assert collector.COLLECTOR_KINDS[0] == "trace"
+
+
+def test_the_trace_reports_the_entrypoint_it_would_drive(tmp_path):
+    from soinsight.core.models import AnalysisResult
+
+    target = _target(_write(tmp_path))
+    context = AnalysisContext("run", target, RuntimeConfig(extra={}))
+    context.add_result(
+        AnalysisResult(
+            analyzer_id="basic.symbols",
+            analyzer_version="1.0.0",
+            status=AnalysisStatus.SUCCESS,
+            data={"functions": [{"name": "parse", "signature": "int parse(char *)"}]},
+        )
+    )
+
+    result = DynamicTraceAnalyzer().analyze(target, context)
+
+    assert result.data["entrypoint"] == "parse"
+    # The harness is generated for that entry point.
+    assert "dlopen" in result.data["harness"]
+    assert "parse" in result.data["harness"]
+
+
+def test_the_trace_can_be_pointed_at_an_explicit_entrypoint(tmp_path):
+    result = _analyze(
+        _write(tmp_path),
+        capability_options={"dynamic.trace": {"entrypoint": "chosen"}},
+    )
+
+    assert result.data["entrypoint"] == "chosen"
