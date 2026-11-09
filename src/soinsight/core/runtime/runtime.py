@@ -97,6 +97,7 @@ class AnalysisRuntime:
             getattr(config, "jobs", 1),
             observer,
             getattr(config, "timeout_seconds", None),
+            rule_engine=self.rule_engine,
         )
         self._attach_text_outputs(context)
         if cache:
@@ -113,6 +114,11 @@ class AnalysisRuntime:
                             self.registry.get(result.analyzer_id), plan.resolved
                         ),
                     )
+        # The rules are pure functions over the analyzer results, so the
+        # evaluation the scheduler performed between the stages already
+        # produced every finding. The engine deduplicates by fingerprint,
+        # so this final pass is safe and only catches a rule that became
+        # applicable after the last stage.
         self.rule_engine.evaluate(context)
         duration_ms = int((perf_counter() - started) * 1000)
         emit(

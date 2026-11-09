@@ -48,7 +48,15 @@ class DAGScheduler:
         jobs: int = 1,
         observer: ProgressObserver | None = None,
         timeout_seconds: int | None = _DEFAULT_TIMEOUT_SECONDS,
+        rule_engine=None,
     ) -> None:
+        """Execute the plan.
+
+        ``rule_engine`` is evaluated between the stages when given, so that a
+        later analyzer sees the findings the rules produced from the earlier
+        results. The rules only look at analyzer results, never at the
+        findings themselves, so a repeated evaluation is safe.
+        """
         total = len(plan.resolved)
         for stage_index, stage in enumerate(plan.stages):
             pending = [
@@ -58,6 +66,10 @@ class DAGScheduler:
             ]
             if not pending:
                 continue
+            if rule_engine is not None:
+                # The rules judge the results of the earlier stages, so they
+                # are evaluated before the next stage starts.
+                rule_engine.evaluate(context)
             emit(
                 observer,
                 ProgressEvent(
