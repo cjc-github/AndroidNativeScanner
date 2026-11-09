@@ -14,6 +14,7 @@ exercise the happy loopback path:
 """
 
 import threading
+import time
 
 import pytest
 
@@ -93,3 +94,56 @@ def test_remote_bind_confines_path_to_the_project_tree(tmp_path, monkeypatch):
     # Loopback keeps full access: the local user already has it.
     monkeypatch.setattr(console, "_REMOTE_BIND", False)
     assert console._path_allowed(outside) is True
+
+
+def test_read_body_returns_early_when_the_peer_sends_less_than_it_declared():
+    """A stalled upload must not pin the thread until the full length arrives.
+
+    The old ``rfile.read(length)`` blocked until the declared byte count
+    arrived or the socket closed, so a client that advertised a large body
+    and trickled nothing could hold a worker indefinitely.
+    """
+    handler = console.Handler.__new__(console.Handler)
+
+    # Sends one chunk, then blocks forever -- the stalled-upload shape.
+    class _StallingBody:
+        def __init__(self):
+            self._sent = False
+
+        def read(self, _size):
+            if not self._sent:
+                self._sent = True
+                return b"\x7fELF"
+            time.sleep(2)  # outlasts the deadline; short enough for the suite
+            return b""
+
+    handler.rfile = _StallingBody()
+
+    # A short deadline keeps the test fast; the stalled read outlasts it.
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(console, "_BODY_READ_TIMEOUT", 0.2)
+    try:
+        body = handler._read_body(1 << 20)
+    finally:
+        monkey.undo()
+
+    # Whatever arrived before the deadline is returned; the thread is freed.
+    assert body == b"\x7fELF"
+
+
+def test_read_body_reads_exactly_the_declared_length():
+    handler = console.Handler.__new__(console.Handler)
+
+    class _FullBody:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def read(self, size):
+            chunk = self._payload[:size]
+            self._payload = self._payload[size:]
+            return chunk
+
+    payload = b"x" * 5000
+    handler.rfile = _FullBody(payload)
+
+    assert handler._read_body(len(payload)) == payload

@@ -80,6 +80,10 @@ SAMPLES_DIR = REPO_ROOT / "in"
 
 DEFAULT_PORT = 8765
 MAX_UPLOAD_BYTES = 128 * 1024 * 1024
+# Streaming body read: never block a thread longer than this waiting for bytes
+# a client advertised but is not sending (keeps one worker free per request).
+_BODY_READ_TIMEOUT = 60.0
+_BODY_READ_CHUNK = 1 << 20
 SAMPLE_SUFFIXES = {".so", ".elf", ".o", ".dylib"}
 
 ANALYSIS_TIMEOUT = 180
@@ -756,6 +760,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_body(self, length: int) -> bytes:
+        """Read exactly ``length`` body bytes, or fewer if the client stalls.
+
+        A single ``rfile.read(length)`` blocks until the declared number of
+        bytes arrive or the connection closes, so a client that advertises a
+        large ``Content-Length`` and then trickles nothing can pin one of the
+        server's threads indefinitely. Reading in chunks against a wall-clock
+        deadline returns early instead, and the partial read is treated as a
+        malformed request by the caller (the upload branch rejects an empty or
+        short body through its own checks).
+        """
+        if length <= 0:
+            return b""
+        deadline = time.monotonic() + _BODY_READ_TIMEOUT
+        chunks: list[bytes] = []
+        remaining = length
+        while remaining > 0:
+            if time.monotonic() >= deadline:
+                break
+            chunk = self.rfile.read(min(remaining, _BODY_READ_CHUNK))
+            if not chunk:
+                break  # peer closed early
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
     def _discard_body(self) -> None:
         """Drain an unused request body so keep-alive connections stay in sync."""
         try:
@@ -936,7 +966,7 @@ class Handler(BaseHTTPRequestHandler):
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
             )
             return
-        body = self.rfile.read(length) if length else b""
+        body = self._read_body(length)
 
         temp_path: str | None = None
         try:
