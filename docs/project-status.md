@@ -1,12 +1,12 @@
 # SOInsight V2 项目状态与路线图
 
-**状态日期：2026-10-28**
+**状态日期：2026-11-09**
 
 ## 1. 当前里程碑
 
-> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`basic.jni`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
+> Phase 1B — 六大产品模块、共享技术框架、CLI 输出规范、`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`basic.jni`/`basic.dataflow`(含污点)/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading`/`automation.seed`/`automation.report`/`dynamic.arguments`/`dynamic.memory`/`dynamic.syscalls`/`dynamic.coverage` 真实 Analyzer、跨域链路（`basic.file → basic.elf → security.hardening`、`basic.file → basic.elf → basic.symbols`、`basic.file → basic.elf → basic.dwarf`、`basic.file → basic.elf → basic.symbols/basic.dwarf → basic.types`）和内置 Profile 已完成；demangler 已在 5 个真实 C++ 共享库上与参考实现全量比对（1895 个 C++ 符号，0 无法解码、0 类型差异）；运行时控制（看门狗、取消令牌、进度观察者）已提前落地。
 
-这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`basic.jni`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading` 是已接入的真实 Analyzer，不代表 46 项业务能力已经实现。
+这里的"模块完成"指模块目录、能力 ID、CLI 路由和测试完成；`basic.file`/`basic.elf`/`basic.symbols`/`basic.dwarf`/`basic.types`/`basic.cpp`/`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.dynamic`/`basic.xref`/`basic.jni`/`advanced.strings`/`advanced.constants`/`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`/`security.hardening`/`security.dangerous-api`/`security.vulnerability`/`security.risk`/`security.dynamic-loading`/`automation.seed`/`automation.report`/`dynamic.arguments`/`dynamic.memory`/`dynamic.syscalls`/`dynamic.coverage` 是已接入的真实 Analyzer，不代表 46 项业务能力已经实现：AI 族 8 项与 `automation.crash-cluster`/`automation.workflow` 仍只有外壳。
 
 ## 2. 已完成
 
@@ -107,8 +107,8 @@
 - [x] `security.*` 规则：sensitive-string / hardcoded-url / encoded-payload；缺失依赖时静默跳过。
 
 当前自动化测试（`PYTHONPATH=src pytest`，capstone/pyelftools 可用）：装齐 dev 依赖
-（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `843 passed, 9 skipped`；`cpp_demangle` 未装时
-`test_demangler_oracle.py` 整模块不收集，为 `728 passed, 1 skipped`。
+（`pip install -e '.[dev]'`，含 `cpp_demangle`）为 `900+ passed`；`cpp_demangle` 未装时
+`test_demangler_oracle.py` 整模块不收集。
 Capstone 缺失时 `test_disasm_analyzer.py`/`test_cfg_analyzer.py`/`test_callgraph_analyzer.py`/`test_dataflow_analyzer.py`/`test_xref_analyzer.py` 的解码用例自动跳过，边界与降级用例仍然执行。
 
 ### 真实共享库验证
@@ -220,6 +220,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 - DWARF、类型、C++；
 - 反汇编、CFG、Call Graph、Data Flow、交叉引用（✅ 已完成：`basic.disasm`/`basic.cfg`/`basic.callgraph`/`basic.dataflow`/`basic.xref`）；
 - 调用点证据（✅ 已完成：`security.dangerous-api` 软依赖 `basic.callgraph`）；
+- 参数可控性（✅ 已完成：`basic.dataflow` 的污点传播 + 可外部配置的污点函数库 `configs/taint-functions.yaml`，`security.vulnerability` 消费 source→sink 链路并单独生成 Finding）；
 - 算法、协议、格式、库、编译器和混淆识别（✅ 全部已完成：`advanced.algorithm`/`advanced.protocol`/`advanced.file-format`/`advanced.library`/`advanced.compiler`/`advanced.obfuscation`）。
 
 ### Phase 4：安全分析闭环
@@ -228,6 +229,7 @@ soinsight scan libfoo.so --module-available basic,security --format json
 - 证据链、去重、置信度和风险评分；
 - 软依赖（仅排序的可选依赖）（✅ 已完成：`optional_requires`，`security.risk` 的非 ELF 降级仍保持整体跳过，见 `pending-capabilities.md` §3）；
 - CI Gate 和基线抑制（✅ 已完成：`scan --fail-on`、`--baseline`/`--update-baseline`，退出码 6）。
+- 污点函数库（✅ 已完成：内置表在 `configs/taint-functions.yaml`，`--taint-library` 可整份替换；source→sink 跨函数链路已接通）。
 
 ### Phase 5：动态分析
 

@@ -251,12 +251,12 @@ core 不依赖 cli/modules/具体 analyzer
 
 ## 10. 当前差距
 
-1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 26/46 项能力已接入）；
-2. 支持双目标、多样本、结果集等复杂输入模型；
+1. 为能力目录接入更多真实 Analyzer 和跨域依赖（当前 36/46 项能力已接入，剩余为 AI 族 8 项与 `automation.crash-cluster`/`automation.workflow`）；
+2. 支持多目标、目录批量与结果集等复杂输入模型（`scan` 已接受多路径与 `--include`/`--exclude`，逐目标执行并聚合退出码；结果集模型仍缺）；
 3. 内置 deep/ci Profile（`quick`/`security` 已实现）；
 4. Artifact Store 接入 Runtime；
-5. Scheduler 资源预算（stage 并发、看门狗与取消已实现）；
+5. Scheduler 资源预算（stage 并发、看门狗与取消已实现；跨阶段总预算仍缺）；
 6. 外部插件 API 兼容策略；
 7. JSON Schema、Golden 回归；
-8. 动态分析沙箱和 AI Provider 治理；
+8. 动态分析的**真实采集器**（授权门、沙箱探测、计划/执行分离、采集器计划与 `dlopen` harness 模板已落地；ptrace/frida/eBPF 采集与事件流未接）与 AI Provider 治理；
 9. V1 Compatibility Adapter。

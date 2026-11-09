@@ -13,7 +13,9 @@ def test_project_status_mentions_current_test_count_and_basic_file():
     text = Path("docs/project-status.md").read_text(encoding="utf-8")
 
     assert "basic.file" in text
-    assert re.search(r"\d+ passed", text) is not None
+    # The count is written as a floor ("900+ passed"), because an exact
+    # number goes stale with every commit.
+    assert re.search(r"\d+\+? passed", text) is not None
     assert "具体 Analyzer 迁移尚未开始" not in text
 
 

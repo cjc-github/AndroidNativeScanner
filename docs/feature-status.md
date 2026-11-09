@@ -1,6 +1,6 @@
 # 功能实现状态清单
 
-**快照日期：2026-11-09**（基于代码与文档核实；已实现 36/46 项能力，测试 992 passed）
+**快照日期：2026-11-09**（基于代码与文档核实；已实现 36/46 项能力）
 
 本文档把项目「已实现」与「可能未实现」的功能点整理为一页清单，便于交接与规划。详细路线图见 `project-status.md`，能力定义见 `module-system.md`。
 
@@ -120,7 +120,7 @@
 ### 6. 构建、脚本与测试
 
 - [x] 可编辑安装（`setup.py`/`setup.cfg`）与 console script；Wheel 构建脚本 `scripts/build_cli.sh`（`--install` 一键）
-- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**992 passed, 9 skipped**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）
+- [x] 自动化测试套件（`tests/unit` + `tests/integration`）：完整 dev 环境（含 `cpp_demangle`/`pyelftools`）**900+ passed**（跳过均为参考 demangler 自身无法解析的 C/JNI 符号，预期）；缺 `cpp_demangle` 的普通环境会整模块跳过 `test_demangler_oracle.py`（`PYTHONPATH=src pytest` 可直接跑）。确切用例数由 `tests/unit/test_document_consistency.py` 与代码实时比对，不在此处写死
 - [x] 文档守卫测试 `test_documentation_status.py`（防止文档与实现漂移）
 
 ---

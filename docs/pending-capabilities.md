@@ -1,10 +1,10 @@
 # 未完成分析能力与技术债
 
-**快照日期：2026-10-28**（与 `feature-status.md`、`project-status.md` 同口径核实）
+**快照日期：2026-11-09**（与 `feature-status.md`、`project-status.md` 同口径核实）
 
-本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 30/46 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
+本文档对六大模块中**只有外壳或尚未落地**的能力做逐项分析：每项记录"现状 / 需要什么 / 建议的事实形态 / 依赖"，并在文末给出实现顺序建议。已实现的 36/46 项能力见 `feature-status.md` §一，能力定义见 `module-system.md`，阶段路线见 `project-status.md`。
 
-统计：`basic` 0/12、`advanced` 0/8、`security` 0/5、`dynamic` 4/5、`ai` 8/8、`automation` 4/7 —— 共 **16/46** 项外壳能力（`dynamic.trace` 已接入，默认拒绝执行，见 §4；`automation.fuzz-target`/`harness`/`binary-diff` 已按静态版落地，见 §6）。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
+统计：`basic` 0/13、`advanced` 0/8、`security` 0/5、`dynamic` 0/5、`ai` 8/8、`automation` 2/7 —— 共 **10/46** 项外壳能力（`dynamic.*` 已按计划版落地，默认拒绝执行，见 §4；`automation.fuzz-target`/`harness`/`binary-diff`/`seed`/`report` 已落地，见 §6）。调用它们返回 `ANALYSIS_PLAN_ERROR`（退出码 3），这是当前框架阶段的预期行为。
 
 ---
 
@@ -23,7 +23,7 @@
 剩余演进点（不是外壳欠账）：
 
 - **协议语义级识别**：当前只做链接级特征，报文结构与状态机识别需要动态证据；
-- **控制流平坦化判定**：需要比较 `basic.cfg` 恢复出的图形态，留待后续能力；
+- **控制流平坦化判定**：✅ 已落地——比较 `basic.cfg` 恢复出的图形态，以「以间接跳转结束的基本块占比」为判据（阈值可配），普通代码误报率为 0；
 - **库版本精确匹配**：版本串只能给出线索，无法从链接层证明具体补丁版本。
 
 ---
@@ -37,7 +37,7 @@
 
 ---
 
-## 4. 动态分析（dynamic，1 项已接入 / 4 项外壳）
+## 4. 动态分析（dynamic，5 项已接入 / 0 项外壳）
 
 动态族的共同前置 —— **授权门 + 隔离执行器（D9）** —— 已经落地，形式是
 `infrastructure/execution.py`：
@@ -52,17 +52,19 @@
   `SubprocessSandboxExecutor` 必须同时满足「已授权」与「构造时 `allow_execution=True`」
   两个条件才会真正启动进程；当前没有任何内置 Analyzer 打开它。
 
-`dynamic.trace` 已接入调度，走完授权 → 沙箱 → 计划的完整判定链，三种状态分别是
+五项能力都走完授权 → 沙箱 → 计划的完整判定链，三种状态分别是
 `not-authorized` / `no-sandbox` / `planned`（`planned` 时给出待执行的 argv，但
-`executed: false`）。**它不采集事件**：采集器与 `dlopen` 驱动（harness）属于下一步。
+`executed: false`）。**它们都不采集事件**：真正的采集器（ptrace/frida 或 eBPF）需要外部工具，
+`dlopen` 驱动模板已由 `infrastructure/dynamic/collector.py` 的 `dlopen_harness_source()` 生成，
+但只产源码、不编译、不运行。
 
 | 能力 | 现状 | 还缺什么 |
 |---|---|---|
-| `dynamic.trace` | 已接入：授权门 + 沙箱探测 + dry-run 计划 | 采集器（ptrace/frida 或 eBPF）、harness、事件流进统一结果模型 |
-| `dynamic.arguments` | 外壳 | 同上 + 采样点选择（结合 `basic.callgraph`） |
-| `dynamic.memory` | 外壳 | `/proc/<pid>/maps` 级别的观测点白名单 |
-| `dynamic.syscalls` | 外壳 | seccomp/ptrace 拦截策略 |
-| `dynamic.coverage` | 外壳 | 与 `basic.cfg` 块号对齐 |
+| `dynamic.trace` | 已接入：授权门 + 沙箱探测 + dry-run 计划 | 采集器（ptrace/frida 或 eBPF）、事件流进统一结果模型 |
+| `dynamic.arguments` | 已接入：候选入口与采样点（来自 `basic.symbols`）+ 驱动计划 + `dlopen` harness 模板 | 真实参数采集器与事件流 |
+| `dynamic.memory` | 已接入：观测白名单（依赖库/搜索路径 + 映射/堆/栈）+ 驱动计划 | `/proc/<pid>/maps` 的实际读取与差异对比 |
+| `dynamic.syscalls` | 已接入：默认拒绝的 seccomp 过滤策略 + 重点关注 API + 驱动计划 | 真实的 seccomp/ptrace 拦截与事件流 |
+| `dynamic.coverage` | 已接入：与 `basic.cfg` 基本块对齐的覆盖点索引 + 驱动计划 | 真实的块级覆盖率采集与合并 |
 
 - **依赖**：采集器需要一个能加载 `.so` 的驱动进程，静态分析给不出来；
   `automation.harness` 与本节的 harness 需求是同一件事。
@@ -95,10 +97,10 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 | `automation.binary-diff` | ✅ 符号级已落地：`diff OLD NEW` 按已定义函数符号集报告新增/移除/移动/大小变化；函数体与 CFG 级对比及 Finding 差异是后续演进 | 无（双输入，不走单目标 Request，因此不受 D8 阻塞） |
 | `automation.fuzz-target` | ✅ 静态版已落地：导出/JNI 入口排序、参数按形状归类（含缓冲区+长度对判定）、启发式评分并标 `heuristic`；不做数据流分析，也不执行目标 | `basic.symbols`、`basic.types` |
 | `automation.harness` | ✅ 模板版已落地：从 `automation.fuzz-target` 的候选生成 libFuzzer 风格 C 骨架（缓冲区→data、长度→size、其余填零）；无法满足的参数以警告列出，不猜测；只产源码不执行 | `automation.fuzz-target` |
-| `automation.seed` | 按 `advanced.file-format`/`advanced.protocol`/`advanced.constants` 事实生成种子语料 | 高级分析三项 |
+| `automation.seed` | ✅ 已落地：按 `advanced.file-format`/`advanced.protocol`/`advanced.constants` 事实生成定向种子，缺失时用通用种子兜底，可选归档 | 真实语料反馈闭环 |
 | `automation.crash-cluster` | 输入是崩溃语料（来自 fuzz），按栈帧/信号/根因线索聚类；fuzz 底座前无输入源 | `automation.fuzz-target` 链路 |
-| `automation.report` | 结果转换/归档/发布编排，可复用现有 Renderer 五格式；是最容易起步的一项 | Renderer（已实现） |
-| `automation.workflow` | 批处理/Profile/流水线编排引擎；CI Gate 与基线抑制已在 `scan` 以 `--fail-on`/`--baseline` 形式落地，缺的是多目标与阶段编排 | 多目标与编排引擎 |
+| `automation.report` | ✅ 已落地：按分析器分节汇总本次运行结果，输出 Text/JSON/Markdown/HTML/SARIF 五格式，可选归档 | 规则引擎 Finding 在调度之后产生，不进入报告快照 |
+| `automation.workflow` | CI Gate 与基线抑制已在 `scan` 以 `--fail-on`/`--baseline` 落地；多目标扫描与目录展开也已实现（`scan` 多路径 + `--include`/`--exclude`），缺的是阶段编排与流水线定义 | 阶段编排引擎 |
 
 ---
 
@@ -111,10 +113,10 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
 | D3 | 插件兼容协议 | entry point 发现已实现 | 与外部插件的兼容协议定义 |
 | D4 | 报告 Schema | `docs/cli-output-schema.md` 只是文档 | 机器可校验 `.schema.json` + 兼容性测试 |
 | D5 | 并行资源预算 | stage 内并发已实现 | 跨阶段总资源/内存预算 |
-| D6 | 目录扫描 | V2 TargetResolver 只接受单文件 | 多目标 Request 模型（与 D8 同源） |
+| D6 | 目录扫描 | ✅ 已落地：`TargetResolver.resolve_many()` 展开目录、过滤、去重并防符号链接越界，`scan` 接受多路径与 `--include`/`--exclude` | （无遗留） |
 | D7 | doctor 分级 | 缺 binutils 报 info 而非 warning，并注明 binutils 仅 V1 legacy 管线需要、V2 Analyzer 均为纯 Python | （无遗留） |
-| D8 | 多目标 Request 与 Diff 引擎 | 只有双目标命令形态 | 统一 Request 模型 + Diff 本体（支撑 binary-diff/目录扫描/批处理） |
-| D9 | 动态执行底座 | ✅ 授权门（默认拒绝 + 白名单）、沙箱探测（bwrap/firejail/docker/unshare）、计划/执行分离与双重 opt-in 已落地 | 采集器与 harness（`dynamic.*` 余下部分） |
+| D8 | 多目标 Request 与 Diff 引擎 | ✅ 已落地：`BatchRequest`/`BatchResponse` 与 `AnalysisService.execute_batch()` 支持多目标逐个执行并聚合退出码；`automation.binary-diff` 仍是双目标命令形态 | 统一 Diff 本体（支撑批量对比） |
+| D9 | 动态执行底座 | ✅ 授权门（默认拒绝 + 白名单）、沙箱探测（bwrap/firejail/docker/unshare）、计划/执行分离与双重 opt-in 已落地；采集器计划与 `dlopen` harness 模板已生成 | 真实采集器与事件流 |
 | D10 | AI Provider 抽象 | 无 | 本地优先策略、隐私防护、证据引用、模型版本与成本治理 |
 | D11 | Automation 编排引擎 | 无 | Workflow、CI Gate、Fuzz 编排器、批处理流水线 |
 
@@ -137,6 +139,10 @@ AI 族共同前置是 **Provider 抽象（本地优先策略）、隐私防护�
                        其余随证据丰富度推进（Phase 6）
 7. automation       —— report/workflow 先行，fuzz 家族最后（Phase 7）
 ```
+
+本轮已补齐：`automation.report`（零前置）、`automation.seed`（消费已有 advanced 事实）、
+控制流平坦化判定（补上 `obfuscation` 的显式缺口）、多目标 Request + 目录扫描（解锁批量/diff/workflow 的共同前置）、
+污点/参数可控性（提升 `security.vulnerability` 的证据强度；**已完成**：污点函数库可外部配置，source→sink 跨函数链路已接通）、动态采集器计划与 `dlopen` harness 模板。
 
 理由：`basic.cpp` 已完成（纯消费现有 facts，无新基础设施）；反汇编族已整体落地——`basic.disasm` 用 Capstone 作为可选依赖（缺失时降级为边界事实），`basic.cfg`/`basic.callgraph`/`basic.dataflow` 依次复用其指令、边界与 CFG 事实；`advanced.constants` 已给出算法常量证据，`advanced.algorithm` 是它的直接下游；advanced 余下五项（file-format/library/compiler/protocol/obfuscation）均已落地，全部复用 `infrastructure/elf` 的分节与符号事实；动态与 AI 都有共同底座，逐能力散做会重复付费。
 

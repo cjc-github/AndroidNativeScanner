@@ -222,6 +222,52 @@ for symbol in elf.symbols_from(".dynsym"):
 - demangler 输出与 GNU `c++filt` 对齐（模板闭合前的空格规则、special-name 用自己的可读写法）；改 demangler 行为时同步更新 `tests/unit/test_demangler.py` 向量与 `tests/unit/test_demangler_oracle.py` 语料；
 - 跨模块只通过 `AnalysisContext` 消费 `basic.symbols` 等上游结果。
 
+## 8b. 扩展污点函数库
+
+污点分析判断「数据从哪来」与「数据流到哪去」用的函数表是**数据**，不是代码，因此
+扩展它不需要写 Python——只要改一份 YAML：
+
+```yaml
+version: 1
+sources:
+  - name: my_source
+    match: ^my_read(@|$)      # 匹配链接名（mangled symbol）的正则
+    kind: return              # return | argument | argument_any
+    cwe: CWE-20
+    description: 从设备读取数据。
+sinks:
+  - name: my_sink
+    match: ^my_write(@|$)
+    kind: argument
+    argument: 0
+    severity: critical
+    cwe: CWE-78
+```
+
+加载与校验：
+
+```python
+from soinsight.infrastructure.taint_library import load_taint_library, TaintLibraryError
+
+try:
+    library = load_taint_library("my-taint.yaml")
+except TaintLibraryError as exc:
+    ...  # 缺失或格式错误
+source = library.find_source("my_read")   # 按链接名匹配
+sink = library.find_sink("my_write")
+```
+
+约定：
+
+- `match` 是**正则**，匹配链接名（mangled symbol）；`match_demangled: true` 改为匹配
+  demangle 后的名字。正则要加锚点（`^name(@|$)`），否则 `read` 会命中 `read_record`；
+- `kind: argument` 用 `argument` 指明第几个参数带污点（0 起）；`argument_any` 表示任一参数；
+- 表文件缺失或格式错误只产生一条 `DATAFLOW_TAINT_LIBRARY_INVALID` 警告，其余分析照常；
+- 用 `--taint-library PATH`（CLI）或 `capability_options.basic.dataflow.taint_library`
+  （YAML）替换默认表；
+- 内置表在 `configs/taint-functions.yaml`，改动它时同步更新
+  `tests/unit/test_taint_library.py`。
+
 ## 9. Renderer
 
 ```python
