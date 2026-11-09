@@ -98,6 +98,19 @@ def direct_target(operands: str) -> int | None:
     return None
 
 
+def is_indirect_jump(mnemonic: str, operands: str) -> bool:
+    """True when the jump's destination cannot be resolved.
+
+    A direct jump names its target in the operand text; an indirect one jumps
+    through a register or a memory location, so the destination is unknown.
+    The distinction matters: an indirect jump is the shape a flattened
+    function's state blocks end with.
+    """
+    if mnemonic not in _UNCONDITIONAL_JUMPS:
+        return False
+    return direct_target(operands) is None
+
+
 def classify_edge(mnemonic: str, operands: str) -> str:
     """Return the edge kind produced by a terminating instruction.
 

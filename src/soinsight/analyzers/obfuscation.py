@@ -11,7 +11,7 @@ from ..core.models import (
     DiagnosticLevel,
 )
 from ..infrastructure.elf import ElfFormatError, parse_elf
-from ..infrastructure.obfuscation import scan_sections
+from ..infrastructure.obfuscation import scan_control_flow, scan_sections
 
 ANALYZER_ID = "advanced.obfuscation"
 
@@ -20,6 +20,8 @@ _DEFAULT_OPTIONS = {
     "max_symbols": 5000,
     "entropy_threshold": 7.0,
     "max_section_bytes": 8388608,
+    "flattening": True,
+    "flattening_min_blocks": 8,
 }
 
 _CATEGORY_LABELS = {
@@ -27,6 +29,10 @@ _CATEGORY_LABELS = {
     "protector": "保护器",
     "obfuscator": "混淆器",
     "packing": "可疑高熵",
+}
+
+_SIGNAL_LABELS = {
+    "control-flow-flattening": "控制流平坦化",
 }
 
 _STRENGTH_LABELS = {"single": "单一证据", "corroborated": "多源印证"}
@@ -41,6 +47,7 @@ class AdvancedObfuscationAnalyzer(Analyzer):
         version="1.0.0",
         description="Report obfuscation and packing evidence.",
         requires=(),
+        optional_requires=("basic.cfg",),
     )
 
     def analyze(self, target: AnalysisTarget, context) -> AnalysisResult:
@@ -64,11 +71,38 @@ class AdvancedObfuscationAnalyzer(Analyzer):
         elf = _optional_elf(target.real_path)
         section_blobs = _section_blobs(target.real_path, elf, options)
         symbols = _symbol_names(elf, options["max_symbols"])
-        hits = scan_sections(
-            section_blobs,
-            symbols,
-            entropy_threshold=options["entropy_threshold"],
+        hits = list(
+            scan_sections(
+                section_blobs,
+                symbols,
+                entropy_threshold=options["entropy_threshold"],
+            )
         )
+
+        flattening_hits = []
+        if options["flattening"]:
+            cfg = context.optional("basic.cfg")
+            functions = list((cfg.data or {}).get("functions") or ()) if cfg else []
+            if functions:
+                flattening_hits = list(
+                    scan_control_flow(
+                        functions,
+                        min_blocks=options["flattening_min_blocks"],
+                    )
+                )
+                hits.extend(flattening_hits)
+            else:
+                diagnostics.append(
+                    Diagnostic(
+                        code="OBFUSCATION_FLATTENING_UNAVAILABLE",
+                        level=DiagnosticLevel.INFO,
+                        message=(
+                            "未提供 basic.cfg 的控制流图，无法判定控制流平坦化；"
+                            "启用 basic.cfg 后可得到该结论。"
+                        ),
+                        analyzer_id=ANALYZER_ID,
+                    )
+                )
 
         return AnalysisResult(
             analyzer_id=ANALYZER_ID,
@@ -84,6 +118,11 @@ class AdvancedObfuscationAnalyzer(Analyzer):
                 "corroborated_count": sum(
                     1 for item in hits if item.strength == "corroborated"
                 ),
+                "flattening_checked": bool(options["flattening"]),
+                "flattening_available": bool(flattening_hits) or bool(
+                    options["flattening"] and not _cfg_functions(context)
+                ),
+                "flattening_signal_count": len(flattening_hits),
                 "signals": [
                     {
                         "signal": item.signal,
@@ -127,8 +166,9 @@ class AdvancedObfuscationAnalyzer(Analyzer):
             for item in signals:
                 category = _CATEGORY_LABELS.get(item["category"], item["category"])
                 strength = _STRENGTH_LABELS.get(item["strength"], item["strength"])
+                label = _SIGNAL_LABELS.get(item["signal"], item["signal"])
                 lines.append(
-                    f"  {item['signal']:<16} [{category}] {strength}"
+                    f"  {label:<16} [{category}] {strength}"
                 )
                 for evidence in item["evidence"][:4]:
                     lines.append(f"      - {evidence['detail']}")
@@ -212,4 +252,24 @@ def _resolve_options(context) -> dict:
                 resolved[key] = max(0.0, min(value, 8.0))
             else:
                 resolved[key] = max(1, int(value))
+    for key in ("flattening_min_blocks",):
+        if key in declared:
+            try:
+                value = int(declared[key])
+            except (TypeError, ValueError):
+                value = _DEFAULT_OPTIONS[key]
+            resolved[key] = max(1, int(value))
+    flattening = declared.get("flattening")
+    if isinstance(flattening, bool):
+        resolved["flattening"] = flattening
+    elif isinstance(flattening, str):
+        resolved["flattening"] = flattening.strip().lower() in ("1", "true", "yes", "on")
     return resolved
+
+
+def _cfg_functions(context) -> list:
+    """The recovered control flow graphs, when ``basic.cfg`` took part."""
+    result = context.optional("basic.cfg")
+    if result is None:
+        return []
+    return list((result.data or {}).get("functions") or ())

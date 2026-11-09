@@ -11,7 +11,7 @@ from ..core.models import (
     DiagnosticLevel,
 )
 from ..infrastructure import disasm as disasm_layer
-from ..infrastructure.cfg import build_cfg
+from ..infrastructure.cfg import build_cfg, is_indirect_jump
 from ..infrastructure.elf import ElfFormatError, parse_elf
 
 ANALYZER_ID = "basic.cfg"
@@ -240,6 +240,17 @@ def _collect(path, elf, regions, options: dict, diagnostics: list) -> tuple[list
                         "end": hex(block.end),
                         "terminator": block.terminator,
                         "successors": [hex(item) for item in block.successors],
+                        # An indirect jump ends a block whose destination is
+                        # unknown, so it has no successor. Reporting that
+                        # explicitly lets a consumer tell "the branch went
+                        # somewhere we could not resolve" from "the block
+                        # simply falls off the end".
+                        "indirect_jump": bool(
+                            block.terminator
+                            and is_indirect_jump(
+                                block.terminator, block.terminator_operands
+                            )
+                        ),
                     }
                     for block in graph.blocks
                 ],
