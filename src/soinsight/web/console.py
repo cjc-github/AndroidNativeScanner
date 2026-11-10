@@ -748,7 +748,11 @@ class Handler(BaseHTTPRequestHandler):
     server_version = f"SOInsightWeb/{__version__}"
 
     def log_message(self, fmt, *args):  # noqa: N802 - stdlib name
-        sys.stderr.write("  %s - %s\n" % (self.address_string(), fmt % args))
+        # A timestamp per line: ThreadingHTTPServer interleaves concurrent
+        # requests on stderr, and without a clock the lines cannot be ordered
+        # against a job's own timestamps.
+        stamp = time.strftime("%H:%M:%S")
+        sys.stderr.write("  %s %s - %s\n" % (stamp, self.address_string(), fmt % args))
 
     # -- helpers ---------------------------------------------------------
     def _send_json(self, obj: object, status: int = HTTPStatus.OK) -> None:
