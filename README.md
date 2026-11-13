@@ -32,6 +32,7 @@ Analyzer、Rule、Planner、Scheduler、Renderer、Artifact Store 等属于六�
 | [项目状态与路线图](docs/project-status.md) | 已完成、未实现和下一阶段验收标准 |
 | [架构说明](docs/architecture.md) | 产品能力层与技术实现层的关系 |
 | [扩展开发指南](docs/extension-development.md) | 为能力实现 Analyzer、Rule、Profile、Renderer |
+| [开发标准与迭代流程](docs/development-standards.md) | 提交前必须满足的条件、可执行的守卫与迭代闭环 |
 | [V1 到 V2 迁移](docs/migration-v1-to-v2.md) | 迁移原则、领域映射和顺序 |
 | [详细使用文档归档](docs/archive/) | 原快速开始/使用手册/CLI 命令参考/YAML 配置指南 |
 | [V2 软件设计说明书](design/design_v2.0.md) | 六大能力域、CLI、设计模式与详细架构的唯一主设计 |
