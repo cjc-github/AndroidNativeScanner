@@ -29,6 +29,12 @@
     --mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
     --radius: 10px;
     --shadow: 0 1px 2px rgba(22, 35, 43, .05), 0 1px 8px rgba(22, 35, 43, .04);
+    /* 控件底色与浮层遮罩：暗色模式只需覆盖这两个变量 */
+    --field-bg: #ffffff;
+    --overlay-bg: rgba(15, 23, 42, .45);
+    --topbar-bg: rgba(255, 255, 255, .92);
+    /* 顶栏实测高度：左侧固定导航要从顶栏下沿开始，否则中间会露一条缝 */
+    --topbar-h: 47px;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -46,7 +52,7 @@
     position: sticky; top: 0; z-index: 50;
     display: flex; align-items: center; gap: 14px;
     padding: 10px 22px;
-    background: rgba(255,255,255,.92);
+    background: var(--topbar-bg);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--border);
   }
@@ -64,43 +70,51 @@
   .dot.ok { background: #22a35b; box-shadow: 0 0 0 3px rgba(34,163,91,.15); }
   .dot.bad { background: #d23c3c; box-shadow: 0 0 0 3px rgba(210,60,60,.15); }
 
-  /* ---------- app shell：侧栏 + 舞台 ---------- */
-  /* 全屏布局：不再限制 max-width，宽屏下内容区随视口拉伸。
-     只在超大屏给一个上限，避免单行过长难读。 */
+  /* ---------- app shell：左侧竖排导航 + 舞台 ---------- */
+  /* 骨架对齐 AndroidFileExplorer：导航是一列贴住页面最左边的白底竖条，
+     用 1px 竖线与内容区分开；内容区自己留白，不再把导航包在一张卡片里。
+     竖条固定在视口左侧，页面多长都不留空，滚动时始终可见。 */
   .shell {
-    display: grid; grid-template-columns: 196px minmax(0, 1fr);
-    gap: 18px; align-items: start;
-    width: 100%; margin: 0; padding: 20px 24px 56px;
+    width: 100%; margin: 0; padding: 0 0 0 96px;
   }
   @media (min-width: 2200px) {
-    .shell { max-width: 2200px; margin: 0 auto; }
+    /* 超宽屏：内容区限宽居中，导航仍贴左 */
+    .stage > * { max-width: 2056px; margin-left: auto; margin-right: auto; }
   }
   .sidenav {
-    position: sticky; top: 66px;
-    display: flex; flex-direction: column; gap: 2px;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px;
+    position: fixed; left: 0; top: var(--topbar-h); bottom: 0; z-index: 40;
+    width: 96px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 6px;
+    background: var(--surface); border-right: 1px solid var(--border);
   }
   .nav-item {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    padding: 9px 11px; border: none; border-radius: 8px;
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    width: 100%; padding: 10px 4px; border: none; border-radius: 8px;
     background: transparent; color: var(--muted);
-    font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+    font: inherit; font-size: 12px; text-align: center; cursor: pointer;
     transition: background .12s, color .12s;
   }
-  .nav-item:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+  .nav-item:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-strong); }
   .nav-item.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 650; }
   .nav-item:disabled { opacity: .45; cursor: default; }
-  .nav-ico { width: 18px; text-align: center; flex: none; font-size: 14px; }
-  .nav-text { flex: 1; min-width: 0; }
+  .nav-ico {
+    width: 20px; height: 20px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .nav-ico svg { width: 20px; height: 20px; display: block; }
+  .nav-text { min-width: 0; line-height: 16px; word-break: keep-all; }
   .nav-badge {
-    flex: none; min-width: 18px; padding: 0 5px; border-radius: 999px;
-    background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
-    text-align: center; line-height: 18px;
+    position: absolute; top: 4px; right: 4px;
+    min-width: 16px; padding: 0 4px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+    text-align: center; line-height: 16px;
   }
   .nav-sep { height: 1px; background: var(--border); margin: 6px 4px; }
 
-  .stage { min-width: 0; }
+  /* 内容区自己留白：导航贴左，文字不顶到分隔线上 */
+  .stage { min-width: 0; padding: 20px 24px 56px; }
   .view { display: none; }
   .view.active { display: block; animation: view-in .16s ease; }
   @keyframes view-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -110,13 +124,21 @@
 
   /* 窄屏：侧栏变成顶部横向条 */
   @media (max-width: 860px) {
-    .shell { grid-template-columns: 1fr; }
+    .shell { padding-left: 0; }
     .sidenav {
-      position: static; flex-direction: row; flex-wrap: wrap;
+      position: static; width: auto; overflow: visible;
+      flex-direction: row; flex-wrap: wrap;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 8px 6px;
     }
-    .nav-item { width: auto; flex: 1 1 auto; }
+    .nav-item { width: auto; flex: 1 1 auto; flex-direction: row; gap: 8px; padding: 9px 12px; }
     .nav-text { flex: none; }
+    .nav-badge { position: static; margin-left: 2px; }
     .nav-sep { display: none; }
+    .stage { padding: 16px 16px 48px; }
+    /* 窄屏收窄表格：描述列信息密度低，隐藏避免横向滚动 */
+    .p-table .c-desc { display: none; }
+    .search-input { width: 100%; }
   }
 
   /* ---------- offline banner ---------- */
@@ -129,7 +151,7 @@
   #banner h3 { margin: 0 0 6px; font-size: 14.5px; color: var(--warn); }
   #banner p { margin: 4px 0; font-size: 13.5px; }
   #banner pre {
-    margin: 8px 0 0; padding: 10px 12px; background: #fff; border: 1px solid var(--warn-border);
+    margin: 8px 0 0; padding: 10px 12px; background: var(--field-bg); border: 1px solid var(--warn-border);
     border-radius: 8px; font-size: 12.5px; overflow-x: auto;
   }
   #banner .actions { margin-top: 10px; display: flex; gap: 8px; }
@@ -147,7 +169,16 @@
     padding: 9px 22px; font-size: 15px;
   }
   button.primary:hover:not(:disabled) { background: var(--accent-strong); color: #fff; }
+  button.primary.danger { background: #c0392b; border-color: #c0392b; }
+  button.primary.danger:hover:not(:disabled) { background: #a93226; }
   button.small { padding: 4px 10px; font-size: 12.5px; border-radius: 7px; }
+  /* 外观与 button.small 一致的链接（用于真实跳转，保留 a 的语义） */
+  a.btn-link {
+    display: inline-block; padding: 4px 10px; font-size: 12.5px; border-radius: 7px;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    text-decoration: none; transition: background .12s, border-color .12s;
+  }
+  a.btn-link:hover { border-color: var(--accent); color: var(--accent-strong); }
 
   /* ---------- panels ---------- */
   .panel {
@@ -179,7 +210,7 @@
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > select, .row > input {
     flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 7px 10px;
-    border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 8px; background: var(--field-bg); color: var(--text);
   }
   .row > input:focus, .row > select:focus { outline: 2px solid var(--accent-border); border-color: var(--accent); }
   #target-chip {
@@ -204,7 +235,7 @@
   .cap-card.dim { opacity: .45; }
   .cap-card .check {
     position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 4px;
-    border: 1.5px solid var(--border-strong); background: #fff; color: transparent;
+    border: 1.5px solid var(--border-strong); background: var(--field-bg); color: transparent;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; line-height: 1;
   }
@@ -219,6 +250,15 @@
   .cap-card.scan .t { color: var(--accent-strong); }
   .cap-actions { margin-left: auto; display: flex; gap: 6px; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  /* ---------- 预置分析脚本（分析能力面板顶部） ---------- */
+  .preset-bar {
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
+    padding: 10px 12px 4px; margin-bottom: 12px;
+  }
+  .preset-bar .form-label { font-size: 12px; margin-bottom: 4px; }
+  .preset-bar select { flex: 1; min-width: 0; }
+  .preset-bar .hint { margin: 6px 0 8px; }
 
   /* ---------- capability groups ---------- */
   .cap-group { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; overflow: hidden; }
@@ -238,13 +278,44 @@
   .cap-group .g-count { font-size: 12px; color: var(--muted); font-weight: 400; font-family: var(--mono); }
   .cap-group .g-all {
     flex: none; padding: 2px 8px; font-size: 11.5px; border-radius: 6px;
-    border: 1px solid var(--border-strong); background: #fff; color: var(--muted); cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--field-bg); color: var(--muted); cursor: pointer;
   }
   .cap-group .g-all:hover { border-color: var(--accent); color: var(--accent-strong); }
   .cap-group .g-body {
     display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px;
   }
   @media (max-width: 620px) { .cap-group .g-body { grid-template-columns: 1fr; } }
+
+  /* ---------- result groups（结果页按大类折叠） ---------- */
+  .result-group { border-bottom: 1px solid var(--border); padding-bottom: 2px; margin-bottom: 2px; }
+  .result-group > summary {
+    display: flex; align-items: center; gap: 7px; padding: 6px 8px;
+    cursor: pointer; user-select: none; list-style: none;
+    font-size: 12px; font-weight: 650; color: var(--muted); border-radius: 6px;
+  }
+  .result-group > summary::-webkit-details-marker { display: none; }
+  .result-group > summary::before {
+    content: "\25B8"; color: var(--muted); font-size: 10px; flex: none;
+    transition: transform .15s;
+  }
+  .result-group[open] > summary::before { transform: rotate(90deg); }
+  .result-group .rgg-check { display: inline-flex; align-items: center; }
+  .result-group .rgg-check input {
+    width: 13px; height: 13px; margin: 0; accent-color: var(--accent); cursor: pointer;
+  }
+  .result-group .rgg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result-group .rgg-count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .result-group-body { padding: 2px 0 6px; }
+  .result-group-body .tab { padding-left: 14px; }
+  .result-cap {
+    display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 6px;
+  }
+  .result-cap:hover { background: var(--surface-2); }
+  .result-cap .rcc-check {
+    width: 13px; height: 13px; margin: 0; flex: none;
+    accent-color: var(--accent); cursor: pointer;
+  }
+  .result-cap .tab { flex: 1; padding-left: 8px; }
 
   /* ---------- more sources (折叠的样本/路径) ---------- */
   .more-src { margin-top: 12px; }
@@ -287,14 +358,6 @@
   .history-item .h-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
   .history-item .h-acts { display: flex; gap: 6px; flex: none; }
 
-  /* ---------- compare table ---------- */
-  #compare-box { margin-bottom: 14px; }
-  .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .cmp-table th, .cmp-table td {
-    text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
-  }
-  .cmp-table th { font-size: 12px; color: var(--muted); font-weight: 600; }
-  .cmp-table td.mono { font-family: var(--mono); font-size: 12.5px; }
   .chip.sev-critical { background: var(--sev-critical-bg); color: var(--sev-critical); border-color: var(--sev-critical-border); }
   .chip.sev-high { background: var(--sev-high-bg); color: var(--sev-high); border-color: var(--sev-high-border); }
   .chip.sev-medium { background: var(--sev-medium-bg); color: var(--sev-medium); border-color: var(--sev-medium-border); }
@@ -335,17 +398,42 @@
   .spinner.on { display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ---------- error box ---------- */
-  #error-box {
-    display: none; background: var(--fail-bg); border: 1px solid var(--fail-border);
-    color: var(--fail); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px;
-    font-size: 13.5px; white-space: pre-wrap; word-break: break-all;
+  /* ---------- toast（全局轻提示） ---------- */
+  /* 错误与成功提示统一走右下角 toast：原先写在项目管理面板里的 error-box
+     在其他视图（详情 / 历史 / 结果）里根本看不见。 */
+  #toast-box {
+    position: fixed; right: 18px; bottom: 18px; z-index: 1200;
+    display: flex; flex-direction: column; gap: 8px; max-width: min(420px, 86vw);
+    pointer-events: none;
   }
-  #error-box.show { display: block; }
-  /* 中性提示（例如用户主动取消）：不是错误，用信息色而非红色 */
-  #error-box.notice {
-    background: var(--info-bg); border-color: var(--info-border); color: var(--info);
+  .toast {
+    pointer-events: auto; padding: 10px 14px; border-radius: 9px; font-size: 13px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    box-shadow: 0 8px 26px rgba(22, 35, 43, .16); word-break: break-all; white-space: pre-wrap;
+    animation: toast-in .18s ease-out;
   }
+  .toast.error { border-color: var(--fail-border); background: var(--fail-bg); color: var(--fail); }
+  .toast.success { border-color: var(--ok-border); background: var(--ok-bg); color: var(--ok); }
+  .toast.notice { border-color: var(--info-border); background: var(--info-bg); color: var(--info); }
+  .toast.out { opacity: 0; transition: opacity .25s; }
+  @keyframes toast-in { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* ---------- 空态引导块 ---------- */
+  .empty-block {
+    border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    background: var(--surface); padding: 42px 20px; text-align: center; color: var(--muted);
+  }
+  .empty-block .eb-title { font-size: 15px; font-weight: 650; color: var(--text); }
+  .empty-block .eb-hint { margin-top: 6px; font-size: 13px; }
+  .empty-block .eb-actions { margin-top: 16px; }
+
+  /* 列表头搜索框 */
+  .search-input {
+    width: 220px; font: inherit; font-size: 13px; padding: 7px 12px;
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--field-bg); color: var(--text);
+  }
+  .search-input:focus { outline: 2px solid var(--accent-border); border-color: var(--accent); }
 
   #cancel-btn { color: var(--fail); border-color: var(--fail-border); background: var(--fail-bg); }
   #cancel-btn:hover:not(:disabled) { border-color: var(--fail); }
@@ -361,6 +449,8 @@
      空的 tab 侧栏就和 empty-state 同时出现在页面上。 */
   #empty-state[hidden] { display: none; }
   #result-body[hidden] { display: none; }
+  .result-layout[hidden] { display: none; }
+  #batch-body[hidden] { display: none; }
   .es-title { font-weight: 650; font-size: 14px; color: var(--text); margin-bottom: 5px; }
   .es-hint { font-size: 12.8px; line-height: 1.65; }
   .es-back { margin-top: 14px; }
@@ -448,6 +538,11 @@
     .tab .id { display: inline; }
     .tab.active { border-left: none !important; border-bottom-color: var(--accent) !important; }
     .tab-panels { border-radius: 0 0 var(--radius) var(--radius); }
+    /* 窄屏结果分组：每个大类变成一条横向分段，组内小类横向滚动 */
+    .result-group { flex: none; border: none; margin: 0 4px 0 0; padding: 0; }
+    .result-group-body { display: flex; flex-direction: row; gap: 2px; overflow-x: auto; }
+    .result-group-body .result-cap { flex: none; }
+    .result-group-body .result-cap .tab { padding-left: 11px; }
   }
   .panel-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 12px; }
   .panel-head b { font-size: 13.8px; }
@@ -604,10 +699,119 @@
   .sym-tools { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
   .sym-tools input, .sym-tools select {
     font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--border-strong);
-    border-radius: 8px; background: #fff; color: var(--text);
+    border-radius: 8px; background: var(--field-bg); color: var(--text);
   }
   .sym-tools input { flex: 1; min-width: 180px; }
   .sym-tools .count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* ---------- 项目 / 任务列表 ---------- */
+  /* 列表头：左侧标题与说明，右侧放主操作按钮 */
+  .list-head {
+    display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .list-head .lh-main { flex: 1; min-width: 260px; }
+  .list-head h2 { margin: 0 0 4px; font-size: 16px; }
+  .list-head .lh-sub { font-size: 12.5px; color: var(--muted); }
+  .list-head .lh-actions { display: flex; gap: 8px; flex: none; align-items: center; }
+
+  /* 名称可点击进详情 */
+  .name-link {
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-strong);
+    background: none; border: none; padding: 0; cursor: pointer; text-align: left;
+  }
+  .name-link:hover { text-decoration: underline; }
+  .cell-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .row-actions { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+
+  /* 图标按钮（编辑铅笔等）：无边框，hover 淡背景 */
+  .icon-btn {
+    width: 26px; height: 26px; padding: 0; border: none; border-radius: 7px;
+    background: none; color: var(--muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: var(--surface-2); color: var(--accent-strong); }
+  .icon-btn svg { display: block; }
+
+  /* 三个点菜单（竖排、无边框）：点开后是下拉操作项 */
+  .menu-wrap { position: relative; flex: none; }
+  .menu-dots {
+    width: 26px; height: 26px; border: none; border-radius: 7px;
+    background: none; color: var(--muted); cursor: pointer; font-size: 17px;
+    line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+    letter-spacing: 0;
+  }
+  .menu-dots:hover { background: var(--surface-2); color: var(--text); }
+  .menu-pop {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 60; min-width: 132px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+    box-shadow: 0 6px 22px rgba(22, 35, 43, .14); padding: 4px; display: none;
+  }
+  .menu-pop.open { display: block; }
+  /* 表格容器为了横向滚动设了 overflow，会连带裁剪纵向绝对定位：
+     下方空间不够时改为向上弹，保证最后一行也能点到菜单项 */
+  .menu-pop.up { top: auto; bottom: calc(100% + 4px); }
+  .menu-pop button {
+    display: block; width: 100%; text-align: left; padding: 7px 10px; border: none;
+    border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 12.5px;
+    cursor: pointer;
+  }
+  .menu-pop button:hover { background: var(--surface-2); }
+  .menu-pop button.danger { color: #c0392b; }
+  .menu-pop button.danger:hover { background: #fdecea; }
+
+  /* 分页 */
+  .pager {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 12px; font-size: 12.5px; color: var(--muted);
+  }
+  .pager .pg-info { margin-right: auto; }
+  .pager .pg-pages { display: flex; gap: 4px; align-items: center; }
+  .pager button {
+    min-width: 28px; height: 28px; padding: 0 8px; border: 1px solid var(--border-strong);
+    border-radius: 7px; background: var(--surface); color: var(--text);
+    font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-strong); }
+  .pager button:disabled { opacity: .45; cursor: default; }
+  .pager button.current { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pager .pg-gap { padding: 0 2px; color: var(--muted); }
+  .pager select {
+    font: inherit; font-size: 12.5px; padding: 4px 8px; border: 1px solid var(--border-strong);
+    border-radius: 7px; background: var(--field-bg); color: var(--text);
+  }
+
+  /* 数据表：项目 / 任务列表 */
+  .p-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .p-table th, .p-table td { text-align: left; padding: 10px 14px; font-size: 12.8px; vertical-align: top; }
+  .p-table thead th { font-weight: 650; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .p-table tbody tr + tr td { border-top: 1px solid var(--border); }
+  .p-table td.c-time, .p-table td.c-status { white-space: nowrap; color: var(--muted); }
+  .p-table td.c-actions { text-align: right; }
+  .p-table .name-link { font-size: 13.2px; }
+  .p-table .cell-sub { white-space: normal; }
+  .p-empty { text-align: center; color: var(--muted); font-size: 12.8px; padding: 26px 0; }
+  .p-table-wrap { border-radius: var(--radius); overflow-x: auto; }
+  /* 长名称 / 长描述：限两行，避免一条记录把整页撑高（完整内容看 title） */
+  .clamp-2 {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-all;
+  }
+  /* 描述列：限宽换行，避免长描述把表格撑宽 */
+  .cell-desc { max-width: 360px; word-break: break-all; font-size: 12.8px; color: var(--text); }
+  /* 列表内的删除按钮：红色提示危险操作 */
+  .danger-btn { color: #c0392b; border-color: #e4b6af; }
+  .danger-btn:hover { background: #fdecea; border-color: #c0392b; }
+
+  /* 项目详情头 */
+  .proj-head {
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .proj-head .ph-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .proj-head .ph-desc { margin-top: 6px; font-size: 13px; color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+  .proj-head .ph-meta { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .proj-head .ph-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 
   .finding {
     border: 1px solid var(--border); border-left-width: 4px; border-radius: 9px;
@@ -629,7 +833,7 @@
   .finding .evidence td.mono { font-family: var(--mono); font-size: 12px; }
   .finding .fix {
     margin-top: 8px; font-size: 12.8px; padding: 7px 11px; border-radius: 7px;
-    background: var(--ok-bg); border: 1px solid var(--ok-border); color: #14532d;
+    background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok);
   }
   .finding .fix b { font-weight: 700; }
   .sev-badge {
@@ -691,11 +895,113 @@
     border: 1px dashed var(--border-strong); border-radius: 8px; padding: 9px 13px; margin-top: 10px;
   }
 
-  /* ---------- about ---------- */
-  #about { margin-top: 44px; }
-  #about h2 { font-size: 18px; margin: 0 0 4px; }
-  #about .lead { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+  /* ---------- modal / wizard ---------- */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: var(--overlay-bg);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay[hidden] { display: none; }
+  /* 确认框可能从其它弹窗里唤起（如向导里删除预置），必须盖在上面 */
+  #confirm-modal { z-index: 1100; }
+  .modal-box {
+    width: min(96vw, 960px); max-height: 92vh;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .18);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-box.modal-small { width: min(96vw, 500px); }
+  /* 创建任务向导：宽高固定，切换步骤 / 勾选 / 展开分组都不再改变弹窗尺寸 */
+  .modal-box.modal-wizard { width: min(96vw, 960px); height: min(88vh, 720px); max-height: 92vh; }
+  .modal-box.modal-wizard .wizard-main { overscroll-behavior: contain; }
+  .modal-box.modal-wizard textarea { resize: none; }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 15px 22px; border-bottom: 1px solid var(--border);
+  }
+  .modal-head .t { font-size: 16px; font-weight: 650; }
+  .modal-head .x {
+    border: none; background: transparent; color: var(--muted);
+    font-size: 16px; cursor: pointer; padding: 4px 8px;
+  }
+  .modal-head .x:hover { color: var(--text); }
+  .modal-body { padding: 20px 22px; overflow-y: auto; }
+  .modal-foot {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding: 12px 22px; border-top: 1px solid var(--border); background: var(--surface-2);
+  }
+  /* 固定底栏高度：状态文案变长、按钮切换都不改变弹窗整体高度 */
+  .modal-box.modal-wizard .modal-foot { min-height: 58px; box-sizing: border-box; }
+  .modal-box.modal-wizard .modal-foot #run-status {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .req { color: var(--fail); }
+  .modal-body input,
+  .modal-body textarea {
+    width: 100%; box-sizing: border-box; padding: 8px 10px;
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    font: inherit; background: var(--surface-2); color: var(--text);
+  }
+  .modal-body input:focus,
+  .modal-body textarea:focus { outline: 2px solid var(--accent-border); border-color: var(--accent); }
+  .modal-body textarea { resize: vertical; }
+  /* 小弹窗（项目 / 编辑 / 确认）底部按钮统一尺寸：取消与主按钮一样大 */
+  .modal-box.modal-small .modal-foot button { padding: 9px 22px; font-size: 15px; }
+  .modal-box.modal-small .modal-foot button.primary { font-weight: 600; }
+  .wizard-body { display: flex; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+  .wizard-nav {
+    width: 216px; flex: none; background: var(--surface-2);
+    border-right: 1px solid var(--border); padding: 18px 14px; overflow-y: auto;
+  }
+  .w-step {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; color: var(--muted);
+  }
+  .w-step:hover { background: var(--surface); }
+  .w-step.active { background: var(--accent-soft); color: var(--accent-strong); }
+  .w-step .num {
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    background: var(--field-bg); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .w-step.active .num { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .w-step .labels { min-width: 0; }
+  .w-step b { display: block; font-size: 13.5px; }
+  .w-step small { font-size: 11.5px; color: var(--muted); }
+  .w-task-name { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .w-task-name textarea {
+    width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12px;
+    padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 7px;
+    background: var(--surface); color: var(--text); min-height: 46px;
+  }
+  .w-task-name textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .wizard-main { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; }
+  .w-panel { display: none; }
+  .w-panel.active { display: block; }
+  .w-panel h3 {
+    margin: 0 0 14px; font-size: 14.5px; display: flex; align-items: center; gap: 8px;
+  }
+  @media (max-width: 720px) {
+    .modal-box { width: 100%; max-height: 94vh; }
+    .wizard-body { flex-direction: column; min-height: 0; }
+    .wizard-nav { width: auto; border-right: none; border-bottom: 1px solid var(--border); display: flex; gap: 4px; padding: 10px; }
+    .w-step { flex: 1; }
+    .w-step small { display: none; }
+  }
+
+  /* ---------- overview ---------- */
+  .ov-hero {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px;
+  }
+  .ov-hero h2 { margin: 0 0 6px; font-size: 18px; }
+  .ov-hero p { margin: 0; font-size: 13px; color: var(--muted); max-width: 82ch; line-height: 1.65; }
+  .ov-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+
+  /* ---------- metrics / about（总览页使用） ---------- */
   .metric-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
+  .metric-row.ov-metrics { margin: 14px 0 0; }
   @media (max-width: 900px) { .metric-row { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 560px) { .metric-row { grid-template-columns: repeat(2, 1fr); } }
   .metric {
@@ -724,7 +1030,7 @@
   .layer b { font-size: 13px; }
   .layer .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .layer .tags span {
-    font-family: var(--mono); font-size: 11px; background: #fff;
+    font-family: var(--mono); font-size: 11px; background: var(--field-bg);
     border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; color: var(--muted);
   }
   .run-box pre {
@@ -735,9 +1041,76 @@
   ul.tight { margin: 8px 0 0; padding-left: 20px; font-size: 12.8px; color: #33454f; }
   ul.tight li { margin-bottom: 4px; }
 
+  /* 页脚为左侧固定导航让出位置，否则文字会压在导航列下 */
   footer {
     border-top: 1px solid var(--border); padding: 18px 22px; text-align: center;
     color: var(--muted); font-size: 12px;
+    margin-left: 96px;
+  }
+  @media (max-width: 860px) {
+    footer { margin-left: 0; }
+  }
+
+  /* ---------- 跟随系统的暗色主题 ---------- */
+  /* 页面所有颜色都走上面的 CSS 变量，这里只需把调色板换成深色一套；
+     少数写死颜色的地方（正文灰、代码底、徽章）单独覆盖。 */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1519;
+      --surface: #161d23;
+      --surface-2: #1b242b;
+      --border: #27323a;
+      --border-strong: #38454f;
+      --text: #e3ebef;
+      --muted: #93a6b3;
+      --accent: #2dd4bf;
+      --accent-strong: #5eead4;
+      --accent-soft: #12312e;
+      --accent-border: #1f5c55;
+      --ok: #4ade80; --ok-bg: #10291a; --ok-border: #1e5132;
+      --warn: #fbbf24; --warn-bg: #2c220c; --warn-border: #57430f;
+      --fail: #f87171; --fail-bg: #2d1414; --fail-border: #5b2424;
+      --info: #a8b8c4; --info-bg: #1d262d; --info-border: #33414b;
+      --sev-critical: #f87171; --sev-critical-bg: #2d1414; --sev-critical-border: #5b2424;
+      --sev-high: #fb923c; --sev-high-bg: #2e1c0d; --sev-high-border: #5d3616;
+      --sev-medium: #fbbf24; --sev-medium-bg: #2c220c; --sev-medium-border: #57430f;
+      --sev-low: #7cb0ff; --sev-low-bg: #131f31; --sev-low-border: #263d5c;
+      --sev-info: #a8b8c4; --sev-info-bg: #1d262d; --sev-info-border: #33414b;
+      --field-bg: #1b242b;
+      --overlay-bg: rgba(0, 0, 0, .6);
+      --topbar-bg: rgba(22, 29, 35, .92);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 1px 8px rgba(0, 0, 0, .3);
+    }
+    .finding .msg, ul.tight { color: var(--text); }
+    /* 少数语义色是写死的浅色底/深色字，暗色下需要换成对应的深底浅字 */
+    .lang.c { color: var(--sev-low); border-color: var(--sev-low-border); background: var(--sev-low-bg); }
+    .lang.cpp { color: #c4a5e8; border-color: #4a3160; background: #241a31; }
+    .danger-btn, .menu-pop button.danger { color: #f0a9a1; }
+    .danger-btn { border-color: var(--fail-border); }
+    .danger-btn:hover, .menu-pop button.danger:hover { background: var(--fail-bg); border-color: var(--fail-border); }
+    .toast { box-shadow: 0 8px 26px rgba(0, 0, 0, .5); }
+    .modal-box { box-shadow: 0 18px 50px rgba(0, 0, 0, .55); }
+  }
+
+  /* ---------- 尊重「减少动态效果」偏好 ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
+
+  /* ---------- 打印：只留结果正文 ---------- */
+  @media print {
+    .topbar, .sidenav, footer, #toast-box, .pc-actions,
+    #result-tabs, .result-tools, .tab-panel:not(.active) { display: none !important; }
+    body { background: #fff; color: #000; }
+    .shell { display: block; }
+    .view:not(.active) { display: none !important; }
+    #result-body, .result-layout, .tab-panel.active { display: block !important; }
+    .card { border-color: #bbb; box-shadow: none; break-inside: avoid; }
   }
 </style>
 </head>
@@ -762,180 +1135,111 @@
 </header>
 
 <div class="shell">
-  <!-- 左侧导航 -->
+  <!-- 左侧导航：图标在上、文字在下 -->
   <nav class="sidenav" id="sidenav">
-    <button class="nav-item active" data-view="config" type="button">
-      <span class="nav-ico" aria-hidden="true">⚙</span>
-      <span class="nav-text">分析配置</span>
+    <button class="nav-item active" data-view="overview" type="button">
+      <span class="nav-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/>
+          <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/>
+          <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+          <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+        </svg>
+      </span>
+      <span class="nav-text">总览</span>
+    </button>
+    <button class="nav-item" data-view="config" type="button">
+      <span class="nav-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </span>
+      <span class="nav-text">项目管理</span>
+    </button>
+    <button class="nav-item" data-view="history" type="button">
+      <span class="nav-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3.2 1.9"/>
+        </svg>
+      </span>
+      <span class="nav-text">任务管理</span>
+      <span class="nav-badge" id="history-badge" hidden>0</span>
     </button>
     <button class="nav-item" data-view="results" type="button" id="nav-results" disabled>
-      <span class="nav-ico" aria-hidden="true">📊</span>
+      <span class="nav-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 20h18"/>
+          <path d="M6.5 20v-5"/>
+          <path d="M12 20V6"/>
+          <path d="M17.5 20v-8"/>
+        </svg>
+      </span>
       <span class="nav-text">分析结果</span>
       <span class="nav-badge" id="results-badge" hidden>0</span>
     </button>
-    <button class="nav-item" data-view="history" type="button">
-      <span class="nav-ico" aria-hidden="true">🕘</span>
-      <span class="nav-text">任务历史</span>
-      <span class="nav-badge" id="history-badge" hidden>0</span>
-    </button>
     <div class="nav-sep"></div>
-    <button class="nav-item" data-view="about" type="button">
-      <span class="nav-ico" aria-hidden="true">ℹ</span>
-      <span class="nav-text">关于</span>
+    <button class="nav-item" data-view="settings" type="button">
+      <span class="nav-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.94 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10 3.04V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/>
+        </svg>
+      </span>
+      <span class="nav-text">设置</span>
     </button>
   </nav>
 
   <!-- 右侧内容 -->
   <div class="stage">
 
-    <!-- ===== 视图：配置 ===== -->
-    <section class="view active" data-view="config">
-      <div id="banner">
-        <h3>页面还无法调用分析：未连接到本地分析服务</h3>
-        <p>浏览器里的 HTML 自己不能执行本机的 Python 分析。请先在<strong>项目目录</strong>启动本地服务，再刷新本页：</p>
-        <pre>Windows：双击 web\start-web.bat
-任意平台：py -3 web/server.py          # 启动并自动打开浏览器
-指定端口：py -3 web/server.py --port 9000</pre>
-        <p>推荐用 <code>py -3</code>（Python 3.10）而不是裸 <code>python</code>：本机默认的 Python 3.13 未安装依赖 PyYAML，用它会启动失败。</p>
-        <p>服务只绑定 127.0.0.1，不会把本机文件暴露到局域网；分析由服务以子进程方式调用 <code>python -m soinsight</code> 完成。</p>
-        <div class="actions">
-          <button class="small" id="retry-health">重新检测连接</button>
+    <!-- ===== 视图：总览 ===== -->
+    <section class="view active" data-view="overview">
+      <div class="ov-hero">
+        <h2>总览</h2>
+        <p>SOInsight 是模块化 ELF / Android Native 静态分析工具箱。下面汇总本地数据库里的项目与任务，以及当前服务的运行状态。</p>
+        <div id="overview-offline" class="note" hidden style="margin-top:12px">
+          未连接到本地分析服务，下面只显示本地数据库里已有的记录。
+          <button class="small" id="overview-retry" type="button" style="margin-left:8px">重新检测连接</button>
+        </div>
+        <div class="ov-actions">
+          <button class="primary" id="overview-new-project" type="button">＋ 新建项目</button>
+          <button class="small" data-goto-view="config" type="button">项目管理</button>
+          <button class="small" data-goto-view="history" type="button">任务管理</button>
+          <a class="btn-link" href="/so-scan.html">深度分析台 →</a>
         </div>
       </div>
 
-      <div class="config-layout">
-        <div class="config-main">
-          <div class="panel">
-            <h2><span class="step">1</span>选择目标文件</h2>
-            <div id="dropzone" title="点击选择 .so 文件">
-              <span class="big">拖拽 .so / ELF 到这里</span>
-              或点击选择文件（仅在本地内存与临时文件中处理，不会外传）
-            </div>
-            <input type="file" id="file-input" accept=".so,.elf,.o,.dylib,.bin" hidden>
-            <div id="target-chip" hidden>
-              <span class="tc-ico" aria-hidden="true">📄</span>
-              <span class="name" id="chip-name"></span>
-              <span class="meta" id="chip-meta"></span>
-              <button class="small clear" id="chip-clear">移除</button>
-            </div>
-            <details class="more-src">
-              <summary>使用其他来源（样本 / 服务器路径）</summary>
-              <div class="or">或使用服务器上的文件</div>
-              <div class="row">
-                <select id="sample-select" aria-label="验证样本"><option value="">— 加载样本中… —</option></select>
-                <button class="small" id="use-sample">使用样本</button>
-              </div>
-              <div class="row">
-                <input id="path-input" placeholder="服务器绝对路径（文件或目录），如 E:\libs" spellcheck="false">
-                <button class="small" id="use-path">使用路径</button>
-              </div>
-              <div class="row">
-                <input id="include-input" placeholder="只分析匹配的文件，如 *.so（可留空）" spellcheck="false">
-                <input id="exclude-input" placeholder="排除匹配的文件，如 *test*（可留空）" spellcheck="false">
-              </div>
-              <p class="hint">填目录时会展开其中的文件批量分析，规则与命令行 <code>--include</code>/<code>--exclude</code> 一致。</p>
-            </details>
-          </div>
-
-          <div class="panel">
-            <h2><span class="step">2</span>选择分析能力
-              <span class="cap-actions">
-                <button class="small" id="cap-all" type="button">全选</button>
-                <button class="small" id="cap-none" type="button">清空</button>
-              </span>
-            </h2>
-            <div id="capability-groups"></div>
-            <p class="hint">点击卡片勾选/取消，一次运行会执行所有选中项。<span id="cap-count">正在获取可用分析器…</span>依赖会自动补齐：如选 <code>basic.elf</code> 会连带执行 <code>basic.file</code>。</p>
+      <div class="panel" style="margin-top:14px">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>数据与能力</h2>
+            <div class="lh-sub">项目 / 任务数量来自本地 SQLite，Analyzer 数量来自当前服务。</div>
           </div>
         </div>
-
-        <aside class="run-rail">
-          <div class="run-bar">
-            <button class="primary" id="run-btn" disabled>
-              <span class="spinner" id="run-spinner"></span><span id="run-label">▶ 运行分析</span>
-            </button>
-            <button class="small" id="cancel-btn" type="button" hidden>■ 停止分析</button>
-            <span id="run-status">请选择目标文件和分析能力</span>
-            <span id="elapsed"></span>
-          </div>
-          <div id="error-box"></div>
-        </aside>
-      </div>
-    </section>
-
-    <!-- ===== 视图：结果 ===== -->
-    <section class="view" data-view="results">
-      <div id="progress-card" hidden>
-        <div class="pc-head">
-          <span class="spinner on" id="pc-spinner"></span>
-          <span class="pc-title" id="pc-title">正在分析…</span>
-          <button class="small" id="pc-cancel" type="button">■ 停止</button>
-        </div>
-        <div class="pc-target" id="pc-target"></div>
-        <div class="pc-meta">
-          <span id="pc-elapsed">已用 0.0 s</span>
-          <span id="pc-stage"></span>
-        </div>
+        <div class="metric-row ov-metrics" id="overview-metrics"></div>
       </div>
 
-      <section id="results">
-        <div id="empty-state">
-          <div class="es-title">还没有分析结果</div>
-          <div class="es-hint">在「分析配置」里选择目标文件和分析能力，点击运行分析后会自动跳转到这里。</div>
-          <div class="es-back"><button class="small" type="button" data-back-config>返回分析配置</button></div>
-        </div>
-        <div id="result-body" hidden>
-          <div class="result-meta" id="result-meta"></div>
-          <div class="result-layout">
-            <div class="tabs-wrap">
-              <div class="tabs" id="result-tabs" role="tablist"></div>
-            </div>
-            <div class="tab-panels" id="result-panels">
-              <div class="tab-panel" id="panel-summary" data-tab="summary">
-                <div class="section-title" style="margin-top:0">本次运行</div>
-                <div class="fact-row" id="summary-status" style="margin-top:0"></div>
-                <div id="findings-section"></div>
-                <div id="diagnostics-section"></div>
-              </div>
-              <div class="tab-panel" id="panel-raw" data-tab="raw">
-                <div class="raw-actions">
-                  <button class="small" id="download-json" type="button">下载 JSON</button>
-                  <button class="small" id="download-findings" type="button">导出发现项 CSV</button>
-                </div>
-                <div id="raw-info"></div>
-              </div>
-            </div>
+      <div class="panel" style="margin-top:14px">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>最近任务</h2>
+            <div class="lh-sub">按创建时间倒序取最近 5 条，成功后可直接回放完整结果。</div>
+          </div>
+          <div class="lh-actions">
+            <button class="small" data-goto-view="history" type="button">查看全部</button>
           </div>
         </div>
-      </section>
-    </section>
-
-    <!-- ===== 视图：历史 ===== -->
-    <section class="view" data-view="history">
-      <div id="compare-box" hidden></div>
-      <div class="panel">
-        <h2>任务历史</h2>
-        <div id="history-list">
-          <p class="hint" style="margin:0">还没有运行过分析。</p>
-        </div>
+        <div id="overview-recent"></div>
       </div>
-    </section>
 
-    <!-- ===== 视图：关于 ===== -->
-    <section class="view" data-view="about">
-      <section id="about">
-        <h2>关于 SOInsight</h2>
-        <p class="lead">模块化 ELF / Android Native 静态分析工具箱。V2 按产品能力域组织：basic（10 项）、advanced（8）、security（4）、dynamic（5）、ai（8）、automation（7），共 42 项能力。</p>
-
-        <div class="metric-row">
-          <div class="metric"><div class="n">6</div><div class="l">产品模块</div></div>
-          <div class="metric"><div class="n">42</div><div class="l">目录能力</div></div>
-          <div class="metric"><div class="n" id="metric-analyzers">—</div><div class="l">已实现 Analyzer</div></div>
-          <div class="metric"><div class="n">828</div><div class="l">测试通过</div></div>
-          <div class="metric"><div class="n">5</div><div class="l">输出格式</div></div>
-          <div class="metric"><div class="n">0</div><div class="l">外部解析依赖</div></div>
+      <div class="panel" style="margin-top:14px">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>关于 SOInsight</h2>
+            <div class="lh-sub">产品能力域与两层架构说明，命令行与控制台的结果完全一致。</div>
+          </div>
         </div>
-
         <div class="about-grid">
           <div class="about-panel">
             <h3>跨域分析链路（依赖由规划器自动补齐）</h3>
@@ -959,7 +1263,7 @@
             <ul class="tight">
               <li>2943 个导出函数与 pyelftools 审计比对，0 遗漏</li>
               <li>1895 个 C++ 符号 demangle 与参考实现 0 差异</li>
-              <li>21 个真实 Android x86 库样本（<code>in/</code>，本页"样本"即来源于此）</li>
+              <li>21 个真实 Android x86 库样本（<code>in/</code>，向导"样本"即来源于此）</li>
               <li>ELF / DWARF 解析为纯 Python 实现，不依赖 readelf / nm / objdump</li>
             </ul>
           </div>
@@ -982,7 +1286,295 @@
             <p class="hint" style="margin-top:8px">页面通过 <code>/api/analyze</code> 把目标交给本地服务，服务以子进程执行上面的 CLI 并回传 JSON；服务仅绑定 127.0.0.1，上传文件只写入系统临时目录、分析后即删。命令行用法见 <code>docs/quickstart.md</code>。</p>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== 视图：配置 ===== -->
+    <section class="view" data-view="config">
+      <div id="banner">
+        <h3>页面还无法调用分析：未连接到本地分析服务</h3>
+        <p>浏览器里的 HTML 自己不能执行本机的 Python 分析。请先在<strong>项目目录</strong>启动本地服务，再刷新本页：</p>
+        <pre>Windows：双击 web\start-web.bat
+任意平台：py -3 web/server.py          # 启动并自动打开浏览器
+指定端口：py -3 web/server.py --port 9000</pre>
+        <p>推荐用 <code>py -3</code>（Python 3.10）而不是裸 <code>python</code>：本机默认的 Python 3.13 未安装依赖 PyYAML，用它会启动失败。</p>
+        <p>服务只绑定 127.0.0.1，不会把本机文件暴露到局域网；分析由服务以子进程方式调用 <code>python -m soinsight</code> 完成。</p>
+        <div class="actions">
+          <button class="small" id="retry-health">重新检测连接</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>项目管理</h2>
+            <div class="lh-sub">项目用于把一批分析任务归到一起。点击项目名称进入项目详情，在里面创建任务。</div>
+          </div>
+          <div class="lh-actions">
+            <input id="project-search" class="search-input" placeholder="搜索项目名称或描述…" spellcheck="false">
+            <button class="primary" id="project-new" type="button">＋ 新建项目</button>
+          </div>
+        </div>
+        <div id="project-list"></div>
+      </div>
+
+    </section>
+
+    <!-- ===== 弹窗层 ===== -->
+    <!-- 弹窗必须放在所有 .view 之外：视图 section 隐藏时弹窗也要能显示 -->
+
+    <!-- 新建项目弹窗 -->
+    <div class="modal-overlay" id="project-modal" role="dialog" aria-modal="true"
+         aria-labelledby="project-modal-title" hidden>
+      <div class="modal-box modal-small">
+        <div class="modal-head">
+          <div class="t" id="project-modal-title">新建项目</div>
+          <button type="button" class="x" id="project-modal-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="project-modal-name">项目名称 <span class="req">*</span></label>
+          <input id="project-modal-name" placeholder="例如：XX 应用安全审计" spellcheck="false">
+          <label class="form-label" for="project-modal-desc" style="margin-top:14px">项目描述</label>
+          <textarea id="project-modal-desc" rows="3" placeholder="选填，记录项目背景或范围"></textarea>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="small" id="project-modal-cancel">取消</button>
+          <button type="button" class="primary" id="project-modal-create">创建项目</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑项目 / 任务弹窗（通用） -->
+    <div class="modal-overlay" id="edit-modal" role="dialog" aria-modal="true"
+         aria-labelledby="edit-modal-title" hidden>
+      <div class="modal-box modal-small">
+        <div class="modal-head">
+          <div class="t" id="edit-modal-title">编辑</div>
+          <button type="button" class="x" id="edit-modal-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="edit-modal-name" id="edit-modal-name-label">名称 <span class="req">*</span></label>
+          <input id="edit-modal-name" spellcheck="false">
+          <label class="form-label" for="edit-modal-desc" id="edit-modal-desc-label" style="margin-top:14px">描述</label>
+          <textarea id="edit-modal-desc" rows="3"></textarea>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="small" id="edit-modal-cancel">取消</button>
+          <button type="button" class="primary" id="edit-modal-save">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 确认对话框 -->
+    <div class="modal-overlay" id="confirm-modal" role="alertdialog" aria-modal="true"
+         aria-labelledby="confirm-title" aria-describedby="confirm-message" hidden>
+      <div class="modal-box modal-small">
+        <div class="modal-head">
+          <div class="t" id="confirm-title">确认</div>
+          <button type="button" class="x" id="confirm-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-message" style="margin:0;line-height:1.6"></p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="small" id="confirm-cancel">取消</button>
+          <button type="button" class="primary danger" id="confirm-ok">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 创建任务向导弹窗 -->
+    <div class="modal-overlay" id="task-modal" role="dialog" aria-modal="true"
+         aria-labelledby="task-modal-title" hidden>
+      <div class="modal-box modal-wizard">
+        <div class="modal-head">
+          <div class="t" id="task-modal-title">创建任务</div>
+          <button type="button" class="x" id="task-close" aria-label="关闭">✕</button>
+        </div>
+        <div class="wizard-body">
+          <aside class="wizard-nav">
+            <div class="w-step active" data-wstep="1">
+              <span class="num">1</span>
+              <div class="labels">
+                <b>选择目标</b>
+                <small>拖拽上传 / 已有数据</small>
+              </div>
+            </div>
+            <div class="w-step" data-wstep="2">
+              <span class="num">2</span>
+              <div class="labels">
+                <b>分析能力</b>
+                <small>内置组合 / 自行勾选</small>
+              </div>
+            </div>
+            <div class="w-task-name">
+              <label class="form-label" for="task-name">任务名称</label>
+              <input id="task-name" placeholder="可选，默认自动生成" spellcheck="false">
+              <label class="form-label" for="task-description" style="margin-top:10px">任务描述</label>
+              <textarea id="task-description" rows="2" placeholder="选填，记录本次分析目的" spellcheck="false"></textarea>
+            </div>
+          </aside>
+          <div class="wizard-main">
+            <div class="w-panel active" data-wpanel="1">
+              <h3>选择目标</h3>
+              <div id="dropzone" title="点击选择 .so 文件">
+                <span class="big">拖拽 .so / ELF 到这里</span>
+                或点击选择文件（仅在本地内存与临时文件中处理，不会外传）
+              </div>
+              <input type="file" id="file-input" accept=".so,.elf,.o,.dylib,.bin" hidden>
+              <label class="form-label" for="target-name">目标名称</label>
+              <input id="target-name" placeholder="默认取 SO 文件名" spellcheck="false">
+              <div id="target-chip" hidden>
+                <span class="tc-ico" aria-hidden="true">📄</span>
+                <span class="name" id="chip-name"></span>
+                <span class="meta" id="chip-meta"></span>
+                <button class="small clear" id="chip-clear">移除</button>
+              </div>
+              <details class="more-src">
+                <summary>使用已有数据（样本 / 服务器路径）</summary>
+                <div class="or">或使用服务器上的文件</div>
+                <div class="row">
+                  <select id="sample-select" aria-label="验证样本"><option value="">— 加载样本中… —</option></select>
+                  <button class="small" id="use-sample">使用样本</button>
+                </div>
+                <div class="row">
+                  <input id="path-input" placeholder="服务器绝对路径（文件或目录），如 E:/libs" spellcheck="false">
+                  <button class="small" id="use-path">使用路径</button>
+                </div>
+                <div class="row">
+                  <input id="include-input" placeholder="只分析匹配的文件，如 *.so（可留空）" spellcheck="false">
+                  <input id="exclude-input" placeholder="排除匹配的文件，如 *test*（可留空）" spellcheck="false">
+                </div>
+                <p class="hint">填目录时会展开其中的文件批量分析，规则与命令行 <code>--include</code>/<code>--exclude</code> 一致。</p>
+              </details>
+            </div>
+            <div class="w-panel" data-wpanel="2">
+              <h3>分析能力
+                <span class="cap-actions">
+                  <button class="small" id="cap-all" type="button">全选</button>
+                  <button class="small" id="cap-none" type="button">清空</button>
+                </span>
+              </h3>
+              <div class="preset-bar">
+                <label class="form-label" for="preset-select">预置分析脚本</label>
+                <div class="row">
+                  <select id="preset-select" aria-label="预置分析脚本">
+                    <option value="">— 不使用预置 —</option>
+                  </select>
+                  <button class="small" id="preset-apply" type="button" disabled>套用</button>
+                  <button class="small danger-btn" id="preset-delete" type="button" disabled>删除</button>
+                </div>
+                <div class="row">
+                  <input id="preset-name" placeholder="预置名称，如「常规审计」" spellcheck="false">
+                  <button class="small" id="preset-save" type="button">保存当前勾选</button>
+                </div>
+                <p class="hint">把当前勾选（含组合扫描开关）保存成一个预置文件，下次选中即可一次性套用其中的分析项。</p>
+              </div>
+              <div id="capability-groups"></div>
+              <p class="hint">点击卡片勾选/取消，一次运行会执行所有选中项。<span id="cap-count">正在获取可用分析器…</span>依赖会自动补齐：如选 <code>basic.elf</code> 会连带执行 <code>basic.file</code>。</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span id="run-status"></span>
+          <span id="elapsed"></span>
+          <button type="button" class="small" id="task-cancel">取消</button>
+          <button type="button" class="small" id="task-prev" disabled>上一步</button>
+          <button type="button" class="small" id="task-next">下一步</button>
+          <button type="button" class="small" id="cancel-btn" hidden>■ 停止分析</button>
+          <button type="button" class="primary" id="run-btn" disabled>
+            <span class="spinner" id="run-spinner"></span><span id="run-label">完成并运行</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 视图：项目详情 ===== -->
+    <section class="view" data-view="project">
+      <div id="project-detail"></div>
+    </section>
+
+    <!-- 全局轻提示（toast）：role=status 让读屏器播报成功/失败信息 -->
+    <div id="toast-box" role="status" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- ===== 视图：结果 ===== -->
+    <section class="view" data-view="results">
+      <div id="progress-card" hidden>
+        <div class="pc-head">
+          <span class="spinner on" id="pc-spinner"></span>
+          <span class="pc-title" id="pc-title">正在分析…</span>
+          <button class="small" id="pc-cancel" type="button">■ 停止</button>
+        </div>
+        <div class="pc-target" id="pc-target"></div>
+        <div class="pc-meta">
+          <span id="pc-elapsed">已用 0.0 s</span>
+          <span id="pc-stage"></span>
+        </div>
+      </div>
+
+      <section id="results">
+        <div id="empty-state">
+          <div class="es-title">还没有分析结果</div>
+          <div class="es-hint">进入「项目管理」的项目详情，创建任务（选择目标文件和分析能力）并运行。</div>
+          <div class="es-back"><button class="small" type="button" data-back-config>返回项目管理</button></div>
+        </div>
+        <div id="result-body" hidden>
+          <div class="result-meta" id="result-meta"></div>
+          <div class="result-layout">
+            <div class="tabs-wrap">
+              <div class="tabs" id="result-tabs" role="tablist"></div>
+            </div>
+            <div class="tab-panels" id="result-panels">
+              <div class="tab-panel" id="panel-summary" data-tab="summary">
+                <div class="section-title" style="margin-top:0">本次运行</div>
+                <div class="fact-row" id="summary-status" style="margin-top:0"></div>
+                <div id="findings-section"></div>
+                <div id="diagnostics-section"></div>
+              </div>
+              <div class="tab-panel" id="panel-raw" data-tab="raw">
+                <div class="raw-actions">
+                  <button class="small" id="download-json" type="button">下载 JSON</button>
+                  <button class="small" id="download-findings" type="button">导出发现项 CSV</button>
+                </div>
+                <div id="raw-info"></div>
+              </div>
+            </div>
+          </div>
+          <div id="batch-body" hidden></div>
+        </div>
       </section>
+    </section>
+
+    <!-- ===== 视图：历史 ===== -->
+    <section class="view" data-view="history">
+      <div class="panel">
+        <h2>任务管理</h2>
+        <p class="hint" style="margin-top:0">任务与完整分析结果已保存在本地 SQLite 数据库中，刷新页面后仍然保留。</p>
+        <div id="history-list">
+          <p class="hint" style="margin:0">还没有任务，请先在「项目管理」中创建项目并运行分析。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 视图：设置 ===== -->
+    <section class="view" data-view="settings">
+      <div class="panel">
+        <h2>设置</h2>
+        <p class="hint" style="margin-top:0">偏好只保存在本机浏览器（localStorage），项目与任务数据保存在本地 SQLite 数据库，两者互不影响。</p>
+
+        <div class="section-title" style="margin-top:18px">当前偏好</div>
+        <div id="settings-prefs"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="small" id="settings-clear" type="button">清除本地偏好</button>
+        </div>
+        <p class="hint" style="margin-top:8px">清除后模式、已选能力与服务器路径会回到初始状态，分析结果与任务记录不受影响。</p>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>运行环境</h2>
+        <p class="hint" style="margin-top:0">来自本地分析服务 <code>/api/health</code>，用于确认页面连的是哪一份服务。</p>
+        <div id="settings-env"></div>
+      </div>
     </section>
 
   </div>
@@ -1144,24 +1736,80 @@ function copyText(text, btn) {
   }
 }
 
+/* ================= 网络请求 ================= */
+
+var API_TIMEOUT_MS = 20000;   // 普通接口（health / 列表 / CRUD）的默认超时
+
+/* 统一请求入口：每个请求都带超时，并可被外部 AbortSignal 中止。
+   浏览器原生的 fetch 没有超时，服务端卡住时 Promise 永远不会 settle，
+   调用方只能一直等；这里用 AbortController 兜住这种情况。 */
+function apiFetch(url, options) {
+  options = options || {};
+  var controller = new AbortController();
+  var timeoutMs = options.timeout || API_TIMEOUT_MS;
+  var timer = setTimeout(function () {
+    controller.abort();
+  }, timeoutMs);
+  var init = {
+    method: options.method || "GET",
+    headers: options.headers || {},
+    signal: options.signal || controller.signal
+  };
+  if (options.body !== undefined && options.body !== null) init.body = options.body;
+  if (options.cache) init.cache = options.cache;
+  return fetch(url, init).then(
+    function (resp) {
+      clearTimeout(timer);
+      return resp;
+    },
+    function (err) {
+      clearTimeout(timer);
+      if (err && err.name === "AbortError") {
+        if (options.signal) throw new Error("已取消本次请求");
+        throw new Error("请求超时（" + Math.round(timeoutMs / 1000) + " 秒），请检查本地服务是否仍在运行");
+      }
+      throw err;
+    }
+  );
+}
+
+/* 读取 JSON 响应；响应体不是 JSON 时抛出一条带状态码的可读错误 */
+function readJson(resp) {
+  return resp.json().catch(function () {
+    throw new Error("服务返回无法解析的响应（HTTP " + resp.status + "）");
+  });
+}
+
 /* ================= 状态 ================= */
 
 var state = {
   health: null,
+  healthChecked: false,    // /api/health 是否已经返回过，避免首屏闪一下"未连接"
   samples: [],
   target: null,
   include: "",            // 批量扫描时的包含/排除过滤（与 CLI 的 --include/--exclude 同义）
   exclude: "",
   mode: "multi",          // "multi"（多选能力）或 "scan"（组合扫描全部）
   capabilities: [],       // 多选的能力 id
+  presets: [],            // 服务端保存的预置分析脚本（.soinsight/presets/*.json）
+  projects: [],            // 数据库中的项目列表
+  currentProjectId: null,  // 当前选中的项目
+  currentProject: null,    // 当前打开详情的项目对象
+  projectPage: 1,          // 项目管理列表当前页
+  projectQuery: "",        // 项目搜索关键词（小写）
+  taskPage: 1,             // 项目详情任务列表当前页
+  tasks: [],               // 数据库中的任务列表
+  resultHiddenGroups: [],  // 结果页按大类折叠时被隐藏的结果组
+  resultHiddenCaps: [],    // 结果页中单独被隐藏的小类结果
   activeTab: "summary",
   running: false,
   cancelling: false,
   timeout: 180,           // 服务端单次分析超时上限（/api/health 返回，秒）
   response: null,
   timer: null,
-  view: "config",         // 当前所在视图：config / results / history / about
-  history: [],            // 最近几次分析记录（不含完整 payload，仅摘要 + 索引）
+  abort: null,            // 正在运行的 /api/analyze 对应的 AbortController
+  healthTimer: null,      // 健康检查轮询句柄
+  view: "overview",       // 当前所在视图：overview / config / project / results / history / settings
   sym: { q: "", lang: "all", shown: 200 }
 };
 
@@ -1245,6 +1893,10 @@ var CAP_META = {
 /* 离线兜底顺序（health 拿不到清单时用） */
 var CAP_META_ORDER = Object.keys(CAP_META);
 
+/* /api/modules 返回的登记信息：{ "<capability id>": { name, desc } }。
+   服务端的名称与说明是权威来源，CAP_META 只在服务端没登记时兜底。 */
+var CATALOG_META = {};
+
 /* 运行时能力清单：由 /api/health 的 registered_analyzers 决定，见 buildPresets() */
 var PRESETS = [];
 
@@ -1261,19 +1913,42 @@ var targetChip = $("target-chip");
 var chipName = $("chip-name");
 var chipMeta = $("chip-meta");
 var capGrid = $("capability-groups");
-var capGroupWrap = $("capability-groups");
+var presetSelect = $("preset-select");            // 预置分析脚本下拉
+var presetName = $("preset-name");                // 保存预置时的名称输入
+var presetApplyBtn = $("preset-apply");
+var presetSaveBtn = $("preset-save");
+var presetDeleteBtn = $("preset-delete");
+var projectListEl = $("project-list");            // 项目管理列表容器
+var projectDetailEl = $("project-detail");        // 项目详情容器
+var projectSearch = $("project-search");          // 项目搜索框
+var toastBox = $("toast-box");                    // 全局轻提示容器
+var projectModal = $("project-modal");
+var projectModalName = $("project-modal-name");
+var projectModalDesc = $("project-modal-desc");
+var projectModalClose = $("project-modal-close");
+var projectModalCancel = $("project-modal-cancel");
+var projectModalCreate = $("project-modal-create");
+var taskDescInput = $("task-description");        // 创建任务弹窗里的任务描述（若存在）
+var taskModal = $("task-modal");
+var taskClose = $("task-close");
+var taskCancel = $("task-cancel");
+var taskPrev = $("task-prev");
+var taskNext = $("task-next");
+var taskNameInput = $("task-name");
+var targetNameInput = $("target-name");
 var runBtn = $("run-btn");
 var runSpinner = $("run-spinner");
 var runLabel = $("run-label");
 var runStatus = $("run-status");
 var cancelBtn = $("cancel-btn");
 var elapsedEl = $("elapsed");
-var errorBox = $("error-box");
 var emptyState = $("empty-state");
 var resultBody = $("result-body");
 var resultMeta = $("result-meta");
 var resultTabs = $("result-tabs");
 var resultPanels = $("result-panels");
+var resultLayout = document.querySelector(".result-layout");
+var batchBody = $("batch-body");
 var rawPanel = $("panel-raw");
 var summaryStatus = $("summary-status");
 var findingsSection = $("findings-section");
@@ -1284,13 +1959,574 @@ var navResults = $("nav-results");
 var resultsBadge = $("results-badge");
 var historyBadge = $("history-badge");
 var historyList = $("history-list");
+var settingsPrefs = $("settings-prefs");
+var settingsEnv = $("settings-env");
+var settingsClear = $("settings-clear");
 var progressCard = $("progress-card");
 var pcTitle = $("pc-title");
 var pcTarget = $("pc-target");
 var pcElapsed = $("pc-elapsed");
 var pcStage = $("pc-stage");
 var pcCancel = $("pc-cancel");
-var metricAnalyzers = $("metric-analyzers");
+var overviewMetrics = $("overview-metrics");
+var overviewRecent = $("overview-recent");
+var overviewOffline = $("overview-offline");
+
+/* ================= 项目与任务 ================= */
+
+var PAGE_SIZE = 10;   // 项目列表与任务列表每页条数
+
+/* 编辑按钮统一用铅笔图标 */
+var PENCIL_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+function loadProjects() {
+  return apiFetch("/api/projects", { cache: "no-store" })
+    .then(readJson)
+    .then(function (data) {
+      state.projects = (data && data.projects) || [];
+      syncCurrentProject();
+      renderProjectList();
+      if (state.view === "project") renderProjectDetail();
+      if (state.view === "overview") renderOverview();
+      return loadTasks();
+    })
+    .catch(function () { renderProjectList(); });
+}
+
+/* currentProjectId 失效（项目被删）时清空，否则同步详情页用的项目对象 */
+function syncCurrentProject() {
+  if (!state.currentProjectId) { state.currentProject = null; return; }
+  var still = state.projects.filter(function (p) { return p.id === state.currentProjectId; })[0];
+  if (!still) {
+    state.currentProjectId = null;
+    state.currentProject = null;
+    if (state.view === "project") switchView("config");
+  } else {
+    state.currentProject = still;
+  }
+}
+
+/* ---------- 分页 ---------- */
+
+function pageCount(total) {
+  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+}
+
+function clampPage(page, total) {
+  return Math.min(Math.max(1, page), pageCount(total));
+}
+
+/* 页码按钮：页数多时折叠成 1 … 4 5 6 … 20，避免几十个按钮铺满整行 */
+function pageButtonsHtml(page, pages) {
+  var out = [];
+  function push(n) {
+    out.push('<button type="button" data-pg="' + n + '"' +
+      (n === page ? ' class="current"' : "") + ">" + n + "</button>");
+  }
+  if (pages <= 7) {
+    for (var i = 1; i <= pages; i++) push(i);
+    return out.join("");
+  }
+  var start = Math.max(2, page - 1);
+  var end = Math.min(pages - 1, page + 1);
+  push(1);
+  if (start > 2) out.push('<span class="pg-gap">…</span>');
+  for (var j = start; j <= end; j++) push(j);
+  if (end < pages - 1) out.push('<span class="pg-gap">…</span>');
+  push(pages);
+  return out.join("");
+}
+
+/* 分页条 HTML：按钮带 data-pg，由列表容器的事件委托统一处理。
+   即使只有一页也完整渲染（页码 + 上一/下一页置灰），保证分页组件始终可见。 */
+function pagerHtml(page, total, label) {
+  var pages = pageCount(total);
+  return '<div class="pager"><span class="pg-info">共 ' + esc(total) + " " + esc(label || "条") +
+    " · 第 " + page + " / " + pages + " 页</span><span class=\"pg-pages\">" +
+    '<button type="button" data-pg="prev"' + (page <= 1 ? " disabled" : "") + ">‹ 上一页</button>" +
+    pageButtonsHtml(page, pages) +
+    '<button type="button" data-pg="next"' + (page >= pages ? " disabled" : "") + ">下一页 ›</button>" +
+    "</span></div>";
+}
+
+/* pagerHtml 的 data-pg 点击 → 返回新的页码；不在分页条上时返回 null */
+function pagerClick(e, page, total) {
+  var btn = e.target.closest ? e.target.closest("[data-pg]") : null;
+  if (!btn || btn.disabled) return null;
+  var v = btn.getAttribute("data-pg");
+  if (v === "prev") return clampPage(page - 1, total);
+  if (v === "next") return clampPage(page + 1, total);
+  var n = Number(v);
+  return n >= 1 ? clampPage(n, total) : null;
+}
+
+/* ---------- 项目管理列表（config 视图） ---------- */
+
+/* 搜索过滤后的项目列表（名称 / 描述子串，大小写不敏感）；渲染与分页共用 */
+function visibleProjects() {
+  var q = state.projectQuery || "";
+  if (!q) return state.projects;
+  return state.projects.filter(function (p) {
+    return (p.name || "").toLowerCase().indexOf(q) >= 0 ||
+      (p.description || "").toLowerCase().indexOf(q) >= 0;
+  });
+}
+
+function renderProjectList() {
+  if (!projectListEl) return;
+  var all = visibleProjects();
+  if (!state.projects.length) {
+    projectListEl.innerHTML =
+      '<div class="empty-block">' +
+        '<div class="eb-title">还没有项目</div>' +
+        '<div class="eb-hint">项目用于把一批分析任务归到一起，创建后可在详情页里建任务。</div>' +
+        '<div class="eb-actions"><button type="button" class="primary" data-empty-new-project>＋ 新建项目</button></div>' +
+      "</div>";
+    return;
+  }
+  if (!all.length) {
+    projectListEl.innerHTML =
+      '<div class="empty-block">' +
+        '<div class="eb-title">没有匹配「' + esc(state.projectQuery) + '」的项目</div>' +
+        '<div class="eb-hint">换个关键词试试，或清空搜索框查看全部项目。</div>' +
+      "</div>";
+    return;
+  }
+  state.projectPage = clampPage(state.projectPage, all.length);
+  var page = state.projectPage;
+  var start = (page - 1) * PAGE_SIZE;
+  var rows = all.slice(start, start + PAGE_SIZE);
+  var body = rows.map(function (p) {
+    return "<tr>" +
+      '<td><button type="button" class="name-link clamp-2" data-open-project="' + esc(p.id) + '" title="' + esc(p.name) + '">' + esc(p.name) + "</button>" +
+        '<div class="cell-sub">' + esc(p.task_count) + " 个任务</div></td>" +
+      '<td class="c-desc"><div class="cell-desc clamp-2" title="' + esc(p.description) + '">' + (p.description ? esc(p.description) : '<span class="cell-sub">（无描述）</span>') + "</div></td>" +
+      '<td class="c-time">' + esc(fmtTime(new Date(p.created_at * 1000).toISOString())) + "</td>" +
+      '<td class="c-actions"><div class="row-actions">' +
+        '<button type="button" class="icon-btn" data-edit-project="' + esc(p.id) + '" title="编辑" aria-label="编辑">' +
+          PENCIL_SVG + "</button>" +
+        '<span class="menu-wrap">' +
+          '<button type="button" class="menu-dots" aria-label="更多操作" title="更多操作">⋮</button>' +
+          '<div class="menu-pop">' +
+            '<button type="button" data-del-project="' + esc(p.id) + '">删除项目…</button>' +
+          "</div>" +
+        "</span>" +
+      "</div></td>" +
+    "</tr>";
+  }).join("");
+  projectListEl.innerHTML =
+    '<div class="p-table-wrap"><table class="p-table"><thead><tr>' +
+      '<th>项目名称</th><th class="c-desc">描述</th><th>创建时间</th><th style="text-align:right">操作</th>' +
+    "</tr></thead><tbody>" + body + "</tbody></table></div>" +
+    pagerHtml(page, all.length, "个项目");
+}
+
+function onProjectListClick(e) {
+  if (e.target.closest && e.target.closest("[data-empty-new-project]")) { openProjectModal(); return; }
+  var open = e.target.closest ? e.target.closest("[data-open-project]") : null;
+  if (open) { openProjectDetail(Number(open.getAttribute("data-open-project"))); return; }
+  var edit = e.target.closest ? e.target.closest("[data-edit-project]") : null;
+  if (edit) {
+    var pid = Number(edit.getAttribute("data-edit-project"));
+    var p = state.projects.filter(function (x) { return x.id === pid; })[0];
+    if (p) openEditModal("project", p);
+    return;
+  }
+  var del = e.target.closest ? e.target.closest("[data-del-project]") : null;
+  if (del) {
+    var did = Number(del.getAttribute("data-del-project"));
+    var dp = state.projects.filter(function (x) { return x.id === did; })[0];
+    if (dp) requestDeleteProject(dp);
+    return;
+  }
+  var dots = e.target.closest ? e.target.closest(".menu-dots") : null;
+  if (dots) { toggleMenu(dots); return; }
+  var nextPage = pagerClick(e, state.projectPage, visibleProjects().length);
+  if (nextPage !== null) { state.projectPage = nextPage; renderProjectList(); }
+}
+
+/* 展开/收起三点菜单。菜单是绝对定位，而表格容器为了横向滚动设了 overflow，
+   纵向也会被裁剪——下方放不下时改成向上弹，否则最后一行菜单点不到。 */
+function toggleMenu(dots) {
+  var pop = dots.parentElement.querySelector(".menu-pop");
+  if (!pop) return;
+  var wasOpen = pop.classList.contains("open");
+  closeAllMenus();
+  if (wasOpen) return;
+  pop.classList.remove("up");
+  pop.classList.add("open");
+  var rect = pop.getBoundingClientRect();
+  var wrap = pop.closest(".p-table-wrap");
+  var limitedBy = wrap ? wrap.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+  if (rect.bottom > limitedBy.bottom + 1 && rect.top > rect.height + 8) {
+    pop.classList.add("up");
+  }
+}
+
+function closeAllMenus() {
+  Array.prototype.forEach.call(document.querySelectorAll(".menu-pop.open"), function (m) {
+    m.classList.remove("open");
+  });
+}
+
+/* ---------- 项目详情（project 视图） ---------- */
+
+function openProjectDetail(projectId) {
+  var p = state.projects.filter(function (x) { return x.id === projectId; })[0];
+  if (!p) { showError("项目不存在或已被删除"); return; }
+  state.currentProjectId = projectId;
+  state.currentProject = p;
+  state.taskPage = 1;
+  savePrefs();
+  renderProjectDetail();
+  switchView("project");
+}
+
+function renderProjectDetail() {
+  if (!projectDetailEl) return;
+  var p = state.currentProject;
+  if (!p) { switchView("config"); return; }
+  var tasks = projectTasks(p.id);
+  state.taskPage = clampPage(state.taskPage, tasks.length);
+  var page = state.taskPage;
+  var start = (page - 1) * PAGE_SIZE;
+  var rows = tasks.slice(start, start + PAGE_SIZE);
+
+  var head =
+    '<div class="proj-head">' +
+      '<button type="button" class="small" data-back-projects>← 返回项目管理</button>' +
+      '<div class="ph-title" style="margin-top:10px">' + esc(p.name) +
+        '<span class="chip info">' + esc(p.task_count) + " 个任务</span>" +
+      "</div>" +
+      '<div class="ph-desc">' + (p.description ? esc(p.description) : "（暂无描述）") + "</div>" +
+      '<div class="ph-meta"><span>创建时间：' + esc(fmtTime(new Date(p.created_at * 1000).toISOString())) + "</span></div>" +
+      '<div class="ph-actions">' +
+        '<button type="button" class="primary" data-new-task>＋ 新建任务</button>' +
+        '<button type="button" class="icon-btn" data-edit-project="' + esc(p.id) + '" title="编辑项目" aria-label="编辑项目" style="align-self:center">' +
+          PENCIL_SVG + "</button>" +
+      "</div>" +
+    "</div>";
+
+  var table;
+  if (!tasks.length) {
+    table = '<div class="p-table-wrap"><div class="p-empty">该项目还没有任务，点击「＋ 新建任务」开始第一次分析。</div></div>';
+  } else {
+    var body = rows.map(function (t) {
+      var caps = (t.capabilities || []).join(", ") || t.modules || "全量";
+      var nameCell = t.status === "success"
+        ? '<button type="button" class="name-link clamp-2" data-open-task="' + esc(t.id) + '" title="' + esc(t.name) + '">' + esc(t.name) + "</button>"
+        : '<span class="clamp-2" title="' + esc(t.name) + '">' + esc(t.name) + "</span>";
+      return "<tr>" +
+        "<td>" + nameCell + '<div class="cell-sub">' + esc(t.target_name || "—") + " · " + esc(caps) + "</div></td>" +
+        '<td class="c-desc"><div class="cell-desc clamp-2" title="' + esc(t.description) + '">' + (t.description ? esc(t.description) : '<span class="cell-sub">（无描述）</span>') + "</div></td>" +
+        '<td class="c-status">' + statusChip(t.status) + "</td>" +
+        '<td class="c-time">' + esc(fmtTime(new Date(t.created_at * 1000).toISOString())) + "</td>" +
+        '<td class="c-actions"><div class="row-actions">' +
+          '<button type="button" class="icon-btn" data-edit-task="' + esc(t.id) + '" title="编辑" aria-label="编辑">' +
+            PENCIL_SVG + "</button>" +
+          '<button type="button" class="small danger-btn" data-del-task="' + esc(t.id) + '">删除</button>' +
+        "</div></td>" +
+      "</tr>";
+    }).join("");
+    table =
+      '<div class="p-table-wrap"><table class="p-table"><thead><tr>' +
+        '<th>任务名称</th><th class="c-desc">描述</th><th>状态</th><th>创建时间</th><th style="text-align:right">操作</th>' +
+      "</tr></thead><tbody>" + body + "</tbody></table></div>" +
+      pagerHtml(page, tasks.length, "个任务");
+  }
+  projectDetailEl.innerHTML = head + table;
+}
+
+/* 某项目的全部任务（客户端过滤，列表量级小） */
+function projectTasks(projectId) {
+  return state.tasks.filter(function (t) { return t.project_id === projectId; });
+}
+
+function onProjectDetailClick(e) {
+  if (e.target.closest && e.target.closest("[data-back-projects]")) { switchView("config"); return; }
+  if (e.target.closest && e.target.closest("[data-new-task]")) { openTaskModal(); return; }
+  var open = e.target.closest ? e.target.closest("[data-open-task]") : null;
+  if (open) { openTask(Number(open.getAttribute("data-open-task"))); return; }
+  var editP = e.target.closest ? e.target.closest("[data-edit-project]") : null;
+  if (editP) {
+    var p = state.currentProject;
+    if (p) openEditModal("project", p);
+    return;
+  }
+  var editT = e.target.closest ? e.target.closest("[data-edit-task]") : null;
+  if (editT) {
+    var tid = Number(editT.getAttribute("data-edit-task"));
+    var t = state.tasks.filter(function (x) { return x.id === tid; })[0];
+    if (t) openEditModal("task", t);
+    return;
+  }
+  var delT = e.target.closest ? e.target.closest("[data-del-task]") : null;
+  if (delT) {
+    var did = Number(delT.getAttribute("data-del-task"));
+    var dt = state.tasks.filter(function (x) { return x.id === did; })[0];
+    if (dt) requestDeleteTask(dt);
+    return;
+  }
+  var tasks = state.currentProject ? projectTasks(state.currentProject.id) : [];
+  var nextPage = pagerClick(e, state.taskPage, tasks.length);
+  if (nextPage !== null) { state.taskPage = nextPage; renderProjectDetail(); }
+}
+
+/* ---------- 新建 / 编辑项目 ---------- */
+
+/* 弹窗焦点管理：打开时记住触发元素，关闭时把焦点还回去；
+   打开期间 Tab 只在弹窗内循环，避免键盘用户跑到背后的页面上。
+   回归目标存在元素自身上，确认框叠在向导之上时也不会互相覆盖。 */
+var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]),' +
+  ' select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function openDialog(el) {
+  if (!el) return;
+  el._returnFocus = document.activeElement;
+  el.hidden = false;
+}
+
+function closeDialog(el) {
+  if (!el) return;
+  el.hidden = true;
+  var back = el._returnFocus;
+  el._returnFocus = null;
+  if (back && back.focus) {
+    try { back.focus(); } catch (e) { /* 元素已从 DOM 移除 */ }
+  }
+}
+
+/* 顶层未隐藏的弹窗（确认框优先级最高，因为它可能叠在向导之上） */
+function topDialog() {
+  var list = [confirmModal, editModal, projectModal, taskModal];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && !list[i].hidden) return list[i];
+  }
+  return null;
+}
+
+function trapTab(e, dialog) {
+  var items = Array.prototype.filter.call(
+    dialog.querySelectorAll(FOCUSABLE),
+    function (el) { return el.offsetParent !== null; }
+  );
+  if (!items.length) return;
+  var first = items[0];
+  var last = items[items.length - 1];
+  if (!dialog.contains(document.activeElement)) {
+    // 焦点还在弹窗外面（例如刚打开却还没聚焦）：先拉进弹窗，否则 Tab 会继续在背后走
+    e.preventDefault();
+    first.focus();
+    return;
+  }
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function openProjectModal() {
+  if (!projectModal) return;
+  openDialog(projectModal);
+  projectModalName.value = "";
+  projectModalDesc.value = "";
+  setTimeout(function () { projectModalName.focus(); }, 30);
+}
+
+function closeProjectModal() {
+  closeDialog(projectModal);
+}
+
+function createProject() {
+  var name = projectModalName.value.trim();
+  if (!name) { showError("请输入项目名称"); return; }
+  apiFetch(
+    "/api/projects?name=" + encodeURIComponent(name) +
+      "&description=" + encodeURIComponent(projectModalDesc.value.trim()),
+    { method: "POST" }
+  )
+    .then(readJson)
+    .then(function (data) {
+      if (!data || !data.ok) throw new Error((data && data.error) || "创建项目失败");
+      projectModalName.value = "";
+      projectModalDesc.value = "";
+      closeProjectModal();
+      showSuccess("项目「" + data.project.name + "」已创建");
+      state.currentProjectId = data.project.id;
+      return loadProjects();
+    })
+    .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+}
+
+/* ---------- 通用编辑弹窗（项目 / 任务） ---------- */
+
+var editModal = $("edit-modal");
+var editModalTitle = $("edit-modal-title");
+var editModalName = $("edit-modal-name");
+var editModalDesc = $("edit-modal-desc");
+var editModalSave = $("edit-modal-save");
+var editTarget = null;   // { kind: "project"|"task", id }
+
+function openEditModal(kind, obj) {
+  if (!editModal || !obj) return;
+  editTarget = { kind: kind, id: obj.id };
+  var isProject = kind === "project";
+  editModalTitle.textContent = isProject ? "编辑项目" : "编辑任务";
+  $("edit-modal-name-label").innerHTML = (isProject ? "项目名称" : "任务名称") + ' <span class="req">*</span>';
+  $("edit-modal-desc-label").textContent = isProject ? "项目描述" : "任务描述";
+  editModalName.value = obj.name || "";
+  editModalDesc.value = obj.description || "";
+  openDialog(editModal);
+  setTimeout(function () { editModalName.focus(); }, 30);
+}
+
+function closeEditModal() {
+  closeDialog(editModal);
+  editTarget = null;
+}
+
+function saveEdit() {
+  if (!editTarget) return;
+  var name = editModalName.value.trim();
+  if (!name) { showError("名称不能为空"); return; }
+  var desc = editModalDesc.value.trim();
+  var base = editTarget.kind === "project" ? "/api/projects/" : "/api/tasks/";
+  apiFetch(
+    base + editTarget.id + "?name=" + encodeURIComponent(name) +
+      "&description=" + encodeURIComponent(desc),
+    { method: "PATCH" }
+  )
+    .then(readJson)
+    .then(function (data) {
+      if (!data || !data.ok) throw new Error((data && data.error) || "保存失败");
+      var wasProject = editTarget && editTarget.kind === "project";
+      closeEditModal();
+      showSuccess(wasProject ? "项目已保存" : "任务已保存");
+      return loadProjects();   // 同时刷新项目与任务列表，详情页也会随之重渲染
+    })
+    .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+}
+
+/* ---------- 确认对话框 ---------- */
+
+var confirmModal = $("confirm-modal");
+var confirmTitleEl = $("confirm-title");
+var confirmMessageEl = $("confirm-message");
+var confirmOkBtn = $("confirm-ok");
+var confirmAction = null;
+
+function openConfirm(title, message, action, okText) {
+  if (!confirmModal) { if (window.confirm(message)) action(); return; }
+  confirmTitleEl.textContent = title;
+  confirmMessageEl.textContent = message;
+  confirmOkBtn.textContent = okText || "确认删除";
+  confirmAction = action;
+  openDialog(confirmModal);
+}
+
+function closeConfirm() {
+  closeDialog(confirmModal);
+  confirmAction = null;
+}
+
+/* 删除项目：走确认对话框（对应用户描述的"三个点→弹出对话框确认删除"） */
+function requestDeleteProject(p) {
+  if (!p) return;
+  openConfirm("删除项目", "确定删除项目「" + p.name + "」吗？其下全部 " + p.task_count + " 个任务及分析结果会一并删除，此操作不可撤销。", function () {
+    apiFetch("/api/projects/" + p.id, { method: "DELETE" })
+      .then(readJson)
+      .then(function (data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || "删除项目失败");
+        showSuccess("项目「" + p.name + "」已删除");
+        if (state.projectPage > 1) state.projectPage--;
+        return loadProjects();
+      })
+      .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+  });
+}
+
+/* 删除任务：同样走确认对话框 */
+function requestDeleteTask(t) {
+  if (!t) return;
+  openConfirm("删除任务", "确定删除任务「" + t.name + "」吗？其分析结果会一并删除，此操作不可撤销。", function () {
+    apiFetch("/api/tasks/" + t.id, { method: "DELETE" })
+      .then(readJson)
+      .then(function (data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || "删除任务失败");
+        showSuccess("任务「" + t.name + "」已删除");
+        if (state.taskPage > 1) state.taskPage--;
+        return loadTasks();
+      })
+      .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+  });
+}
+
+/* ---------- 创建任务向导 ---------- */
+
+function openTaskModal() {
+  if (!state.currentProjectId) {
+    showError("请先进入某个项目的详情页，再创建任务");
+    return;
+  }
+  if (!taskModal) return;
+  openDialog(taskModal);
+  setTaskWizardStep(1);
+  updateRunButton();
+  loadPresets();   // 打开向导时刷新预置清单，别用上次的旧列表
+}
+
+function closeTaskModal() {
+  closeDialog(taskModal);
+}
+
+function setTaskWizardStep(step) {
+  if (!taskModal) return;
+  var steps = taskModal.querySelectorAll(".w-step");
+  Array.prototype.forEach.call(steps, function (el) {
+    el.classList.toggle("active", Number(el.getAttribute("data-wstep")) === step);
+  });
+  var panels = taskModal.querySelectorAll(".w-panel");
+  Array.prototype.forEach.call(panels, function (el) {
+    el.classList.toggle("active", Number(el.getAttribute("data-wpanel")) === step);
+  });
+  if (taskPrev) taskPrev.disabled = step === 1;
+  if (taskNext) taskNext.hidden = step === 2;
+  if (runBtn) runBtn.hidden = step === 1;
+  updateRunButton();
+}
+
+function loadTasks() {
+  return apiFetch("/api/tasks", { cache: "no-store" })
+    .then(readJson)
+    .then(function (data) {
+      state.tasks = (data && data.tasks) || [];
+      renderHistory();
+      refreshNavState();
+      if (state.view === "project") renderProjectDetail();
+      if (state.view === "overview") renderOverview();
+    })
+    .catch(function () { renderHistory(); });
+}
+
+function openTask(taskId) {
+  apiFetch("/api/tasks/" + taskId, { cache: "no-store" })
+    .then(readJson)
+    .then(function (data) {
+      var task = data && data.task;
+      if (!task || !task.result) throw new Error((data && data.error) || "任务结果不存在");
+      state.response = task.result;
+      renderResults(task.result);
+      switchView("results");
+      refreshNavState();
+    })
+    .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+}
 
 /* ================= 结果视图空态 ================= */
 /* 没有结果时 result-body（含空 tab 侧栏）必须真正退出布局，否则它会和
@@ -1299,7 +2535,7 @@ var EMPTY_STATES = {
   idle: {
     cls: "",
     title: "还没有分析结果",
-    hint: "在「分析配置」里选择目标文件和分析能力，点击运行分析后会自动跳转到这里。"
+    hint: "进入「项目管理」的项目详情，创建任务（选择目标文件和分析能力）并运行。"
   },
   running: {
     cls: "",
@@ -1329,7 +2565,7 @@ function showEmptyState(kind, message) {
       (message && cfg.hint ? "<br>" + esc(cfg.hint) : "") +
     "</div>" +
     '<div class="es-back">' +
-      '<button class="small" type="button" data-back-config>返回分析配置</button>' +
+      '<button class="small" type="button" data-back-config>返回项目管理</button>' +
     "</div>";
   var back = emptyState.querySelector("[data-back-config]");
   if (back) back.addEventListener("click", function () { switchView("config"); });
@@ -1346,6 +2582,8 @@ function bindEmptyStateBack() {
 /* 只记住"选择"（模式 / 勾选的能力 / 服务器路径），不存分析结果。
    上传的 File 对象无法序列化，所以拖拽选择的文件刷新后需要重选。 */
 var PREFS_KEY = "soinsight.console.prefs.v1";
+/* 清除偏好后置位：避免下一次切视图又把默认偏好写回 localStorage。 */
+var prefsCleared = false;
 
 function loadPrefs() {
   try {
@@ -1359,10 +2597,13 @@ function loadPrefs() {
 }
 
 function savePrefs() {
+  // 用户主动清空过偏好后不再自动写回，直到他重新做出一次选择。
+  if (prefsCleared) return;
   try {
     window.localStorage.setItem(PREFS_KEY, JSON.stringify({
       mode: state.mode,
       capabilities: state.capabilities,
+      currentProjectId: state.currentProjectId,
       path: pathInput ? pathInput.value : ""
     }));
   } catch (e) { /* 配额满或被禁用：持久化失败不影响分析 */ }
@@ -1372,6 +2613,7 @@ function restorePrefs() {
   var prefs = loadPrefs();
   if (!prefs) return;
   if (prefs.mode === "scan") state.mode = "scan";
+  if (prefs.currentProjectId) state.currentProjectId = prefs.currentProjectId;
   if (Object.prototype.toString.call(prefs.capabilities) === "[object Array]") {
     state.capabilities = prefs.capabilities.filter(function (id) {
       return typeof id === "string" && id;
@@ -1381,6 +2623,60 @@ function restorePrefs() {
     pathInput.value = prefs.path;
     useTypedPath();          // 恢复上次的目标文件（不存在时运行会给出明确报错）
   }
+}
+
+/* ================= 设置视图 ================= */
+
+/* 设置页只展示「浏览器偏好」与「服务环境」两类事实：
+   前者能改（清掉回到默认），后者只能看（由本地服务决定）。 */
+function renderSettings() {
+  if (!settingsPrefs) return;
+  var project = state.projects.filter(function (p) { return p.id === state.currentProjectId; })[0];
+  settingsPrefs.innerHTML = kv([
+    ["分析模式", state.mode === "scan" ? "组合扫描（全部已实现能力）" : "多选能力"],
+    ["已选能力", state.capabilities.length ? state.capabilities.join(", ") : "（未选择）"],
+    ["服务器路径", pathInput && pathInput.value ? pathInput.value : "（未设置）"],
+    ["当前项目", project ? project.name : "（未选择）"]
+  ]);
+
+  if (!settingsEnv) return;
+  var h = state.health;
+  if (!h) {
+    settingsEnv.innerHTML = kv([["服务状态", "未连接到本地分析服务"]]);
+    return;
+  }
+  settingsEnv.innerHTML = kv([
+    ["服务状态", "正常"],
+    ["版本", "v" + h.version],
+    ["Python", h.python],
+    ["平台", h.platform],
+    ["仓库根目录", h.repo_root],
+    ["已注册 Analyzer", String((h.registered_analyzers || []).length)],
+    ["单次分析超时上限", h.analysis_timeout_seconds + " s"]
+  ]);
+}
+
+/* 清除偏好：只动 localStorage 与页面状态，项目/任务在 SQLite 里，不受影响。 */
+function clearPrefs() {
+  openConfirm("清除本地偏好",
+    "分析模式、已选能力、服务器路径与当前项目选择都会回到初始状态；已保存的项目、任务与分析结果不受影响。",
+    function () {
+      state.mode = "multi";
+      state.capabilities = [];
+      state.currentProjectId = null;
+      state.currentProject = null;
+      state.include = "";
+      state.exclude = "";
+      if (pathInput) pathInput.value = "";
+      clearTarget();
+      if (state.view === "project") switchView("config");   // 当前项目没了，详情页退回列表
+      syncCapabilitySelection();   // 内部会 savePrefs()，所以删 key 放在最后
+      updateRunButton();
+      try { window.localStorage.removeItem(PREFS_KEY); } catch (e) { /* 隐私模式：内存状态已重置 */ }
+      prefsCleared = true;
+      renderSettings();
+      showSuccess("本地偏好已清除");
+    }, "清除");
 }
 
 /* ================= 初始化 ================= */
@@ -1393,7 +2689,26 @@ function init() {
   refreshNavState();
   bindEvents();
   bindEmptyStateBack();
+  renderOverview();
+  syncTopbarHeight();
+  window.addEventListener("resize", syncTopbarHeight);
   checkHealth();
+  // 服务可能在页面打开后才启动/关闭：低频轮询一次，断线时能自己恢复
+  state.healthTimer = setInterval(function () {
+    if (document.hidden) return;   // 后台标签页不发请求
+    checkHealth(true);
+  }, HEALTH_POLL_MS);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) checkHealth(true);   // 回到前台立刻补一次
+  });
+}
+
+/* 顶栏高度随内容变化（窄屏时健康状态会换行），左侧固定导航要贴着它的下沿，
+   否则导航与顶栏之间会露出 19px 的背景色缝隙。 */
+function syncTopbarHeight() {
+  var topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+  document.documentElement.style.setProperty("--topbar-h", topbar.offsetHeight + "px");
 }
 
 function bindEvents() {
@@ -1419,15 +2734,115 @@ function bindEvents() {
   $("chip-clear").addEventListener("click", clearTarget);
   $("cap-all").addEventListener("click", selectAllCapabilities);
   $("cap-none").addEventListener("click", clearCapabilities);
+  if (presetSelect) {
+    presetSelect.addEventListener("change", syncPresetButtons);
+  }
+  if (presetApplyBtn) presetApplyBtn.addEventListener("click", applySelectedPreset);
+  if (presetSaveBtn) presetSaveBtn.addEventListener("click", saveCurrentPreset);
+  if (presetDeleteBtn) presetDeleteBtn.addEventListener("click", deleteSelectedPreset);
+  if (presetName) {
+    presetName.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); saveCurrentPreset(); }
+    });
+  }
+  $("project-new").addEventListener("click", openProjectModal);
+  $("overview-new-project").addEventListener("click", openProjectModal);
+  $("overview-retry").addEventListener("click", function () { checkHealth(); });
+  projectModalClose.addEventListener("click", closeProjectModal);
+  projectModalCancel.addEventListener("click", closeProjectModal);
+  projectModalCreate.addEventListener("click", createProject);
+  projectModalName.addEventListener("keydown", function (e) { if (e.key === "Enter") createProject(); });
+  projectModal.addEventListener("click", function (e) { if (e.target === projectModal) closeProjectModal(); });
+  confirmModal.addEventListener("click", function (e) { if (e.target === confirmModal) closeConfirm(); });
+  if (projectSearch) projectSearch.addEventListener("input", function () {
+    state.projectQuery = projectSearch.value.trim().toLowerCase();
+    state.projectPage = 1;
+    renderProjectList();
+  });
+  // Tab 在弹窗内循环：不接这一步的话键盘用户会 Tab 到背后被遮挡的页面上
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Tab") return;
+    var dlg = topDialog();
+    if (dlg) trapTab(e, dlg);
+  });
+  // Esc 从上到下关闭最顶层弹窗；分析运行中不关向导，避免误触
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (taskModal && !taskModal.hidden && state.running) return;
+    if (confirmModal && !confirmModal.hidden) { closeConfirm(); return; }
+    if (editModal && !editModal.hidden) { closeEditModal(); return; }
+    if (projectModal && !projectModal.hidden) { closeProjectModal(); return; }
+    if (taskModal && !taskModal.hidden) { closeTaskModal(); return; }
+    closeAllMenus();
+  });
+  // 项目管理列表 / 项目详情：事件委托
+  if (projectListEl) projectListEl.addEventListener("click", onProjectListClick);
+  if (projectDetailEl) projectDetailEl.addEventListener("click", onProjectDetailClick);
+  // 通用编辑弹窗
+  $("edit-modal-close").addEventListener("click", closeEditModal);
+  $("edit-modal-cancel").addEventListener("click", closeEditModal);
+  if (editModalSave) editModalSave.addEventListener("click", saveEdit);
+  editModalName.addEventListener("keydown", function (e) { if (e.key === "Enter") saveEdit(); });
+  editModal.addEventListener("click", function (e) { if (e.target === editModal) closeEditModal(); });
+  // 确认对话框
+  $("confirm-close").addEventListener("click", closeConfirm);
+  $("confirm-cancel").addEventListener("click", closeConfirm);
+  confirmOkBtn.addEventListener("click", function () {
+    var action = confirmAction;
+    closeConfirm();
+    if (action) action();
+  });
+  if (settingsClear) settingsClear.addEventListener("click", clearPrefs);
+  taskClose.addEventListener("click", closeTaskModal);
+  taskCancel.addEventListener("click", closeTaskModal);
+  taskPrev.addEventListener("click", function () { setTaskWizardStep(1); });
+  taskNext.addEventListener("click", function () {
+    if (!state.target) { showError("请先选择目标文件"); return; }
+    setTaskWizardStep(2);
+  });
+  taskModal.addEventListener("click", function (e) {
+    if (e.target === taskModal) closeTaskModal();
+  });
+  taskNameInput.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    if (taskNext && !taskNext.hidden) taskNext.click();
+    else if (runBtn && !runBtn.hidden) runBtn.click();
+  });
   runBtn.addEventListener("click", runAnalysis);
   cancelBtn.addEventListener("click", cancelRun);
   pcCancel.addEventListener("click", cancelRun);
-  $("retry-health").addEventListener("click", checkHealth);
+  $("retry-health").addEventListener("click", function () { checkHealth(); });
   Array.prototype.forEach.call(sidenav.querySelectorAll(".nav-item"), function (btn) {
     btn.addEventListener("click", function () { switchView(btn.dataset.view); });
   });
+  // 阻止 checkbox 的默认行为冒泡到 <details> summary，避免误折叠/误聚焦
+  resultTabs.addEventListener("mousedown", function (e) {
+    var target = e.target;
+    if (!target || !target.closest) return;
+    if (target.closest(".result-group-check") || target.closest(".result-cap-check")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
   resultTabs.addEventListener("click", function (e) {
-    var btn = e.target && e.target.closest ? e.target.closest(".tab") : null;
+    var target = e.target;
+    if (!target || !target.closest) return;
+    var capCheck = target.closest(".result-cap-check");
+    if (capCheck) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleResultCap(capCheck.getAttribute("data-result-cap"));
+      return;
+    }
+    var groupCheck = target.closest(".result-group-check");
+    if (groupCheck) {
+      // 只切换大类可见性，不让 checkbox 的无意冒泡把 <details> 折叠掉
+      e.preventDefault();
+      e.stopPropagation();
+      toggleResultGroup(groupCheck.getAttribute("data-result-group"));
+      return;
+    }
+    var btn = target.closest(".tab");
     if (btn) selectTab(btn.getAttribute("data-tab"));
   });
   resultTabs.addEventListener("keydown", function (e) {
@@ -1444,6 +2859,10 @@ function bindEvents() {
     if (role === "sym-lang") { state.sym.lang = e.target.value; state.sym.shown = 200; rerenderSymbols(); }
   });
   document.addEventListener("click", function (e) {
+    // 点击三个点菜单与其弹层之外的区域时收起所有打开的菜单
+    if (e.target.closest && !e.target.closest(".menu-wrap")) closeAllMenus();
+    var gotoBtn = e.target.closest ? e.target.closest("[data-goto-view]") : null;
+    if (gotoBtn) { switchView(gotoBtn.dataset.gotoView); return; }
     var role = e.target.dataset ? e.target.dataset.role : "";
     if (role === "sym-more") { state.sym.shown += 400; rerenderSymbols(); }
     if (role === "sym-csv") exportSymbolsCsv();
@@ -1452,41 +2871,91 @@ function bindEvents() {
   });
 }
 
-function checkHealth() {
+/* 拉取服务端的能力登记表，填充 CATALOG_META（名称 + 说明）。
+   失败不提示：能力清单本身由 /api/health 决定，这里只是补中文说明。 */
+function loadCatalog() {
+  return apiFetch("/api/modules", { cache: "no-store" })
+    .then(readJson)
+    .then(function (data) {
+      if (!data || !data.ok) return;
+      var meta = {};
+      (data.modules || []).forEach(function (mod) {
+        (mod.capabilities || []).forEach(function (cap) {
+          meta[cap.id] = {
+            name: cap.name || "",
+            desc: cap.description || ""
+          };
+        });
+      });
+      CATALOG_META = meta;
+    })
+    .catch(function () { /* 说明缺失时退回页面内置 CAP_META */ });
+}
+
+var HEALTH_POLL_MS = 15000;      // 健康状态轮询间隔
+var _analyzerSig = "";           // 上一次生效的 analyzer 清单签名
+
+/* silent = true 时是轮询触发的后台检查：不闪"正在连接"，也不重复拉列表 */
+function checkHealth(silent) {
   var dot = $("health-dot");
   var text = $("health-text");
   var banner = $("banner");
-  dot.className = "dot";
-  text.textContent = "正在连接本地服务…";
-  fetch("/api/health", { cache: "no-store" })
-    .then(function (resp) { return resp.json(); })
+  if (!silent) {
+    dot.className = "dot";
+    text.textContent = "正在连接本地服务…";
+  }
+  apiFetch("/api/health", { cache: "no-store", timeout: 8000 })
+    .then(readJson)
     .then(function (data) {
       if (!data.ok) throw new Error(data.catalog_error || "服务报告异常");
+      var recovered = !state.health;   // 上一次是离线态，这次恢复
       state.health = data;
+      state.healthChecked = true;
       state.timeout = Number(data.analysis_timeout_seconds) || state.timeout;
-      dot.classList.add("ok");
+      dot.className = "dot ok";
       text.textContent = "服务正常 · Python " + data.python + " · 超时上限 " + state.timeout + " s";
       $("version-badge").textContent = "v" + data.version + " · " + data.registered_analyzers.length + " Analyzer";
-      if (metricAnalyzers) metricAnalyzers.textContent = data.registered_analyzers.length;
       banner.classList.remove("show");
-      applyAnalyzers(data.registered_analyzers);   // 能力清单以服务端为准
-      loadSamples();
+      // 能力清单只在服务端注册项变化时重建，避免轮询反复重绘勾选状态
+      var sig = (data.registered_analyzers || []).join(",");
+      if (sig !== _analyzerSig) {
+        _analyzerSig = sig;
+        loadCatalog().then(function () { applyAnalyzers(data.registered_analyzers); });
+        applyAnalyzers(data.registered_analyzers);
+      }
+      if (recovered || !silent) {
+        loadSamples();
+        loadPresets();
+        loadProjects();
+      }
       updateRunButton();
+      syncTopbarHeight();   // 顶栏文字变长后高度可能变，导航要跟着
+      if (state.view === "settings") renderSettings();
+      if (state.view === "overview") renderOverview();
     })
     .catch(function () {
+      var wasOnline = !!state.health;
       state.health = null;
-      dot.classList.add("bad");
+      state.healthChecked = true;
+      dot.className = "dot bad";
       text.textContent = "未连接";
       $("version-badge").textContent = "离线模式";
       banner.classList.add("show");
       renderCapCount();
       updateRunButton();
+      if (state.view === "settings") renderSettings();
+      if (state.view === "overview") renderOverview();
+      // 断线时结束正在进行的分析，否则界面会一直停在"分析中"
+      if (wasOnline && state.running && !state.cancelling) {
+        showError("与本地服务的连接已断开，本次分析中断。");
+        if (state.abort) state.abort.abort();
+      }
     });
 }
 
 function loadSamples() {
-  fetch("/api/samples", { cache: "no-store" })
-    .then(function (resp) { return resp.json(); })
+  apiFetch("/api/samples", { cache: "no-store" })
+    .then(readJson)
     .then(function (data) {
       state.samples = data.samples || [];
       sampleSelect.innerHTML = state.samples.length
@@ -1503,9 +2972,16 @@ function loadSamples() {
 
 /* ================= 目标选择 ================= */
 
+function refreshTargetName() {
+  if (targetNameInput && state.target && !targetNameInput.value.trim()) {
+    targetNameInput.value = state.target.name || "";
+  }
+}
+
 function setUploadTarget(file) {
   state.target = { kind: "upload", name: file.name, size: file.size, file: file };
   renderTargetChip("上传文件");
+  refreshTargetName();
 }
 
 function useSelectedSample() {
@@ -1515,6 +2991,7 @@ function useSelectedSample() {
   if (!sample) return;
   state.target = { kind: "sample", name: sample.name, size: sample.size, path: sample.path };
   renderTargetChip("验证样本");
+  refreshTargetName();
 }
 
 function useTypedPath() {
@@ -1526,11 +3003,13 @@ function useTypedPath() {
   state.include = ($("include-input").value || "").trim();
   state.exclude = ($("exclude-input").value || "").trim();
   renderTargetChip("服务器路径");
+  refreshTargetName();
 }
 
 function clearTarget() {
   state.target = null;
   targetChip.hidden = true;
+  if (targetNameInput) targetNameInput.value = "";
   updateRunButton();
 }
 
@@ -1545,17 +3024,21 @@ function renderTargetChip(sourceLabel) {
 /* ================= 能力选择 ================= */
 
 /* 按服务端返回的 analyzer id 清单重建可选能力。
-   registered 为空时回退到页面内置的 CAP_META 顺序（离线预览用）。 */
+   registered 为空时回退到页面内置的 CAP_META 顺序（离线预览用）。
+   名称以 /api/modules 的登记信息为准；说明优先用页面里更详细的 CAP_META，
+   页面没登记的新能力则直接用服务端的 description。 */
 function buildPresets(registered) {
   var source = (registered && registered.length) ? registered : CAP_META_ORDER;
   PRESETS = source.map(function (id) {
-    var meta = CAP_META[id];
+    var remote = CATALOG_META[id];
+    var local = CAP_META[id];
+    var name = (remote && remote.name) || (local && local.name) || "";
     return {
       id: id,
-      name: (meta && meta.name) || id,
-      brief: (meta && meta.brief) || "",
-      desc: (meta && meta.desc) || "",
-      unknown: !meta
+      name: name || id,
+      brief: (local && local.brief) || "",
+      desc: (local && local.desc) || (remote && remote.desc) || "",
+      unknown: !name
     };
   });
 }
@@ -1707,6 +3190,7 @@ function syncCapabilitySelection() {
     card.setAttribute("aria-pressed", selected ? "true" : "false");
   });
   syncGroupCounts();
+  prefsCleared = false;   // 用户又做了选择，重新开始持久化
   savePrefs();   // 勾选变化即持久化，刷新后自动恢复
 }
 
@@ -1741,15 +3225,125 @@ function clearCapabilities() {
 }
 
 function updateRunButton() {
+  var hasProject = !!state.currentProjectId;
   var hasCaps = state.capabilities.length > 0;
-  var ready = !!state.target && !!state.health && !state.running && (state.mode === "scan" || hasCaps);
-  runBtn.disabled = !ready;
+  var ready = hasProject && !!state.target && !!state.health && !state.running &&
+    (state.mode === "scan" || hasCaps);
+  if (runBtn) runBtn.disabled = !ready;
+  if (!runStatus) return;
   if (state.running) return;
-  if (!state.target) runStatus.textContent = "请选择目标文件和分析能力";
+  if (!hasProject) runStatus.textContent = "请先在项目详情里创建任务";
+  else if (!state.target) runStatus.textContent = "请选择目标文件";
   else if (!state.health) runStatus.textContent = "本地服务未连接，无法运行";
   else if (state.mode !== "scan" && !hasCaps) runStatus.textContent = "请至少勾选一项分析能力";
   else if (state.mode === "scan") runStatus.textContent = "就绪：组合扫描 basic + advanced + security";
   else runStatus.textContent = "就绪：" + state.capabilities.join(" + ") + "（" + state.capabilities.length + " 项）";
+}
+
+/* ================= 预置分析脚本 ================= */
+/* 预置 = 一组勾选（mode + capabilities）存成服务端的一个 JSON 文件，
+   下次选中即可一次性套用，避免每次逐项点选。 */
+
+function loadPresets() {
+  if (!presetSelect) return;
+  apiFetch("/api/presets", { cache: "no-store" })
+    .then(readJson)
+    .then(function (data) {
+      state.presets = (data && data.presets) || [];
+      renderPresetOptions();
+    })
+    .catch(function () {
+      state.presets = [];
+      renderPresetOptions();
+    });
+}
+
+function renderPresetOptions() {
+  if (!presetSelect) return;
+  var current = presetSelect.value;
+  presetSelect.innerHTML = '<option value="">— 不使用预置 —</option>' +
+    state.presets.map(function (p) {
+      var label = p.name + (p.mode === "scan"
+        ? " · 组合扫描"
+        : " · " + p.capabilities.length + " 项");
+      return '<option value="' + esc(p.id) + '">' + esc(label) + "</option>";
+    }).join("");
+  var stillExists = state.presets.some(function (p) { return p.id === current; });
+  presetSelect.value = stillExists ? current : "";
+  syncPresetButtons();
+}
+
+function selectedPreset() {
+  if (!presetSelect || !presetSelect.value) return null;
+  var id = presetSelect.value;
+  return state.presets.filter(function (p) { return p.id === id; })[0] || null;
+}
+
+function syncPresetButtons() {
+  var has = !!selectedPreset();
+  if (presetApplyBtn) presetApplyBtn.disabled = !has;
+  if (presetDeleteBtn) presetDeleteBtn.disabled = !has;
+}
+
+/* 套用预置：直接覆盖当前 mode 与勾选，再走统一同步逻辑 */
+function applySelectedPreset() {
+  var preset = selectedPreset();
+  if (!preset) return;
+  var known = PRESETS.map(function (p) { return p.id; });
+  var usable = preset.capabilities.filter(function (id) { return known.indexOf(id) >= 0; });
+  state.mode = preset.mode === "scan" ? "scan" : "multi";
+  state.capabilities = usable;
+  syncCapabilitySelection();
+  updateRunButton();
+  var missing = preset.capabilities.length - usable.length;
+  showSuccess("已套用预置「" + preset.name + "」：共 " + usable.length + " 项" +
+    (missing > 0 ? "（" + missing + " 项当前服务端不可用，已跳过）" : ""));
+}
+
+function saveCurrentPreset() {
+  if (!presetName) return;
+  var name = presetName.value.trim();
+  if (!name) { showError("请先填写预置名称"); presetName.focus(); return; }
+  if (state.mode !== "scan" && !state.capabilities.length) {
+    showError("请至少勾选一项分析能力后再保存预置");
+    return;
+  }
+  var params = new URLSearchParams();
+  params.set("name", name);
+  params.set("mode", state.mode);
+  if (state.mode !== "scan") params.set("capabilities", state.capabilities.join(","));
+  apiFetch("/api/presets?" + params.toString(), { method: "POST" })
+    .then(readJson)
+    .then(function (data) {
+      if (!data || !data.ok) throw new Error((data && data.error) || "保存预置失败");
+      presetName.value = "";
+      return apiFetch("/api/presets", { cache: "no-store" })
+        .then(readJson)
+        .then(function (list) {
+          state.presets = (list && list.presets) || [];
+          renderPresetOptions();
+          presetSelect.value = data.preset.id;
+          syncPresetButtons();
+          showSuccess("预置「" + data.preset.name + "」已保存");
+        });
+    })
+    .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+}
+
+function deleteSelectedPreset() {
+  var preset = selectedPreset();
+  if (!preset) return;
+  openConfirm("删除预置", "确定删除预置分析脚本「" + preset.name + "」吗？", function () {
+    apiFetch("/api/presets/" + encodeURIComponent(preset.id), { method: "DELETE" })
+      .then(readJson)
+      .then(function (data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || "删除预置失败");
+        showSuccess("预置「" + preset.name + "」已删除");
+        if (presetSelect) presetSelect.value = "";
+        loadPresets();
+      })
+      .catch(function (err) { showError(err && err.message ? err.message : String(err)); });
+  });
 }
 
 /* ================= 视图切换 ================= */
@@ -1757,13 +3351,22 @@ function updateRunButton() {
 function switchView(name) {
   if (state.view === name) return;
   state.view = name;
+  closeProjectModal();
+  closeTaskModal();
+  closeEditModal();
+  closeConfirm();
+  closeAllMenus();
   Array.prototype.forEach.call(document.querySelectorAll(".view"), function (view) {
     view.classList.toggle("active", view.dataset.view === name);
   });
+  // 项目详情属于"项目管理"的子页面，左侧导航保持高亮在项目管理上
+  var navName = name === "project" ? "config" : name;
   Array.prototype.forEach.call(sidenav.querySelectorAll(".nav-item"), function (btn) {
-    btn.classList.toggle("active", btn.dataset.view === name);
+    btn.classList.toggle("active", btn.dataset.view === navName);
   });
+  if (name === "overview") renderOverview();
   if (name === "history") renderHistory();
+  if (name === "settings") renderSettings();
   if (name !== "results") savePrefs();
   window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
 }
@@ -1773,8 +3376,8 @@ function refreshNavState() {
   var hasResult = !!state.response;
   navResults.disabled = !hasResult;
   resultsBadge.hidden = !hasResult;
-  historyBadge.hidden = state.history.length === 0;
-  historyBadge.textContent = state.history.length;
+  historyBadge.hidden = state.tasks.length === 0;
+  historyBadge.textContent = state.tasks.length;
 }
 
 /* ================= 运行分析 ================= */
@@ -1782,6 +3385,11 @@ function refreshNavState() {
 function runAnalysis() {
   if (state.running || !state.target) return;
   if (state.mode !== "scan" && !state.capabilities.length) return;
+  if (!state.currentProjectId) {
+    showError("请先进入某个项目的详情页，再创建任务");
+    return;
+  }
+  closeTaskModal();
   clearResults();                       // 每次运行前先清空上一次的分析结果
   showEmptyState("running");
   state.running = true;
@@ -1808,6 +3416,11 @@ function runAnalysis() {
 
   var params = new URLSearchParams();
   params.set("mode", state.mode);
+  params.set("project_id", String(state.currentProjectId));
+  // 向导里显式填写的「任务名称」优先于自动带入的目标名称
+  params.set("task_name",
+    taskNameInput.value.trim() || (targetNameInput && targetNameInput.value.trim()) || "");
+  params.set("task_description", taskDescInput ? taskDescInput.value.trim() : "");
   if (state.mode === "scan") params.set("modules", "basic,advanced,security");
   else params.set("capabilities", state.capabilities.join(","));
 
@@ -1822,10 +3435,18 @@ function runAnalysis() {
     if (state.exclude) params.set("exclude", state.exclude);
   }
 
-  fetch("/api/analyze?" + params.toString(), { method: "POST", headers: headers, body: body })
+  // 分析请求的超时要比服务端自己的超时更宽，否则会先于服务端报超时
+  var controller = new AbortController();
+  state.abort = controller;
+  apiFetch("/api/analyze?" + params.toString(), {
+    method: "POST",
+    headers: headers,
+    body: body,
+    signal: controller.signal,
+    timeout: (state.timeout + 30) * 1000
+  })
     .then(function (resp) {
-      return resp.json().catch(function () { return null; }).then(function (data) {
-        if (!data) throw new Error("服务返回无法解析的响应（HTTP " + resp.status + "）");
+      return readJson(resp).then(function (data) {
         if (!data.ok && !data.payload) {
           var detail = [data.error || ("HTTP " + resp.status)];
           if (data.stderr_tail) detail.push("—— 子进程输出 ——\n" + data.stderr_tail.trim());
@@ -1833,7 +3454,7 @@ function runAnalysis() {
         }
         state.response = data;
         renderResults(data);
-        pushHistory(data, state.target);
+        loadProjects();   // 服务端已把任务写入数据库，刷新项目与任务列表
       });
     })
     .catch(function (err) {
@@ -1850,6 +3471,7 @@ function runAnalysis() {
     .then(function () {  // finally（无参 then 总会在其后执行）
       clearInterval(state.timer);
       state.timer = null;
+      state.abort = null;
       hideProgress();
       state.running = false;
       state.cancelling = false;
@@ -1859,6 +3481,7 @@ function runAnalysis() {
       cancelBtn.hidden = true;
       cancelBtn.disabled = false;
       cancelBtn.textContent = "■ 停止分析";
+      if (taskDescInput) taskDescInput.value = "";   // 描述是一次性的，运行后清空
       updateRunButton();
       refreshNavState();
     });
@@ -1871,26 +3494,40 @@ function cancelRun() {
   cancelBtn.disabled = true;
   cancelBtn.textContent = "正在停止…";
   runStatus.textContent = "正在停止分析…";
-  fetch("/api/cancel", { method: "POST" })
-    .then(function (resp) { return resp.json(); })
+  apiFetch("/api/cancel", { method: "POST" })
+    .then(readJson)
     .then(function (data) {
       // 没有可取消的任务（例如刚好结束）：不改 UI，等 analyze 请求自己收尾
       if (!data || !data.cancelled) runStatus.textContent = "分析已结束，正在收尾…";
     })
-    .catch(function () { /* 服务不可达时交给 analyze 请求报错 */ });
+    .catch(function () {
+      // 服务不可达时本地中断请求，避免界面卡在"正在停止"
+      if (state.abort) state.abort.abort();
+    });
 }
 
-function showError(message) {
-  errorBox.classList.remove("notice");
-  errorBox.textContent = message;
-  errorBox.classList.add("show");
+/* ================= 全局轻提示（toast） ================= */
+
+/* 统一从右下角弹出，自动消失；错误停留更久。
+   旧版写在项目管理面板里的 error-box 在其他视图看不见，已废弃。 */
+function showToast(message, kind) {
+  if (!toastBox) return;
+  var el = document.createElement("div");
+  el.className = "toast " + (kind || "notice");
+  el.textContent = message;
+  toastBox.appendChild(el);
+  while (toastBox.children.length > 4) toastBox.removeChild(toastBox.firstChild);
+  setTimeout(function () {
+    el.classList.add("out");
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
+  }, kind === "error" ? 4500 : 2400);
 }
 
-function showNotice(message) {
-  errorBox.classList.add("notice");
-  errorBox.textContent = message;
-  errorBox.classList.add("show");
-}
+function showError(message) { showToast(message, "error"); }
+
+function showNotice(message) { showToast(message, "notice"); }
+
+function showSuccess(message) { showToast(message, "success"); }
 
 /* ================= 进度卡片 ================= */
 
@@ -1899,9 +3536,12 @@ function showProgress() {
   pcTitle.textContent = "正在分析…";
   pcTarget.textContent = state.target.name +
     (state.target.size != null ? "（" + fmtBytes(state.target.size) + "）" : "");
-  pcStage.textContent = state.mode === "scan"
-    ? "组合扫描 basic + advanced + security"
-    : state.capabilities.length + " 项能力";
+  var projectName = (state.projects.filter(function (p) { return p.id === state.currentProjectId; })[0] || {}).name || "";
+  pcStage.textContent = projectName
+    ? projectName + "：组合扫描 basic + advanced + security"
+    : state.mode === "scan"
+      ? "组合扫描 basic + advanced + security"
+      : state.capabilities.length + " 项能力";
   pcElapsed.textContent = "已用 0.0 s";
   progressCard.hidden = false;
 }
@@ -1910,124 +3550,99 @@ function hideProgress() {
   progressCard.hidden = true;
 }
 
-/* ================= 任务历史 ================= */
+/* ================= 总览 ================= */
 
-var HISTORY_LIMIT = 20;
-
-/* 记录一次成功运行。payload 太大不入历史，只留摘要 + 完整数据的引用，
-   回看时直接复用内存里的 state.response 等价物。 */
-function pushHistory(data, target) {
-  var scan = data.payload && data.payload.result;
-  if (!scan) return;
-  var results = scan.results || {};
-  var findings = scan.findings || [];
-  var sev = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
-  findings.forEach(function (f) {
-    if (sev[f.severity] !== undefined) sev[f.severity] += 1;
-  });
-  state.history.unshift({
-    id: "h" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-    at: Date.now(),
-    name: (target && target.name) || (scan.target && scan.target.path) || "未知目标",
-    path: (scan.target && scan.target.path) || "",
-    sha256: (scan.target && scan.target.sha256) || "",
-    mode: state.mode,
-    exitCode: data.exit_code,
-    durationMs: data.duration_ms,
-    analyzerCount: Object.keys(results).length,
-    findingCount: findings.length,
-    sev: sev,
-    payload: data          // 内存中保留完整响应，供回看与对比
-  });
-  if (state.history.length > HISTORY_LIMIT) state.history.length = HISTORY_LIMIT;
-  refreshNavState();
+/* 单条任务卡：任务管理页与总览的「最近任务」共用同一套结构，
+   点击由 document 上的 onHistoryClick 委托处理。 */
+function taskItemHtml(t) {
+  var time = new Date(t.created_at * 1000);
+  var stamp = time.toLocaleString("zh-CN", { hour12: false });
+  var statusCls = t.status === "success" ? "ok" : "fail";
+  var caps = (t.capabilities || []).join(", ") || t.modules || "全量";
+  return '<div class="history-item" data-tid="' + esc(t.id) + '">' +
+    '<div class="h-main">' +
+      '<div class="h-name">' + esc(t.project_name || "未分类") + " · " + esc(t.name) + "</div>" +
+      '<div class="h-meta">' + esc(stamp) + " · " + esc(t.target_name) +
+        " · " + esc(t.mode) + " · " + esc(caps) + "</div>" +
+      '<div class="h-meta">' +
+        '<span class="chip ' + statusCls + '">' + esc(t.status) + "</span> · " +
+        esc(t.analyzer_count) + " 个分析器 · " + esc(t.finding_count) + " 项发现" +
+        (typeof t.exit_code === "number" ? " · 退出码 " + esc(t.exit_code) : "") +
+      "</div>" +
+    "</div>" +
+    '<div class="h-acts">' +
+      '<button class="small" data-hact="view" type="button">查看</button>' +
+      '<button class="small" data-hact="delete" type="button">删除</button>' +
+    "</div>" +
+  "</div>";
 }
 
-function renderHistory() {
-  if (!state.history.length) {
-    historyList.innerHTML = '<p class="hint" style="margin:0">还没有运行过分析。</p>';
-    return;
-  }
-  historyList.innerHTML = state.history.map(function (h) {
-    var time = new Date(h.at);
-    var stamp = time.toLocaleTimeString("zh-CN", { hour12: false }) +
-      " · " + (h.durationMs / 1000).toFixed(2) + " s";
-    var sevBits = ["critical", "high", "medium", "low"].map(function (k) {
-      return h.sev[k] ? '<span class="chip sev-' + k + '">' + k + " " + h.sev[k] + "</span>" : "";
-    }).join("");
-    return '<div class="history-item" data-hid="' + esc(h.id) + '">' +
-      '<div class="h-main">' +
-        '<div class="h-name">' + esc(h.name) + "</div>" +
-        '<div class="h-meta">' + esc(stamp) + " · " + h.analyzerCount + " 个分析器 · " +
-          h.findingCount + " 项发现 · 退出码 " + esc(h.exitCode) + "</div>" +
-        (sevBits ? '<div class="h-meta" style="margin-top:5px">' + sevBits + "</div>" : "") +
-      "</div>" +
-      '<div class="h-acts">' +
-        '<button class="small" data-hact="view" type="button">查看</button>' +
-        '<button class="small" data-hact="compare" type="button">与当前对比</button>' +
-      "</div>" +
-    "</div>";
+/* 指标卡数据全部来自已加载到内存的 state，不额外请求接口 */
+function overviewMetricsHtml() {
+  var tasks = state.tasks || [];
+  var success = tasks.filter(function (t) { return t.status === "success"; }).length;
+  var findings = tasks.reduce(function (sum, t) { return sum + (Number(t.finding_count) || 0); }, 0);
+  var analyzers = (state.health && state.health.registered_analyzers || []).length;
+  var items = [
+    { n: (state.projects || []).length, l: "项目" },
+    { n: tasks.length, l: "任务" },
+    { n: success, l: "成功任务" },
+    { n: tasks.length - success, l: "失败任务" },
+    { n: findings, l: "发现项" },
+    { n: analyzers, l: "已注册 Analyzer" }
+  ];
+  return items.map(function (it) {
+    return '<div class="metric"><div class="n">' + esc(it.n) +
+      '</div><div class="l">' + esc(it.l) + "</div></div>";
   }).join("");
 }
 
-/* 历史列表事件：查看（回放某次结果）与对比 */
-function onHistoryClick(e) {
-  var item = e.target.closest ? e.target.closest(".history-item") : null;
-  if (!item) return;
-  var record = state.history.filter(function (h) { return h.id === item.dataset.hid; })[0];
-  if (!record) return;
-  var act = e.target.dataset ? e.target.dataset.hact : "";
-  if (act === "view") {
-    state.response = record.payload;
-    renderResults(record.payload);
-    switchView("results");
-  } else if (act === "compare") {
-    showCompare(record);
-  }
-}
-
-/* 与当前结果并列对比：只看关键指标，不做全量 diff */
-function showCompare(record) {
-  var current = state.response && state.response.payload && state.response.payload.result;
-  if (!current) {
-    showError("当前没有分析结果，请先运行一次分析再对比。");
+function renderOverview() {
+  if (overviewMetrics) overviewMetrics.innerHTML = overviewMetricsHtml();
+  if (overviewOffline) overviewOffline.hidden = !state.healthChecked || !!state.health;
+  if (!overviewRecent) return;
+  var recent = (state.tasks || []).slice(0, 5);
+  if (!recent.length) {
+    overviewRecent.innerHTML =
+      '<div class="empty-block">' +
+        '<div class="eb-title">还没有任务</div>' +
+        '<div class="eb-hint">进入项目详情创建任务并运行分析，这里会显示最近 5 条任务。</div>' +
+        '<div class="eb-actions">' +
+          '<button type="button" class="primary" data-goto-view="config">去项目管理</button>' +
+        "</div>" +
+      "</div>";
     return;
   }
-  var rows = [
-    ["目标", record.name, current.target ? current.target.path : "—"],
-    ["分析器数", record.analyzerCount, Object.keys(current.results || {}).length],
-    ["发现项", record.findingCount, (current.findings || []).length],
-    ["严重", record.sev.critical, countSev(current, "critical")],
-    ["高", record.sev.high, countSev(current, "high")],
-    ["中", record.sev.medium, countSev(current, "medium")],
-    ["低", record.sev.low, countSev(current, "low")],
-    ["耗时", (record.durationMs / 1000).toFixed(2) + " s", (state.response.duration_ms / 1000).toFixed(2) + " s"],
-    ["退出码", record.exitCode, state.response.exit_code]
-  ];
-  var body = '<table class="cmp-table"><thead><tr><th>指标</th><th>历史（' +
-    esc(new Date(record.at).toLocaleTimeString("zh-CN", { hour12: false })) +
-    '）</th><th>当前</th><th>变化</th></tr></thead><tbody>' +
-    rows.map(function (r) {
-      var delta = "";
-      if (typeof r[1] === "number" && typeof r[2] === "number") {
-        var d = r[2] - r[1];
-        delta = d === 0 ? '<span class="chip info">±0</span>'
-          : d > 0 ? '<span class="chip fail">+' + d + "</span>"
-          : '<span class="chip ok">' + d + "</span>";
-      }
-      return "<tr><td>" + esc(r[0]) + "</td><td class='mono'>" + esc(r[1]) +
-        "</td><td class='mono'>" + esc(r[2]) + "</td><td>" + (delta || "—") + "</td></tr>";
-    }).join("") + "</tbody></table>";
-
-  var box = $("compare-box");
-  box.innerHTML = '<div class="panel"><h2>结果对比</h2>' + body +
-    '<p class="hint" style="margin-bottom:0">对比基于内存中的两次响应；刷新页面后历史清空。</p></div>';
-  box.hidden = false;
-  box.scrollIntoView({ behavior: "smooth", block: "start" });
+  overviewRecent.innerHTML = recent.map(taskItemHtml).join("");
 }
 
-function countSev(scan, severity) {
-  return (scan.findings || []).filter(function (f) { return f.severity === severity; }).length;
+/* ================= 任务列表（SQLite 持久化） ================= */
+
+function renderHistory() {
+  if (!state.tasks.length) {
+    historyList.innerHTML =
+      '<div class="empty-block">' +
+        '<div class="eb-title">还没有任务</div>' +
+        '<div class="eb-hint">进入项目详情创建任务并运行分析，任务与完整结果会保存在本地数据库，刷新页面不丢失。</div>' +
+        '<div class="eb-actions"><button type="button" class="primary" data-goto-projects>去项目管理</button></div>' +
+      "</div>";
+    return;
+  }
+  historyList.innerHTML = state.tasks.map(taskItemHtml).join("");
+}
+
+/* 任务列表事件：查看（从数据库回放结果）与删除 */
+function onHistoryClick(e) {
+  if (e.target.closest && e.target.closest("[data-goto-projects]")) { switchView("config"); return; }
+  var item = e.target.closest ? e.target.closest(".history-item") : null;
+  if (!item) return;
+  var act = e.target.dataset ? e.target.dataset.hact : "";
+  var taskId = Number(item.dataset.tid);
+  if (act === "view") openTask(taskId);
+  else if (act === "delete") {
+    var t = state.tasks.filter(function (x) { return x.id === taskId; })[0];
+    if (t) requestDeleteTask(t);
+  }
 }
 
 /* ================= 结果渲染 ================= */
@@ -2073,6 +3688,10 @@ function renderBatchResults(data) {
 
   emptyState.hidden = true;
   resultBody.hidden = false;
+  // 批量结果没有可切换的分析器 Tab：收起单目标布局，正文写进独立容器，
+  // 避免覆盖 #result-body 里的 #result-meta / #result-tabs / #result-panels。
+  if (resultLayout) resultLayout.hidden = true;
+  batchBody.hidden = false;
 
   var exitOk = data.exit_code === 0;
   var html =
@@ -2108,7 +3727,7 @@ function renderBatchResults(data) {
       "</div>";
   });
   body += "</div>";
-  resultBody.innerHTML = body;
+  batchBody.innerHTML = body;
 
   var cmdBtn = $("copy-cmd");
   if (cmdBtn) {
@@ -2134,6 +3753,10 @@ function renderResults(data) {
   }
   emptyState.hidden = true;
   resultBody.hidden = false;
+  // 单目标结果复用 Tab 布局：确保上一次批量结果已收起
+  batchBody.hidden = true;
+  batchBody.innerHTML = "";
+  if (resultLayout) resultLayout.hidden = false;
 
   var exitOk = data.exit_code === 0;
   var startedAt = scan.started_at;
@@ -2198,33 +3821,89 @@ function statusClass(status) {
   return entry ? entry[1] : "info";
 }
 
-/* 能力 id -> 页面上展示的中文名称（与选择卡片一致）；未知 id 回退为 id 本身 */
+/* 能力 id -> 页面上展示的中文名称（与选择卡片一致）；未知 id 回退为 id 本身。
+   名称优先取服务端登记（CATALOG_META），页面内置 CAP_META 作为离线兜底。 */
 function capabilityName(id) {
+  var remote = CATALOG_META[id];
   var meta = CAP_META[id];
-  return (meta && meta.name) || id;   // 依赖自动补齐的分析器也能拿到中文名
+  return (remote && remote.name) || (meta && meta.name) || id;
 }
 
+function resultGroupMeta(key) {
+  for (var i = 0; i < CAP_GROUPS.length; i++) {
+    if (CAP_GROUPS[i].key === key) return CAP_GROUPS[i];
+  }
+  return { key: key, name: key || "其他", open: false };
+}
+
+function resultGroupsFor(ids) {
+  var groups = [];
+  var seen = {};
+  ids.forEach(function (id) {
+    var key = groupOf(id);
+    if (seen[key]) return;
+    seen[key] = true;
+    groups.push(key);
+  });
+  return groups.map(resultGroupMeta);
+}
+
+function resultTabButton(t) {
+  return '<button type="button" class="tab" role="tab" aria-selected="false" tabindex="-1"' +
+    ' data-tab="' + esc(t.tab) + '"' +
+    (t.cap ? ' title="' + esc(t.cap) + '"' : "") + ">" +
+    (t.status ? '<span class="st ' + statusClass(t.status) + '"></span>' : "") +
+    '<span class="label">' + esc(t.label) + "</span>" +
+    (t.cap ? '<span class="id">' + esc(t.cap) + "</span>" : "") +
+    (t.dur != null ? '<span class="dur">' + esc(fmtMs(t.dur)) + "</span>" : "") +
+    "</button>";
+}
+
+/* 结果页左侧：概览 + 按大类分组的分析结果 + 原始 JSON。
+   大类可折叠，组头勾选框控制该大类下所有小类结果是否显示。 */
 function buildResultTabs(ids, results) {
   clearAnalyzerPanels();
-  var tabs = [{ tab: "summary", label: "概览" }].concat(ids.map(function (id) {
-    var r = results[id] || {};
-    return {
-      tab: id, label: capabilityName(id), cap: id, status: r.status,
-      // 耗时跟在 tab 上，右侧面板就只放分析结果本身
-      dur: typeof r.duration_ms === "number" ? r.duration_ms : null
-    };
-  })).concat([{ tab: "raw", label: "原始 JSON" }]);
+  var groups = resultGroupsFor(ids);
+  var summaryTab = resultTabButton({ tab: "summary", label: "概览" });
+  var rawTab = resultTabButton({ tab: "raw", label: "原始 JSON" });
 
-  resultTabs.innerHTML = tabs.map(function (t) {
-    return '<button type="button" class="tab" role="tab" aria-selected="false" tabindex="-1"' +
-      ' data-tab="' + esc(t.tab) + '"' +
-      (t.cap ? ' title="' + esc(t.cap) + '"' : "") + ">" +
-      (t.status ? '<span class="st ' + statusClass(t.status) + '"></span>' : "") +
-      '<span class="label">' + esc(t.label) + "</span>" +
-      (t.cap ? '<span class="id">' + esc(t.cap) + "</span>" : "") +
-      (t.dur != null ? '<span class="dur">' + esc(fmtMs(t.dur)) + "</span>" : "") +
-      "</button>";
+  var groupHtml = groups.map(function (group) {
+    var items = ids.filter(function (id) { return groupOf(id) === group.key; });
+    var hidden = state.resultHiddenGroups.indexOf(group.key) >= 0;
+    var tabsHtml = items.map(function (id) {
+      var r = results[id] || {};
+      var capHidden = state.resultHiddenCaps.indexOf(id) >= 0;
+      return '<div class="result-cap" data-result-cap="' + esc(id) + '"' +
+        (hidden || capHidden ? " hidden" : "") + ">" +
+        '<input type="checkbox" class="result-cap-check" data-result-cap="' + esc(id) + '"' +
+          ' aria-label="显示 ' + esc(capabilityName(id)) + ' 结果"' +
+          (hidden || capHidden ? "" : " checked") + ">" +
+        resultTabButton({
+          tab: id,
+          label: capabilityName(id),
+          cap: id,
+          status: r.status,
+          dur: typeof r.duration_ms === "number" ? r.duration_ms : null
+        }) +
+      "</div>";
+    }).join("");
+    return '<details class="result-group" data-result-group="' + esc(group.key) + '"' +
+      (group.open ? " open" : "") + ">" +
+      "<summary>" +
+        '<span class="rgg-check"><input type="checkbox" class="result-group-check"' +
+          ' data-result-group="' + esc(group.key) + '"' +
+          ' aria-label="显示 ' + esc(group.name) + ' 结果"' +
+          (hidden ? "" : " checked") + "></span>" +
+        '<span class="rgg-name">' + esc(group.name) + "</span>" +
+        '<span class="rgg-count">' + items.length + "/" + items.length + "</span>" +
+      "</summary>" +
+      '<div class="result-group-body" data-result-group-body="' + esc(group.key) + '"' +
+        (hidden ? " hidden" : "") + ">" + tabsHtml + "</div>" +
+      "</details>";
   }).join("");
+
+  resultTabs.innerHTML = summaryTab + groupHtml + rawTab;
+  renderResultGroupVisibility();
 
   ids.forEach(function (id) {
     var panel = document.createElement("div");
@@ -2235,6 +3914,62 @@ function buildResultTabs(ids, results) {
     panel.innerHTML = renderAnalyzerBody(id, results[id]);
     resultPanels.insertBefore(panel, rawPanel);
   });
+}
+
+/* 勾选/取消大类：只控制结果 Tab 的显示，不改变已返回的分析数据 */
+function toggleResultGroup(key) {
+  var index = state.resultHiddenGroups.indexOf(key);
+  if (index >= 0) state.resultHiddenGroups.splice(index, 1);
+  else state.resultHiddenGroups.push(key);
+  renderResultGroupVisibility();
+}
+
+/* 勾选/取消小类：只控制单个结果 Tab 的显示，不重新运行分析 */
+function toggleResultCap(id) {
+  var index = state.resultHiddenCaps.indexOf(id);
+  if (index >= 0) state.resultHiddenCaps.splice(index, 1);
+  else state.resultHiddenCaps.push(id);
+  renderResultGroupVisibility();
+}
+
+function updateResultGroupCount(group, key) {
+  var tabs = group.querySelectorAll(".tab");
+  var visible = 0;
+  Array.prototype.forEach.call(tabs, function (btn) {
+    if (!btn.hidden) visible += 1;
+  });
+  var countEl = group.querySelector(".rgg-count");
+  if (countEl) countEl.textContent = visible + "/" + tabs.length;
+}
+
+/* 大类或小类隐藏后：对应 tab 与整组内容隐藏，计数显示 n/m；若当前打开
+   的结果被隐藏，自动切回第一个仍可见的结果。 */
+function renderResultGroupVisibility() {
+  Array.prototype.forEach.call(resultTabs.querySelectorAll(".result-group"), function (group) {
+    var key = group.getAttribute("data-result-group");
+    var groupHidden = state.resultHiddenGroups.indexOf(key) >= 0;
+    var check = group.querySelector(".result-group-check");
+    var body = group.querySelector(".result-group-body");
+    if (check) check.checked = !groupHidden;
+    if (body) body.hidden = groupHidden;
+    Array.prototype.forEach.call(group.querySelectorAll(".result-cap"), function (row) {
+      var capCheck = row.querySelector(".result-cap-check");
+      var tab = row.querySelector(".tab");
+      if (!capCheck) return;
+      var id = capCheck.getAttribute("data-result-cap");
+      var capHidden = state.resultHiddenCaps.indexOf(id) >= 0;
+      var hidden = groupHidden || capHidden;
+      capCheck.checked = !hidden;
+      row.hidden = hidden;
+      if (tab) tab.hidden = hidden;
+    });
+    updateResultGroupCount(group, key);
+  });
+  var active = resultTabs.querySelector('.tab.active:not([hidden])');
+  if (!active && state.activeTab && state.activeTab !== "summary" && state.activeTab !== "raw") {
+    var first = resultTabs.querySelector('.tab:not([hidden])');
+    selectTab(first ? first.getAttribute("data-tab") : "summary");
+  }
 }
 
 function selectTab(id) {
@@ -2259,7 +3994,7 @@ function selectTab(id) {
 
 /* ↑/↓：切换到上一个/下一个分析结果 Tab（键盘操作，箭头按钮已移除） */
 function tabOrder() {
-  return Array.prototype.map.call(resultTabs.querySelectorAll(".tab"), function (btn) {
+  return Array.prototype.map.call(resultTabs.querySelectorAll(".tab:not([hidden])"), function (btn) {
     return btn.getAttribute("data-tab");
   });
 }
@@ -2290,9 +4025,9 @@ function renderSummaryStatus(ids, results) {
 function clearResults() {
   state.response = null;
   state.activeTab = "summary";
+  state.resultHiddenGroups = [];
+  state.resultHiddenCaps = [];
   state.sym = { q: "", lang: "all", shown: 200 };
-  errorBox.classList.remove("show", "notice");
-  errorBox.textContent = "";
   resultMeta.innerHTML = "";
   resultTabs.innerHTML = "";
   clearAnalyzerPanels();
@@ -2300,6 +4035,9 @@ function clearResults() {
   findingsSection.innerHTML = "";
   diagnosticsSection.innerHTML = "";
   rawInfo.innerHTML = "";
+  batchBody.innerHTML = "";
+  batchBody.hidden = true;
+  if (resultLayout) resultLayout.hidden = false;
   resultBody.hidden = true;
   showEmptyState("idle");
 }
