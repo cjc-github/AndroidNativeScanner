@@ -224,6 +224,8 @@ var state = {
   projectQuery: "",        // 项目搜索关键词（小写）
   taskPage: 1,             // 项目详情任务列表当前页
   tasks: [],               // 数据库中的任务列表
+  overview: null,          // /api/overview 聚合结果（趋势 / 严重级别 / 失败原因 / 作业状态）
+  overviewLoading: false,
   resultHiddenGroups: [],  // 结果页按大类折叠时被隐藏的结果组
   resultHiddenCaps: [],    // 结果页中单独被隐藏的小类结果
   activeTab: "summary",
@@ -396,6 +398,11 @@ var pcCancel = $("pc-cancel");
 var overviewMetrics = $("overview-metrics");
 var overviewRecent = $("overview-recent");
 var overviewOffline = $("overview-offline");
+var overviewSeverity = $("overview-severity");
+var overviewTrend = $("overview-trend");
+var overviewTrendSummary = $("overview-trend-summary");
+var overviewFailures = $("overview-failures");
+var overviewProjects = $("overview-projects");
 
 /* ================= 项目与任务 ================= */
 
@@ -406,6 +413,23 @@ var PENCIL_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"' +
   ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+/* 方案 A：项目详情侧栏 / 空态图标（与 PENCIL_SVG 同款描边风格） */
+var PLUS_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"' +
+  ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M12 5v14"/><path d="M5 12h14"/></svg>';
+
+var CHART_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>';
+
+var DOC_SVG =
+  '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+  '<path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>';
 
 function loadProjects() {
   return apiFetch("/api/projects", { cache: "no-store" })
@@ -620,24 +644,64 @@ function renderProjectDetail() {
   var start = (page - 1) * PAGE_SIZE;
   var rows = tasks.slice(start, start + PAGE_SIZE);
 
+  var successCount = tasks.filter(function (t) { return t.status === "success"; }).length;
+  var failureCount = tasks.length - successCount;
+  var findingCount = tasks.reduce(function (sum, t) {
+    return sum + (Number(t.finding_count) || 0);
+  }, 0);
+  var lastScan = tasks.reduce(function (latest, t) {
+    return Math.max(latest, Number(t.created_at) || 0);
+  }, 0);
+
   var head =
-    '<div class="proj-head">' +
-      '<button type="button" class="small" data-back-projects>← 返回项目管理</button>' +
-      '<div class="ph-title" style="margin-top:10px">' + esc(p.name) +
-        '<span class="chip info">' + esc(p.task_count) + " 个任务</span>" +
+    '<div class="proj-topbar">' +
+      '<button type="button" class="back-btn" data-back-projects>← 返回项目管理</button>' +
+    "</div>" +
+    '<div class="proj-banner">' +
+      '<div class="pb-avatar">' + esc((p.name || "?").trim().charAt(0).toUpperCase() || "?") + "</div>" +
+      '<div class="pb-info">' +
+        '<div class="pb-name">' + esc(p.name) +
+          '<span class="chip">' + esc(p.task_count) + " 个任务</span>" +
+        "</div>" +
+        '<div class="pb-meta">' + (p.description ? esc(p.description) : "（暂无描述）") +
+          "　·　创建于 " + esc(fmtTime(new Date(p.created_at * 1000).toISOString())) + "</div>" +
       "</div>" +
-      '<div class="ph-desc">' + (p.description ? esc(p.description) : "（暂无描述）") + "</div>" +
-      '<div class="ph-meta"><span>创建时间：' + esc(fmtTime(new Date(p.created_at * 1000).toISOString())) + "</span></div>" +
-      '<div class="ph-actions">' +
+      '<div class="pb-actions">' +
         '<button type="button" class="primary" data-new-task>＋ 新建任务</button>' +
-        '<button type="button" class="icon-btn" data-edit-project="' + esc(p.id) + '" title="编辑项目" aria-label="编辑项目" style="align-self:center">' +
-          PENCIL_SVG + "</button>" +
+        '<button type="button" class="ghost" data-edit-project="' + esc(p.id) + '">编辑项目</button>' +
       "</div>" +
     "</div>";
 
+  var side =
+    '<aside class="proj-side">' +
+      '<div class="panel">' +
+        "<h3>" + PLUS_SVG + "增加任务</h3>" +
+        '<p class="hint">选择目标文件与分析能力，运行后结果会自动归档到当前项目。</p>' +
+        '<button type="button" class="ps-cta" data-new-task>＋ 新建任务</button>' +
+        '<button type="button" class="ps-cta-ghost" data-edit-project="' + esc(p.id) + '">' +
+          PENCIL_SVG + "<span>编辑项目</span></button>" +
+      "</div>" +
+      '<div class="panel">' +
+        "<h3>" + CHART_SVG + "项目概览</h3>" +
+        '<ul class="side-stat-list">' +
+          '<li><span class="ssk">任务</span><span class="ssv">' + esc(tasks.length) + "</span></li>" +
+          '<li><span class="ssk">成功 / 失败</span><span class="ssv">' + esc(successCount) + " / " + esc(failureCount) + "</span></li>" +
+          '<li><span class="ssk">发现项</span><span class="ssv">' + esc(findingCount) + "</span></li>" +
+          '<li><span class="ssk">最近扫描</span><span class="ssv">' +
+            (lastScan ? esc(fmtTime(new Date(lastScan * 1000).toISOString())) : "尚未扫描") + "</span></li>" +
+        "</ul>" +
+      "</div>" +
+    "</aside>";
+
   var table;
   if (!tasks.length) {
-    table = '<div class="p-table-wrap"><div class="p-empty">该项目还没有任务，点击「＋ 新建任务」开始第一次分析。</div></div>';
+    table =
+      '<div class="task-empty">' +
+        '<div class="te-icon">' + DOC_SVG + "</div>" +
+        '<div class="te-title">该项目还没有任务</div>' +
+        '<div class="te-desc">点击下方「＋ 新建任务」按钮<br>选择目标文件与分析能力，开始第一次扫描。</div>' +
+        '<button type="button" class="te-cta" data-new-task>＋ 新建任务</button>' +
+      "</div>";
   } else {
     var body = rows.map(function (t) {
       var caps = (t.capabilities || []).join(", ") || t.modules || "全量";
@@ -662,7 +726,16 @@ function renderProjectDetail() {
       "</tr></thead><tbody>" + body + "</tbody></table></div>" +
       pagerHtml(page, tasks.length, "个任务");
   }
-  projectDetailEl.innerHTML = head + table;
+  projectDetailEl.innerHTML = head +
+    '<div class="proj-layout">' +
+      '<div class="proj-main"><div class="panel proj-list-panel">' +
+        '<div class="list-head"><div class="lh-main"><h2>任务列表</h2>' +
+          '<div class="lh-sub">共 ' + esc(tasks.length) + " 个任务 · 第 " + esc(page) +
+            " / " + esc(pageCount(tasks.length)) + " 页</div></div></div>" +
+        table +
+      "</div></div>" +
+      side +
+    "</div>";
 }
 
 /* 某项目的全部任务（客户端过滤，列表量级小） */
@@ -934,7 +1007,7 @@ function loadTasks() {
       renderHistory();
       refreshNavState();
       if (state.view === "project") renderProjectDetail();
-      if (state.view === "overview") renderOverview();
+      if (state.view === "overview") { renderOverview(); loadOverview(); }
     })
     .catch(function () { renderHistory(); });
 }
@@ -1292,6 +1365,10 @@ function bindEvents() {
     if (role === "sym-more") { state.sym.shown += 400; rerenderSymbols(); }
     if (role === "sym-csv") exportSymbolsCsv();
     if (role === "finding-csv") exportFindingsCsv();
+    var ovTask = e.target.closest ? e.target.closest("[data-ov-task]") : null;
+    if (ovTask) { openTask(Number(ovTask.getAttribute("data-ov-task"))); return; }
+    var ovProject = e.target.closest ? e.target.closest("[data-ov-project]") : null;
+    if (ovProject) { openProjectDetail(Number(ovProject.getAttribute("data-ov-project"))); return; }
     onHistoryClick(e);
   });
 }
@@ -1356,7 +1433,7 @@ function checkHealth(silent) {
       updateRunButton();
       syncTopbarHeight();   // 顶栏文字变长后高度可能变，导航要跟着
       if (state.view === "settings") renderSettings();
-      if (state.view === "overview") renderOverview();
+      if (state.view === "overview") { renderOverview(); loadOverview(); }
     })
     .catch(function () {
       var wasOnline = !!state.health;
@@ -1789,7 +1866,7 @@ function switchView(name) {
   Array.prototype.forEach.call(sidenav.querySelectorAll(".nav-item"), function (btn) {
     btn.classList.toggle("active", btn.dataset.view === navName);
   });
-  if (name === "overview") renderOverview();
+  if (name === "overview") { renderOverview(); loadOverview(); }
   if (name === "history") renderHistory();
   if (name === "settings") renderSettings();
   if (name !== "results") savePrefs();
@@ -2002,18 +2079,54 @@ function taskItemHtml(t) {
   "</div>";
 }
 
-/* 指标卡数据全部来自已加载到内存的 state，不额外请求接口 */
+/* 百分比：整数或一位小数，去掉多余的 .0 */
+function fmtPct(value) {
+  var n = Number(value);
+  if (!isFinite(n)) return "—";
+  return (Math.round(n * 10) / 10).toString().replace(/\.0$/, "") + "%";
+}
+
+/* 总览聚合：趋势 / 严重级别 / 失败原因 / 运行中作业都由服务端一次算好。
+   页面仍保留 state.tasks 的本地兜底，服务离线时至少能看到已有计数。 */
+function loadOverview() {
+  if (!state.health) { state.overview = null; renderOverview(); return Promise.resolve(); }
+  if (state.overviewLoading) return Promise.resolve();
+  state.overviewLoading = true;
+  return apiFetch("/api/overview", { cache: "no-store", timeout: 8000 })
+    .then(readJson)
+    .then(function (data) {
+      state.overview = (data && data.ok && data.overview) || null;
+    })
+    .catch(function () { state.overview = null; })
+    .then(function () {
+      state.overviewLoading = false;
+      if (state.view === "overview") renderOverview();
+    });
+}
+
 function overviewMetricsHtml() {
   var tasks = state.tasks || [];
   var success = tasks.filter(function (t) { return t.status === "success"; }).length;
-  var findings = tasks.reduce(function (sum, t) { return sum + (Number(t.finding_count) || 0); }, 0);
+  var localFindings = tasks.reduce(function (sum, t) { return sum + (Number(t.finding_count) || 0); }, 0);
+  var localDuration = tasks.reduce(function (sum, t) {
+    return sum + (typeof t.duration_ms === "number" ? t.duration_ms : 0);
+  }, 0);
   var analyzers = (state.health && state.health.registered_analyzers || []).length;
+  var ov = state.overview;
+  var m = ov && ov.metrics;
+  var jobs = ov && ov.jobs;
+  var sev = ov && ov.severity;
+  var rate = m ? m.success_rate : (tasks.length ? success / tasks.length * 100 : 0);
+  var severe = sev ? (Number(sev.critical) || 0) + (Number(sev.high) || 0) : null;
+  var avg = m ? m.avg_duration_ms : (tasks.length ? localDuration / tasks.length : 0);
   var items = [
-    { n: (state.projects || []).length, l: "项目" },
-    { n: tasks.length, l: "任务" },
-    { n: success, l: "成功任务" },
-    { n: tasks.length - success, l: "失败任务" },
-    { n: findings, l: "发现项" },
+    { n: m ? m.project_count : (state.projects || []).length, l: "项目" },
+    { n: m ? m.task_count : tasks.length, l: "任务" },
+    { n: fmtPct(rate), l: "成功率" },
+    { n: jobs ? (jobs.running || 0) + " / " + (jobs.queued || 0) : "—", l: "运行 / 排队" },
+    { n: severe === null ? "—" : severe, l: "高危+严重" },
+    { n: m ? m.finding_total : localFindings, l: "发现项" },
+    { n: avg ? fmtMs(Math.round(avg)) : "—", l: "平均耗时" },
     { n: analyzers, l: "已注册 Analyzer" }
   ];
   return items.map(function (it) {
@@ -2022,9 +2135,134 @@ function overviewMetricsHtml() {
   }).join("");
 }
 
+function overviewSeverityHtml() {
+  var ov = state.overview;
+  if (!ov) return '<div class="ov-empty">连接本地服务后显示所有已保存任务的严重级别分布。</div>';
+  var sev = ov.severity || {};
+  var order = ["critical", "high", "medium", "low", "info"];
+  var total = order.reduce(function (sum, key) { return sum + (Number(sev[key]) || 0); }, 0);
+  if (!total) {
+    return '<div class="ov-empty">还没有发现项。运行包含安全分析的任务后，这里会按严重级别汇总。</div>';
+  }
+  var rows = order.map(function (key) {
+    var n = Number(sev[key]) || 0;
+    var pct = total ? Math.round(n / total * 100) : 0;
+    return '<div class="sev-row">' +
+      '<span class="sev-name"><i class="sev-dot sev-' + key + '"></i>' + esc(SEV_LABEL[key] || key) + "</span>" +
+      '<span class="sev-bar"><i class="sev-fill sev-' + key + '" style="width:' + pct + '%"></i></span>' +
+      '<span class="sev-n">' + esc(n) + "</span>" +
+    "</div>";
+  }).join("");
+  return '<div class="sev-list">' + rows + "</div>" +
+    '<div class="sev-total">共 ' + esc(total) + " 项发现</div>";
+}
+
+function overviewTrendHtml() {
+  var ov = state.overview;
+  if (!ov || !ov.trend || !ov.trend.length) {
+    return '<div class="ov-empty">连接本地服务后显示近 14 天的任务与发现项趋势。</div>';
+  }
+  var days = ov.trend;
+  var maxTasks = 1;
+  days.forEach(function (day) { maxTasks = Math.max(maxTasks, Number(day.tasks) || 0); });
+  var totalTasks = days.reduce(function (sum, day) { return sum + (Number(day.tasks) || 0); }, 0);
+  if (!totalTasks) return '<div class="ov-empty">近 14 天还没有任务。</div>';
+  var cols = days.map(function (day) {
+    var tasks = Number(day.tasks) || 0;
+    var ok = Number(day.success) || 0;
+    var err = Number(day.errors) || 0;
+    var totalH = tasks ? Math.max(4, Math.round(tasks / maxTasks * 100)) : 0;
+    var errPct = tasks ? Math.round(err / tasks * 100) : 0;
+    var tip = day.date + " · " + tasks + " 个任务 · " + ok + " 成功 · " + err + " 失败 · " +
+      (Number(day.findings) || 0) + " 项发现";
+    var stack = totalH
+      ? '<div class="trend-stack" style="height:' + totalH + '%">' +
+          (err ? '<span class="trend-err" style="height:' + errPct + '%"></span>' : "") +
+          '<span class="trend-ok"></span>' +
+        "</div>"
+      : '<span class="trend-zero"></span>';
+    return '<div class="trend-col" title="' + esc(tip) + '">' +
+      '<div class="trend-track">' + stack + "</div>" +
+      '<span class="trend-day">' + esc(day.label) + "</span>" +
+    "</div>";
+  }).join("");
+  return '<div class="trend-legend"><span><i class="lg-ok"></i>成功</span>' +
+    '<span><i class="lg-err"></i>失败</span></div>' +
+    '<div class="trend">' + cols + "</div>";
+}
+
+function overviewFailuresHtml() {
+  var ov = state.overview;
+  if (!ov) return '<div class="ov-empty">连接本地服务后显示最近的失败原因。</div>';
+  var failures = ov.recent_failures || [];
+  if (!failures.length) return '<div class="ov-empty">没有失败任务，最近的扫描全部成功。</div>';
+  var topReason = (ov.failure_reasons || [])[0];
+  var topHtml = topReason && topReason.count > 1
+    ? '<div class="of-top">最常见原因：' + esc(topReason.message) +
+      "（" + esc(topReason.count) + " 次）</div>"
+    : "";
+  return topHtml + failures.map(function (f) {
+    var stamp = fmtTime(new Date(f.created_at * 1000).toISOString());
+    return '<div class="ov-failure" data-ov-task="' + esc(f.id) + '">' +
+      '<div class="of-head"><b>' + esc(f.project_name || "未分类") + " · " + esc(f.name) +
+        '</b><span class="chip fail">失败</span></div>' +
+      '<div class="of-meta">' + esc(stamp) +
+        (f.target_name ? " · " + esc(f.target_name) : "") + "</div>" +
+      '<div class="of-reason" title="' + esc(f.error_message) + '">' +
+        esc(f.error_message) + "</div>" +
+    "</div>";
+  }).join("");
+}
+
+function overviewProjectsHtml() {
+  var ov = state.overview;
+  if (!ov) return '<div class="ov-empty">连接本地服务后显示每个项目的最近扫描时间。</div>';
+  var projects = (ov.projects || []).slice(0, 6);
+  if (!projects.length) {
+    return '<div class="ov-empty">还没有项目。新建项目并运行分析后，这里会显示最近扫描时间。</div>';
+  }
+  var now = Date.now() / 1000;
+  return '<div class="ov-project-list">' + projects.map(function (p) {
+    var never = !p.last_scan_at;
+    var stale = !never && (now - p.last_scan_at) > 7 * 86400;
+    var statusHtml = p.last_status
+      ? '<span class="chip ' + (p.last_status === "success" ? "ok" : "fail") + '">' +
+          (p.last_status === "success" ? "最近成功" : "最近失败") + "</span>"
+      : '<span class="chip info">未扫描</span>';
+    return '<div class="ov-project" data-ov-project="' + esc(p.id) + '">' +
+      '<div class="op-main"><div class="op-name">' + esc(p.name) +
+        (stale ? '<span class="op-stale">超过 7 天</span>' : "") + "</div>" +
+        '<div class="op-meta">' + esc(p.task_count) + " 个任务 · " + esc(p.success_count) +
+          " 次成功 · " + esc(p.finding_count) + " 项发现</div></div>" +
+      '<div class="op-side">' + statusHtml +
+        '<div class="op-time">' + (never ? "尚未扫描" :
+          esc(fmtTime(new Date(p.last_scan_at * 1000).toISOString()))) + "</div></div>" +
+    "</div>";
+  }).join("") + "</div>";
+}
+
 function renderOverview() {
   if (overviewMetrics) overviewMetrics.innerHTML = overviewMetricsHtml();
   if (overviewOffline) overviewOffline.hidden = !state.healthChecked || !!state.health;
+  if (overviewSeverity) overviewSeverity.innerHTML = overviewSeverityHtml();
+  if (overviewTrend) overviewTrend.innerHTML = overviewTrendHtml();
+  if (overviewFailures) overviewFailures.innerHTML = overviewFailuresHtml();
+  if (overviewProjects) overviewProjects.innerHTML = overviewProjectsHtml();
+  if (overviewTrendSummary) {
+    var ov = state.overview;
+    if (ov && ov.trend && ov.trend.length) {
+      var tasks = 0, success = 0, findings = 0;
+      ov.trend.forEach(function (day) {
+        tasks += Number(day.tasks) || 0;
+        success += Number(day.success) || 0;
+        findings += Number(day.findings) || 0;
+      });
+      overviewTrendSummary.textContent = "近 14 天 " + tasks + " 个任务 · 成功率 " +
+        fmtPct(tasks ? success / tasks * 100 : 0) + " · " + findings + " 项发现。";
+    } else {
+      overviewTrendSummary.textContent = "每天的任务量、成功数与发现项变化。";
+    }
+  }
   if (!overviewRecent) return;
   var recent = (state.tasks || []).slice(0, 5);
   if (!recent.length) {

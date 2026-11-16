@@ -106,10 +106,57 @@
         <div class="list-head">
           <div class="lh-main">
             <h2>数据与能力</h2>
-            <div class="lh-sub">项目 / 任务数量来自本地 SQLite，Analyzer 数量来自当前服务。</div>
+            <div class="lh-sub">项目 / 任务 / 风险来自本地 SQLite 聚合，Analyzer 数量来自当前服务。</div>
           </div>
         </div>
         <div class="metric-row ov-metrics" id="overview-metrics"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>近 14 天趋势</h2>
+            <div class="lh-sub" id="overview-trend-summary">每天的任务量、成功数与发现项变化。</div>
+          </div>
+        </div>
+        <div id="overview-trend"></div>
+      </div>
+
+      <div class="ov-grid" style="margin-top:14px">
+        <div class="panel">
+          <div class="list-head">
+            <div class="lh-main">
+              <h2>风险分布</h2>
+              <div class="lh-sub">所有已保存任务的发现项按严重级别汇总。</div>
+            </div>
+          </div>
+          <div id="overview-severity"></div>
+        </div>
+        <div class="panel">
+          <div class="list-head">
+            <div class="lh-main">
+              <h2>最近失败</h2>
+              <div class="lh-sub">最近 5 条失败任务及原因，可点击回看当时的结果。</div>
+            </div>
+            <div class="lh-actions">
+              <button class="small" data-goto-view="history" type="button">任务管理</button>
+            </div>
+          </div>
+          <div id="overview-failures"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <div class="list-head">
+          <div class="lh-main">
+            <h2>项目最近扫描</h2>
+            <div class="lh-sub">按最近扫描时间排序，超过 7 天未扫描的项目会标记为陈旧。</div>
+          </div>
+          <div class="lh-actions">
+            <button class="small" data-goto-view="config" type="button">项目管理</button>
+          </div>
+        </div>
+        <div id="overview-projects"></div>
       </div>
 
       <div class="panel" style="margin-top:14px">
