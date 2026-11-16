@@ -28,6 +28,8 @@ API::
     GET  /api/projects      项目列表（含每个项目的任务数）
     POST /api/projects      创建项目：?name=xxx&description=xxx
     DELETE /api/projects/<id>  删除项目及其全部任务
+    GET  /api/overview      总览聚合：项目/任务/成功率、严重级别分布、
+                            近 14 天趋势、最近失败与每项目最近扫描时间
     GET  /api/tasks         全量任务列表（跨项目）
     GET  /api/projects/<id>/tasks  某项目下的任务列表
     GET  /api/tasks/<id>    任务详情（含完整分析结果 result）
@@ -73,6 +75,7 @@ import threading
 import time
 import uuid
 import webbrowser
+from datetime import date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -151,6 +154,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     duration_ms INTEGER,
     analyzer_count INTEGER NOT NULL DEFAULT 0,
     finding_count INTEGER NOT NULL DEFAULT 0,
+    severity_counts TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
     result_json TEXT NOT NULL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
@@ -180,7 +185,14 @@ def _db_conn():
 
 # 早期版本建库时 tasks 表还没有 description 列（任务描述）。
 # CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，所以单独做一次轻量迁移。
-_MIGRATIONS = (("tasks", "description", "TEXT NOT NULL DEFAULT ''"),)
+_MIGRATIONS = (
+    ("tasks", "description", "TEXT NOT NULL DEFAULT ''"),
+    ("tasks", "severity_counts", "TEXT NOT NULL DEFAULT ''"),
+    ("tasks", "error_message", "TEXT NOT NULL DEFAULT ''"),
+)
+
+# 与 core.models.status.Severity 的取值保持一致；总览页按这个顺序展示。
+_SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
 
 
 def _migrate_schema(conn) -> None:
@@ -196,6 +208,62 @@ def _json_list(value: str | None) -> list:
         return parsed if isinstance(parsed, list) else []
     except (TypeError, ValueError):
         return []
+
+
+def _empty_severity_counts() -> dict[str, int]:
+    return {key: 0 for key in _SEVERITY_ORDER}
+
+
+def _severity_counts_from_findings(findings: object) -> dict[str, int]:
+    counts = _empty_severity_counts()
+    if not isinstance(findings, list):
+        return counts
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        severity = finding.get("severity")
+        if isinstance(severity, str) and severity.lower() in counts:
+            counts[severity.lower()] += 1
+    return counts
+
+
+def _parse_severity_counts(raw: str | None) -> dict[str, int] | None:
+    try:
+        parsed = json.loads(raw or "")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    counts = _empty_severity_counts()
+    for key in _SEVERITY_ORDER:
+        value = parsed.get(key, 0)
+        try:
+            counts[key] = max(0, int(value))
+        except (TypeError, ValueError):
+            counts[key] = 0
+    return counts
+
+
+def _legacy_result_parts(row) -> tuple[dict[str, int], str]:
+    """Severity counts and error message for tasks created before the
+    aggregation columns existed. Parsing the full result is the fallback."""
+    raw = row["legacy_json"] if "legacy_json" in row.keys() else None
+    if not raw:
+        return _empty_severity_counts(), ""
+    try:
+        envelope = json.loads(raw)
+    except (TypeError, ValueError):
+        return _empty_severity_counts(), ""
+    if not isinstance(envelope, dict):
+        return _empty_severity_counts(), ""
+    payload = envelope.get("payload")
+    result = payload.get("result") if isinstance(payload, dict) else None
+    findings = result.get("findings") if isinstance(result, dict) else None
+    error = envelope.get("error")
+    return (
+        _severity_counts_from_findings(findings),
+        error if isinstance(error, str) else "",
+    )
 
 
 def _project_dict(conn, row) -> dict:
@@ -353,14 +421,18 @@ def _create_task(
     name = task_name.strip() or f"{target_name or '任务'}·{time.strftime('%Y-%m-%d %H:%M:%S')}"
     now = time.time()
     joined_caps = ",".join(capabilities)
+    error_message = data.get("error")
+    if not isinstance(error_message, str):
+        error_message = ""
     with _db_conn() as conn:
         cursor = conn.execute(
             """
             INSERT INTO tasks (
                 project_id, name, description, status, target_name, target_path, target_sha256, target_size,
                 mode, capabilities, modules, command, exit_code, duration_ms,
-                analyzer_count, finding_count, result_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                analyzer_count, finding_count, severity_counts, error_message,
+                result_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 project_id,
@@ -379,6 +451,8 @@ def _create_task(
                 data.get("duration_ms"),
                 len(results),
                 len(findings),
+                json.dumps(_severity_counts_from_findings(findings), ensure_ascii=False),
+                error_message,
                 json.dumps(_without_report(data), ensure_ascii=False),
                 now,
                 now,
@@ -430,6 +504,212 @@ def _delete_task(task_id: int) -> bool:
     with _db_conn() as conn:
         cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         return cursor.rowcount > 0
+
+
+def _analysis_in_flight() -> dict | None:
+    """The synchronous /api/analyze child, when one is still alive."""
+    with _RUN_LOCK:
+        process = _RUN_STATE.get("proc")
+    try:
+        alive = process is not None and process.poll() is None
+    except (AttributeError, OSError):
+        alive = False
+    if not alive:
+        return None
+    return {"id": "analyze", "filename": "单次分析", "started": None, "state": "running"}
+
+
+def _job_summary() -> dict:
+    """Running/queued analyses. Only one analysis can hold the execution
+    slot, so every other unfinished job is waiting for it."""
+    with _JOBS_LOCK:
+        active = [job for job in _JOBS.values() if not job.get("done")]
+        running = [job for job in active if job.get("state") == "running"]
+        queued = [job for job in active if job.get("state") != "running"]
+        active_jobs = [
+            {
+                "id": job.get("id"),
+                "filename": job.get("filename"),
+                "started": job.get("started"),
+                "state": job.get("state") or "queued",
+            }
+            for job in active
+        ]
+    analysis = _analysis_in_flight()
+    if analysis is not None:
+        running.append(analysis)
+        active_jobs.append(analysis)
+    active_jobs.sort(key=lambda item: item.get("started") or 0)
+    return {"running": len(running), "queued": len(queued), "active": active_jobs}
+
+
+def _overview_payload() -> dict:
+    """Aggregate everything the overview page needs in one round trip."""
+    with _db_conn() as conn:
+        project_rows = conn.execute(
+            "SELECT id, name, description, created_at FROM projects"
+        ).fetchall()
+        task_rows = conn.execute(
+            """
+            SELECT t.id, t.project_id, t.name, t.status, t.target_name,
+                   t.duration_ms, t.finding_count, t.severity_counts,
+                   t.error_message, t.created_at,
+                   p.name AS project_name,
+                   CASE WHEN t.severity_counts = ''
+                             OR (t.status != 'success' AND t.error_message = '')
+                        THEN t.result_json ELSE '' END AS legacy_json
+            FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id
+            ORDER BY t.created_at DESC, t.id DESC
+            """
+        ).fetchall()
+
+    projects: dict[int, dict] = {}
+    for row in project_rows:
+        projects[row["id"]] = {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "created_at": row["created_at"],
+            "task_count": 0,
+            "success_count": 0,
+            "error_count": 0,
+            "finding_count": 0,
+            "last_scan_at": None,
+            "last_status": None,
+        }
+
+    severity_total = _empty_severity_counts()
+    daily: dict[str, dict] = {}
+    recent_failures: list[dict] = []
+    failure_reasons: dict[str, int] = {}
+    task_count = success_count = error_count = 0
+    finding_total = 0
+    duration_sum = 0
+    duration_n = 0
+
+    for row in task_rows:
+        status = row["status"] or ""
+        ok = status == "success"
+        task_count += 1
+        if ok:
+            success_count += 1
+        else:
+            error_count += 1
+
+        findings = row["finding_count"] or 0
+        try:
+            findings = max(0, int(findings))
+        except (TypeError, ValueError):
+            findings = 0
+        finding_total += findings
+
+        severity = _parse_severity_counts(row["severity_counts"])
+        error_message = (row["error_message"] or "").strip()
+        if severity is None or (not ok and not error_message):
+            legacy_severity, legacy_error = _legacy_result_parts(row)
+            if severity is None:
+                severity = legacy_severity
+            if not error_message:
+                error_message = legacy_error.strip()
+        for key in _SEVERITY_ORDER:
+            severity_total[key] += severity[key]
+
+        duration = row["duration_ms"]
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+            duration_sum += int(duration)
+            duration_n += 1
+
+        created_at = row["created_at"]
+        try:
+            day_key = datetime.fromtimestamp(created_at).date().isoformat()
+        except (TypeError, ValueError, OSError):
+            day_key = None
+        if day_key:
+            bucket = daily.setdefault(
+                day_key,
+                {"tasks": 0, "success": 0, "errors": 0, "findings": 0,
+                 "duration_sum": 0, "duration_n": 0},
+            )
+            bucket["tasks"] += 1
+            bucket["success" if ok else "errors"] += 1
+            bucket["findings"] += findings
+            if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+                bucket["duration_sum"] += int(duration)
+                bucket["duration_n"] += 1
+
+        if not ok:
+            reason = error_message or "未记录错误信息"
+            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
+            if len(recent_failures) < 5:
+                recent_failures.append({
+                    "id": row["id"],
+                    "project_id": row["project_id"],
+                    "project_name": row["project_name"],
+                    "name": row["name"],
+                    "target_name": row["target_name"],
+                    "created_at": created_at,
+                    "error_message": reason,
+                })
+
+        stat = projects.get(row["project_id"])
+        if stat is not None:
+            stat["task_count"] += 1
+            stat["success_count" if ok else "error_count"] += 1
+            stat["finding_count"] += findings
+            if stat["last_scan_at"] is None:
+                stat["last_scan_at"] = created_at
+                stat["last_status"] = status
+
+    today = date.today()
+    trend = []
+    for offset in range(13, -1, -1):
+        day = today - timedelta(days=offset)
+        key = day.isoformat()
+        bucket = daily.get(key)
+        trend.append({
+            "date": key,
+            "label": day.strftime("%m-%d"),
+            "tasks": bucket["tasks"] if bucket else 0,
+            "success": bucket["success"] if bucket else 0,
+            "errors": bucket["errors"] if bucket else 0,
+            "findings": bucket["findings"] if bucket else 0,
+            "avg_duration_ms": (
+                round(bucket["duration_sum"] / bucket["duration_n"])
+                if bucket and bucket["duration_n"] else 0
+            ),
+        })
+
+    project_list = sorted(
+        projects.values(),
+        key=lambda item: (item["last_scan_at"] is not None, item["last_scan_at"] or 0),
+        reverse=True,
+    )
+    reasons = sorted(
+        failure_reasons.items(), key=lambda item: item[1], reverse=True
+    )[:5]
+
+    return {
+        "generated_at": time.time(),
+        "metrics": {
+            "project_count": len(project_rows),
+            "task_count": task_count,
+            "success_count": success_count,
+            "error_count": error_count,
+            "success_rate": round(success_count / task_count * 100, 1) if task_count else 0.0,
+            "finding_total": finding_total,
+            "severity_total": sum(severity_total.values()),
+            "avg_duration_ms": round(duration_sum / duration_n) if duration_n else 0,
+        },
+        "severity": severity_total,
+        "trend": trend,
+        "projects": project_list,
+        "recent_failures": recent_failures,
+        "failure_reasons": [
+            {"message": message, "count": count} for message, count in reasons
+        ],
+        "jobs": _job_summary(),
+    }
 
 
 def _parse_id(value: str | None) -> int | None:
@@ -953,6 +1233,12 @@ def _finish_job(job: dict, **fields: object) -> None:
     with _JOBS_LOCK:
         job.update(fields)
         job["done"] = True
+        job["state"] = "done"
+
+
+def _set_job_state(job: dict, state: str) -> None:
+    with _JOBS_LOCK:
+        job["state"] = state
 
 
 def _write_upload(body: bytes, filename: str) -> Path:
@@ -999,6 +1285,7 @@ def _start_job(
         "lines": [],
         "started": time.time(),
         "done": False,
+        "state": "queued",
         "exit_code": None,
         "duration_ms": None,
         "payload": None,
@@ -1057,6 +1344,7 @@ def _job_worker(job: dict, target: Path) -> None:
     if not _ANALYSIS_LOCK.acquire(timeout=10):
         _finish_job(job, error="已有分析在占用执行槽位，且等待超时")
         return
+    _set_job_state(job, "running")
     process = None
     try:
         process = subprocess.Popen(
@@ -1369,6 +1657,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "samples": _list_samples()})
         elif route == "/api/presets":
             self._send_json({"ok": True, "presets": _list_presets()})
+        elif route == "/api/overview":
+            self._send_json({"ok": True, "overview": _overview_payload()})
         elif route == "/api/projects":
             self._send_json({"ok": True, "projects": _list_projects()})
         elif route == "/api/tasks":

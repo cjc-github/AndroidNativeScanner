@@ -179,6 +179,47 @@ class WebConsoleTests(unittest.TestCase):
         self.assertTrue(detail["result"]["ok"])
         self.assertEqual(detail["result"]["payload"]["result"]["results"]["basic.file"]["data"]["size"], len(blob))
 
+    def test_overview_aggregates_tasks_severity_and_projects(self):
+        blob = build_elf64_with_symbols([])
+        project = self._create_project("总览项目")
+
+        response = self._analyze(
+            blob, "basic.file", project_id=project["id"], task_name="总览任务"
+        )
+        self.assertTrue(response["ok"], response.get("error"))
+
+        with urllib.request.urlopen(f"{self.base}/api/overview", timeout=10) as res:
+            payload = json.load(res)
+
+        self.assertTrue(payload["ok"])
+        overview = payload["overview"]
+        metrics = overview["metrics"]
+        self.assertGreaterEqual(metrics["task_count"], 1)
+        self.assertGreaterEqual(metrics["success_count"], 1)
+        self.assertIn("success_rate", metrics)
+        self.assertGreaterEqual(metrics["finding_total"], 0)
+
+        # Every severity key is present even when a task produced no finding.
+        self.assertEqual(
+            set(overview["severity"]),
+            {"critical", "high", "medium", "low", "info"},
+        )
+        self.assertEqual(len(overview["trend"]), 14)
+        self.assertEqual(
+            sum(day["tasks"] for day in overview["trend"]),
+            metrics["task_count"],
+        )
+        self.assertIn("running", overview["jobs"])
+        self.assertIn("queued", overview["jobs"])
+
+        project_entry = next(
+            item for item in overview["projects"] if item["id"] == project["id"]
+        )
+        self.assertEqual(project_entry["task_count"], 1)
+        self.assertEqual(project_entry["last_status"], "success")
+        self.assertIsNotNone(project_entry["last_scan_at"])
+        self.assertIn("recent_failures", overview)
+
     def test_task_description_is_persisted_and_editable(self):
         blob = build_elf64_with_symbols([])
         project = self._create_project("描述项目")
