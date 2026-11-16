@@ -21,13 +21,22 @@ API::
     GET  /api/health        服务与运行环境状态（版本、Python、已注册 Analyzer）
     GET  /api/modules       产品能力目录（42 项能力及各自实现状态）
     GET  /api/samples       in/ 目录下的验证样本列表（只读）
+    GET  /api/projects      项目列表（含每个项目的任务数）
+    POST /api/projects      创建项目：?name=xxx&description=xxx
+    DELETE /api/projects/<id>  删除项目及其全部任务
+    GET  /api/tasks         全量任务列表（跨项目）
+    GET  /api/projects/<id>/tasks  某项目下的任务列表
+    GET  /api/tasks/<id>    任务详情（含完整分析结果 result）
+    DELETE /api/tasks/<id>  删除单个任务
     POST /api/analyze      执行一次分析，查询参数：
                              mode=single&capability=basic.elf   单能力
                              mode=multi&capabilities=basic.elf,basic.symbols   多选能力
                              mode=scan&modules=basic,advanced,security   组合扫描
+                             project_id=<id>&task_name=任务名   可选，指定后结果写入 SQLite
                              目标二选一：查询参数 path=<绝对路径>，
                              或请求体直接传文件字节并带 X-Filename 头。
-                           返回 {ok, exit_code, command, duration_ms, payload}
+                           返回 {ok, exit_code, command, duration_ms, payload,
+                           task?}（task 为数据库中的任务记录）
     POST /api/jobs         创建一个后台深度扫描任务（目标同 /api/analyze）。
                            以 ``python -m soinsight scan <target> --format json``
                            默认全量能力运行，stderr 进度实时写日志。返回
@@ -45,10 +54,12 @@ API::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import platform
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -96,6 +107,323 @@ MAX_REPORTS_KEPT = 20
 # 同一秒内并发落盘时最多尝试的序号数，超过即放弃（防御性上限，正常远达不到）
 MAX_REPORT_SERIAL_TRIES = 1000
 _REPORTS_LOCK = threading.Lock()
+
+# 项目和任务的持久化：SQLite 单文件数据库。可由 SOINSIGHT_WEB_DB 环境变量覆盖
+# （测试用临时库），默认为 .soinsight/web.db（.soinsight/ 已在 .gitignore 中）。
+DB_PATH = Path(os.environ.get("SOINSIGHT_WEB_DB") or (REPO_ROOT / ".soinsight" / "web.db"))
+
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'success',
+    target_name TEXT NOT NULL DEFAULT '',
+    target_path TEXT NOT NULL DEFAULT '',
+    target_sha256 TEXT,
+    target_size INTEGER,
+    mode TEXT NOT NULL DEFAULT 'multi',
+    capabilities TEXT NOT NULL DEFAULT '[]',
+    modules TEXT NOT NULL DEFAULT '',
+    command TEXT,
+    exit_code INTEGER,
+    duration_ms INTEGER,
+    analyzer_count INTEGER NOT NULL DEFAULT 0,
+    finding_count INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
+"""
+
+@contextlib.contextmanager
+def _db_conn():
+    """Open a short-lived SQLite connection and initialise the schema."""
+    path = Path(DB_PATH)
+    if str(path).startswith("~"):
+        path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.executescript(_SCHEMA)
+        _migrate_schema(conn)
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# 早期版本建库时 tasks 表还没有 description 列（任务描述）。
+# CREATE TABLE IF NOT EXISTS 不会给已存在的表补列，所以单独做一次轻量迁移。
+_MIGRATIONS = (("tasks", "description", "TEXT NOT NULL DEFAULT ''"),)
+
+
+def _migrate_schema(conn) -> None:
+    for table, column, spec in _MIGRATIONS:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {spec}")
+
+
+def _json_list(value: str | None) -> list:
+    try:
+        parsed = json.loads(value or "[]")
+        return parsed if isinstance(parsed, list) else []
+    except (TypeError, ValueError):
+        return []
+
+
+def _project_dict(conn, row) -> dict:
+    task_count = row["task_count"] if "task_count" in row.keys() else conn.execute(
+        "SELECT COUNT(*) FROM tasks WHERE project_id = ?", (row["id"],)
+    ).fetchone()[0]
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "task_count": task_count,
+    }
+
+
+def _create_project(name: str, description: str = "") -> dict | None:
+    now = time.time()
+    with _db_conn() as conn:
+        cursor = conn.execute(
+            "INSERT INTO projects(name, description, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (name, description, now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM projects WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+        return _project_dict(conn, row)
+
+
+def _list_projects() -> list[dict]:
+    with _db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count
+            FROM projects p ORDER BY p.created_at DESC, p.id DESC
+            """
+        ).fetchall()
+        return [_project_dict(conn, row) for row in rows]
+
+
+def _get_project(project_id: int) -> dict | None:
+    with _db_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count
+            FROM projects p WHERE p.id = ?
+            """, (project_id,)
+        ).fetchone()
+        return _project_dict(conn, row) if row else None
+
+
+def _delete_project(project_id: int) -> bool:
+    with _db_conn() as conn:
+        cursor = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        return cursor.rowcount > 0
+
+
+def _update_project(project_id: int, name: str | None, description: str | None) -> dict | None:
+    """Update a project's name and/or description. ``None`` means "leave as is"."""
+    with _db_conn() as conn:
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if row is None:
+            return None
+        new_name = row["name"] if name is None else name.strip() or row["name"]
+        new_desc = row["description"] if description is None else description.strip()
+        conn.execute(
+            "UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+            (new_name, new_desc, time.time(), project_id),
+        )
+        row = conn.execute(
+            """
+            SELECT p.*, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS task_count
+            FROM projects p WHERE p.id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+        return _project_dict(conn, row)
+
+
+def _update_task(task_id: int, name: str | None, description: str | None) -> dict | None:
+    """Update a task's name and/or description. ``None`` means "leave as is"."""
+    with _db_conn() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if row is None:
+            return None
+        new_name = row["name"] if name is None else name.strip() or row["name"]
+        new_desc = row["description"] if description is None else description.strip()
+        conn.execute(
+            "UPDATE tasks SET name = ?, description = ?, updated_at = ? WHERE id = ?",
+            (new_name, new_desc, time.time(), task_id),
+        )
+        row = conn.execute(
+            """
+            SELECT t.*, p.name AS project_name FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        return _task_dict(row)
+
+
+def _task_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "project_id": row["project_id"],
+        "project_name": row["project_name"] if "project_name" in row.keys() else None,
+        "name": row["name"],
+        "description": row["description"] if "description" in row.keys() else "",
+        "status": row["status"],
+        "target_name": row["target_name"],
+        "target_path": row["target_path"],
+        "target_sha256": row["target_sha256"],
+        "target_size": row["target_size"],
+        "mode": row["mode"],
+        "capabilities": _json_list(row["capabilities"]),
+        "modules": row["modules"],
+        "command": _json_list(row["command"]),
+        "exit_code": row["exit_code"],
+        "duration_ms": row["duration_ms"],
+        "analyzer_count": row["analyzer_count"],
+        "finding_count": row["finding_count"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _without_report(data: dict) -> dict:
+    """Return a copy of an analysis envelope without the ephemeral report link."""
+    copied = dict(data)
+    copied["report"] = None
+    return copied
+
+
+def _create_task(
+    project_id: int,
+    task_name: str,
+    data: dict,
+    target_name: str = "",
+    target_path: str = "",
+    mode: str = "multi",
+    capabilities: tuple[str, ...] = (),
+    modules: str = "",
+    description: str = "",
+) -> dict | None:
+    """Persist an analysis envelope (the /api/analyze response) as a task."""
+    if _get_project(project_id) is None:
+        return None
+    payload = data.get("payload") if isinstance(data, dict) else None
+    result = (payload or {}).get("result") if isinstance(payload, dict) else None
+    target = result.get("target") if isinstance(result, dict) and isinstance(result.get("target"), dict) else {}
+    results = result.get("results") if isinstance(result, dict) and isinstance(result.get("results"), dict) else {}
+    findings = result.get("findings") if isinstance(result, dict) else []
+    if not isinstance(findings, list):
+        findings = []
+    name = task_name.strip() or f"{target_name or '任务'}·{time.strftime('%Y-%m-%d %H:%M:%S')}"
+    now = time.time()
+    joined_caps = ",".join(capabilities)
+    with _db_conn() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO tasks (
+                project_id, name, description, status, target_name, target_path, target_sha256, target_size,
+                mode, capabilities, modules, command, exit_code, duration_ms,
+                analyzer_count, finding_count, result_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                name,
+                description,
+                "success" if data.get("ok") else "error",
+                target_name or target.get("name") or "",
+                target_path or target.get("path") or "",
+                target.get("sha256"),
+                target.get("size"),
+                mode,
+                joined_caps,
+                modules,
+                json.dumps(data.get("command") or [], ensure_ascii=False),
+                data.get("exit_code"),
+                data.get("duration_ms"),
+                len(results),
+                len(findings),
+                json.dumps(_without_report(data), ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT t.*, p.name AS project_name FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?
+            """, (cursor.lastrowid,)
+        ).fetchone()
+        return _task_dict(row)
+
+
+def _list_tasks(project_id: int | None = None) -> list[dict]:
+    sql = """
+        SELECT t.*, p.name AS project_name FROM tasks t
+        LEFT JOIN projects p ON p.id = t.project_id
+    """
+    params: tuple = ()
+    if project_id is not None:
+        sql += " WHERE t.project_id = ?"
+        params = (project_id,)
+    sql += " ORDER BY t.created_at DESC, t.id DESC"
+    with _db_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [_task_dict(row) for row in rows]
+
+
+def _get_task(task_id: int) -> dict | None:
+    with _db_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT t.*, p.name AS project_name FROM tasks t
+            LEFT JOIN projects p ON p.id = t.project_id WHERE t.id = ?
+            """, (task_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        task = _task_dict(row)
+        try:
+            task["result"] = json.loads(row["result_json"] or "null")
+        except (TypeError, ValueError):
+            task["result"] = None
+        return task
+
+
+def _delete_task(task_id: int) -> bool:
+    with _db_conn() as conn:
+        cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        return cursor.rowcount > 0
+
+
+def _parse_id(value: str | None) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 # The single in-flight /api/analyze child process. /api/cancel flips
 # ``cancelled`` and kills the process so the waiting request can return early
@@ -533,7 +861,13 @@ def _transform_env() -> dict[str, str]:
     return env
 
 
-def _start_job(target: Path, display_name: str, cleanup: bool = False) -> dict:
+def _start_job(
+    target: Path,
+    display_name: str,
+    cleanup: bool = False,
+    project_id: int | None = None,
+    task_name: str = "",
+) -> dict:
     """Create a background full scan job and return its tracking record."""
     job_id = uuid.uuid4().hex[:12]
     argv = [sys.executable, "-m", "soinsight", "scan", str(target)]
@@ -543,6 +877,8 @@ def _start_job(target: Path, display_name: str, cleanup: bool = False) -> dict:
         "filename": display_name,
         "target": str(target),
         "cleanup_target": cleanup,
+        "project_id": project_id,
+        "task_name": task_name,
         "lines": [],
         "started": time.time(),
         "done": False,
@@ -559,6 +895,34 @@ def _start_job(target: Path, display_name: str, cleanup: bool = False) -> dict:
         target=_job_worker, args=(job, target), daemon=True, name=f"soinsight-job-{job_id}"
     ).start()
     return job
+
+
+def _persist_job_task(job: dict) -> None:
+    """Persist a finished background job as a task when it belongs to a project."""
+    if not job.get("project_id"):
+        return
+    payload = job.get("payload")
+    envelope = {
+        "ok": job.get("error") is None and payload is not None,
+        "error": job.get("error"),
+        "command": job.get("command"),
+        "exit_code": job.get("exit_code"),
+        "duration_ms": job.get("duration_ms"),
+        "payload": payload,
+        "report": None,
+    }
+    task = _create_task(
+        job["project_id"],
+        job.get("task_name") or "",
+        envelope,
+        target_name=job.get("filename") or job.get("target") or "",
+        target_path=job.get("target") or "",
+        mode="scan",
+        capabilities=(),
+        modules="basic,advanced,security",
+    )
+    if task:
+        job["task"] = task
 
 
 def _job_worker(job: dict, target: Path) -> None:
@@ -673,6 +1037,7 @@ def _job_worker(job: dict, target: Path) -> None:
                 except OSError:
                     pass
         _ANALYSIS_LOCK.release()
+        _persist_job_task(job)
         if job.get("cleanup_target"):
             try:
                 target.unlink()
@@ -691,8 +1056,12 @@ CONTENT_TYPES = {
     ".md": "text/plain; charset=utf-8",
 }
 
+
 _JOB_LOG_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/log")
 _JOB_RESULT_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/result")
+_PROJECT_TASKS_ROUTE = re.compile(r"/api/projects/(\d+)/tasks")
+_PROJECT_ITEM_ROUTE = re.compile(r"/api/projects/(\d+)")
+_TASK_ROUTE = re.compile(r"/api/tasks/(\d+)")
 
 
 def _safe_int(value: str | None) -> tuple[int, bool]:
@@ -740,6 +1109,7 @@ def _job_result_record(job_id: str) -> dict | None:
             "command": job["command"],
             "error": job["error"],
             "payload": job["payload"],
+            "task": job.get("task"),
         }
 
 
@@ -848,6 +1218,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "modules": _STATE["catalog"]})
         elif route == "/api/samples":
             self._send_json({"ok": True, "samples": _list_samples()})
+        elif route == "/api/projects":
+            self._send_json({"ok": True, "projects": _list_projects()})
+        elif route == "/api/tasks":
+            self._send_json({"ok": True, "tasks": _list_tasks()})
+        elif _PROJECT_TASKS_ROUTE.fullmatch(route):
+            project_id = int(_PROJECT_TASKS_ROUTE.fullmatch(route).group(1))
+            self._send_json(
+                {"ok": True, "project_id": project_id, "tasks": _list_tasks(project_id)}
+            )
+        elif _TASK_ROUTE.fullmatch(route):
+            task = _get_task(int(_TASK_ROUTE.fullmatch(route).group(1)))
+            if task is None:
+                self._send_json(
+                    {"ok": False, "error": "任务不存在"}, HTTPStatus.NOT_FOUND
+                )
+                return
+            self._send_json({"ok": True, "task": task})
         elif _JOB_LOG_ROUTE.fullmatch(route):
             params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
             offset, parse_failed = _safe_int(params.get("offset"))
@@ -919,6 +1306,22 @@ class Handler(BaseHTTPRequestHandler):
             self._discard_body()
             self._send_json({"ok": True, "cancelled": request_cancel()})
             return
+
+        params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+        if parsed.path == "/api/projects":
+            self._discard_body()
+            name = params.get("name", "").strip()
+            if not name:
+                self._send_json(
+                    {"ok": False, "error": "项目名称不能为空"},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            project = _create_project(name, params.get("description", "").strip())
+            self._send_json({"ok": True, "project": project})
+            return
+
+
         if parsed.path not in ("/api/analyze", "/api/jobs"):
             self._send_json(
                 {"ok": False, "error": f"未知路径: {parsed.path}"},
@@ -926,7 +1329,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
         is_job = parsed.path == "/api/jobs"
         mode = params.get("mode", "scan" if is_job else "single")
         capability = params.get("capability", "").strip()
@@ -938,6 +1340,14 @@ class Handler(BaseHTTPRequestHandler):
         modules = params.get(
             "modules", ""
         ).strip() or "basic,advanced,security"
+        project_id = _parse_id(params.get("project_id"))
+        task_name = params.get("task_name", "").strip()
+        if project_id is not None and _get_project(project_id) is None:
+            self._send_json(
+                {"ok": False, "error": "项目不存在或已被删除"},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
         path_param = params.get("path", "").strip()
         include = tuple(
             item.strip()
@@ -973,6 +1383,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self._read_body(length)
 
         temp_path: str | None = None
+        display_name = ""
         try:
             target: Path
             extra_targets: tuple[Path, ...] = ()
@@ -997,6 +1408,7 @@ class Handler(BaseHTTPRequestHandler):
                         HTTPStatus.FORBIDDEN,
                     )
                     return
+                display_name = candidate.name
                 if candidate.is_dir():
                     # The directory is handed to the CLI, which expands it
                     # with the same rules as a command line run. Doing it
@@ -1033,6 +1445,7 @@ class Handler(BaseHTTPRequestHandler):
                 with os.fdopen(handle, "wb") as stream:
                     stream.write(body)
                 target = Path(temp_path)
+                display_name = filename
 
             if not is_job and mode not in ("single", "scan", "multi"):
                 self._send_json(
@@ -1082,7 +1495,13 @@ class Handler(BaseHTTPRequestHandler):
                         HTTPStatus.INTERNAL_SERVER_ERROR,
                     )
                     return
-                record = _start_job(target, target.name, cleanup=not path_param)
+                record = _start_job(
+                    target,
+                    display_name or target.name,
+                    cleanup=not path_param,
+                    project_id=project_id,
+                    task_name=task_name,
+                )
                 self._send_json(
                     {
                         "ok": True,
@@ -1112,6 +1531,21 @@ class Handler(BaseHTTPRequestHandler):
                 )
             finally:
                 _ANALYSIS_LOCK.release()
+            if project_id is not None:
+                task = _create_task(
+                    project_id,
+                    task_name,
+                    result,
+                    target_name=display_name or target.name,
+                    target_path=str(target),
+                    mode=mode,
+                    capabilities=capabilities,
+                    modules="" if mode != "scan" else modules,
+                    description=params.get("task_description", "").strip(),
+                )
+                if task:
+                    result = dict(result)
+                    result["task"] = task
             self._send_json(result)
         finally:
             # Job uploads are owned by the background worker: it unlinks the
@@ -1121,6 +1555,70 @@ class Handler(BaseHTTPRequestHandler):
                     os.unlink(temp_path)
                 except OSError:
                     pass
+
+    def do_DELETE(self) -> None:  # noqa: N802 - stdlib name
+        parsed = urlparse(self.path)
+        project_match = _PROJECT_ITEM_ROUTE.fullmatch(parsed.path)
+        task_match = _TASK_ROUTE.fullmatch(parsed.path)
+        if project_match:
+            self._discard_body()
+            deleted = _delete_project(int(project_match.group(1)))
+            if not deleted:
+                self._send_json(
+                    {"ok": False, "error": "项目不存在"}, HTTPStatus.NOT_FOUND
+                )
+                return
+            self._send_json({"ok": True, "deleted": "project"})
+            return
+        if task_match:
+            self._discard_body()
+            deleted = _delete_task(int(task_match.group(1)))
+            if not deleted:
+                self._send_json(
+                    {"ok": False, "error": "任务不存在"}, HTTPStatus.NOT_FOUND
+                )
+                return
+            self._send_json({"ok": True, "deleted": "task"})
+            return
+        self._send_json(
+            {"ok": False, "error": f"未知路径: {parsed.path}"},
+            HTTPStatus.NOT_FOUND,
+        )
+
+    def do_PATCH(self) -> None:  # noqa: N802 - stdlib name
+        """Rename a project or task and/or edit its description."""
+        parsed = urlparse(self.path)
+        params = {key: values[0] for key, values in parse_qs(parsed.query).items()}
+        project_match = _PROJECT_ITEM_ROUTE.fullmatch(parsed.path)
+        task_match = _TASK_ROUTE.fullmatch(parsed.path)
+        if not project_match and not task_match:
+            self._discard_body()
+            self._send_json(
+                {"ok": False, "error": f"未知路径: {parsed.path}"},
+                HTTPStatus.NOT_FOUND,
+            )
+            return
+        # PATCH 只读 query string；先排空可能存在的请求体，保持 keep-alive 同步。
+        self._discard_body()
+        # name / description 缺省表示"保持原样"，空字符串表示"清空描述"
+        name = params["name"] if "name" in params else None
+        description = params["description"] if "description" in params else None
+        if project_match:
+            updated = _update_project(int(project_match.group(1)), name, description)
+            if updated is None:
+                self._send_json(
+                    {"ok": False, "error": "项目不存在"}, HTTPStatus.NOT_FOUND
+                )
+                return
+            self._send_json({"ok": True, "project": updated})
+            return
+        updated = _update_task(int(task_match.group(1)), name, description)
+        if updated is None:
+            self._send_json(
+                {"ok": False, "error": "任务不存在"}, HTTPStatus.NOT_FOUND
+            )
+            return
+        self._send_json({"ok": True, "task": updated})
 
     def _health_payload(self) -> dict:
         _load_catalog()

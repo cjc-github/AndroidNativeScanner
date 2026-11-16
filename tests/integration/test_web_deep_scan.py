@@ -8,6 +8,7 @@ text target (valid non-ELF) and a synthetic ELF from tests.conftest.
 import contextlib
 import json
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -27,12 +28,26 @@ def _request(handler, base, method, data=None):
     return urllib.request.Request(base + handler, data=data, method=method)
 
 
+def _isolate_db(cls):
+    cls._db_tmp = tempfile.TemporaryDirectory()
+    cls._db_patcher = mock.patch.object(
+        server_module, "DB_PATH", Path(cls._db_tmp.name) / "test_web.db"
+    )
+    cls._db_patcher.start()
+
+
+def _restore_db(cls):
+    cls._db_patcher.stop()
+    cls._db_tmp.cleanup()
+
+
 class WebJobConsoleTests(unittest.TestCase):
     httpd: ThreadingHTTPServer
     base: str
 
     @classmethod
     def setUpClass(cls) -> None:
+        _isolate_db(cls)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
         thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         thread.start()
@@ -42,6 +57,7 @@ class WebJobConsoleTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        _restore_db(cls)
 
     def _start_job(self, body: bytes, filename: str) -> str:
         response = urllib.request.urlopen(
@@ -162,6 +178,7 @@ class WebAnalyzeMultiModeTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        _isolate_db(cls)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
         thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
         thread.start()
@@ -171,6 +188,7 @@ class WebAnalyzeMultiModeTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        _restore_db(cls)
 
     def _analyze(self, query: str, body: bytes | None = None):
         request = urllib.request.Request(
@@ -228,6 +246,7 @@ class WebStaticRouteTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        _isolate_db(cls)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
@@ -236,6 +255,7 @@ class WebStaticRouteTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        _restore_db(cls)
 
     def test_serves_console_pages(self):
         for route in ("/", "/index.html", "/so-scan.html"):
@@ -258,7 +278,7 @@ class WebStaticRouteTests(unittest.TestCase):
                 self.assertIn("no-cache", cache)
                 self.assertIn("must-revalidate", cache)
 
-    def test_never_serves_server_source_or_launcher(self):
+
         for route in ("/server.py", "/start-web.bat", "/__pycache__/server.cpython-310.pyc"):
             with self.assertRaises(urllib.error.HTTPError) as ctx:
                 urllib.request.urlopen(self.base + route)
@@ -278,6 +298,7 @@ class WebCancelTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        _isolate_db(cls)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
@@ -286,6 +307,7 @@ class WebCancelTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        _restore_db(cls)
 
     def test_cancel_endpoint_reports_nothing_running(self):
         request = urllib.request.Request(self.base + "/api/cancel", data=b"", method="POST")

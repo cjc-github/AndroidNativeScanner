@@ -7,6 +7,7 @@ and exclude filters -- and returns one document per target plus a summary.
 """
 
 import json
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -14,10 +15,24 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 from tests.conftest import SAMPLE_SYMBOLS, build_elf64_with_symbols
 
 from soinsight.web import console as server_module
+
+
+def _isolate_db(cls):
+    cls._db_tmp = tempfile.TemporaryDirectory()
+    cls._db_patcher = mock.patch.object(
+        server_module, "DB_PATH", Path(cls._db_tmp.name) / "test_web.db"
+    )
+    cls._db_patcher.start()
+
+
+def _restore_db(cls):
+    cls._db_patcher.stop()
+    cls._db_tmp.cleanup()
 
 
 class WebBatchAnalysisTests(unittest.TestCase):
@@ -25,6 +40,7 @@ class WebBatchAnalysisTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        _isolate_db(cls)
         cls._server = ThreadingHTTPServer(("127.0.0.1", 0), server_module.Handler)
         cls.base = f"http://127.0.0.1:{cls._server.server_address[1]}"
         cls._thread = threading.Thread(target=cls._server.serve_forever, daemon=True)
@@ -34,6 +50,7 @@ class WebBatchAnalysisTests(unittest.TestCase):
     def tearDownClass(cls):
         cls._server.shutdown()
         cls._server.server_close()
+        _restore_db(cls)
 
     def setUp(self):
         self._tmp = TemporaryDirectory()
