@@ -163,10 +163,22 @@ function apiFetch(url, options) {
   var timer = setTimeout(function () {
     controller.abort();
   }, timeoutMs);
+  /* 外部 signal（如「停止分析」按钮）与内部超时各自都能中止请求：
+     fetch 只认一个 signal，所以把外部中止转发进内部 controller，
+     直接用外部 signal 的话内部超时就形同虚设。
+     externalAbort 区分两种中止来源，超时才能报「请求超时」而不是「已取消」。 */
+  var externalAbort = false;
+  if (options.signal) {
+    if (options.signal.aborted) { externalAbort = true; controller.abort(); }
+    else options.signal.addEventListener("abort", function () {
+      externalAbort = true;
+      controller.abort();
+    });
+  }
   var init = {
     method: options.method || "GET",
     headers: options.headers || {},
-    signal: options.signal || controller.signal
+    signal: controller.signal
   };
   if (options.body !== undefined && options.body !== null) init.body = options.body;
   if (options.cache) init.cache = options.cache;
@@ -178,7 +190,7 @@ function apiFetch(url, options) {
     function (err) {
       clearTimeout(timer);
       if (err && err.name === "AbortError") {
-        if (options.signal) throw new Error("已取消本次请求");
+        if (externalAbort) throw new Error("已取消本次请求");
         throw new Error("请求超时（" + Math.round(timeoutMs / 1000) + " 秒），请检查本地服务是否仍在运行");
       }
       throw err;
