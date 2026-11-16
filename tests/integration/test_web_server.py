@@ -47,6 +47,20 @@ def _restore_db(cls):
     cls._db_tmp.cleanup()
 
 
+def _isolate_presets(cls):
+    """Keep preset files out of the real ``.soinsight/presets`` directory."""
+    cls._presets_tmp = tempfile.TemporaryDirectory()
+    cls._presets_patcher = mock.patch.object(
+        console, "PRESETS_DIR", Path(cls._presets_tmp.name) / "presets"
+    )
+    cls._presets_patcher.start()
+
+
+def _restore_presets(cls):
+    cls._presets_patcher.stop()
+    cls._presets_tmp.cleanup()
+
+
 def _upload_request(
     base: str,
     payload: bytes,
@@ -82,6 +96,7 @@ class WebConsoleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         _isolate_db(cls)
+        _isolate_presets(cls)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), console.Handler)
         cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
         thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
@@ -91,6 +106,7 @@ class WebConsoleTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        _restore_presets(cls)
         _restore_db(cls)
 
     def _analyze(
@@ -301,4 +317,78 @@ class WebConsoleTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as raised:
             urllib.request.urlopen(f"{self.base}/api/nothing", timeout=10)
 
+        self.assertEqual(raised.exception.code, 404)
+
+    def _post_preset(self, name: str, mode: str = "multi", capabilities: str = ""):
+        query = "name=" + urllib.parse.quote(name) + "&mode=" + mode
+        if capabilities:
+            query += "&capabilities=" + capabilities
+        request = urllib.request.Request(
+            f"{self.base}/api/presets?{query}", data=b"", method="POST"
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+
+    def test_a_preset_is_saved_listed_and_deleted(self):
+        saved = self._post_preset("常规审计", "multi", "basic.file,basic.elf")
+        self.assertTrue(saved["ok"], saved.get("error"))
+        preset = saved["preset"]
+        self.assertEqual(preset["name"], "常规审计")
+        self.assertEqual(preset["mode"], "multi")
+        self.assertEqual(preset["capabilities"], ["basic.elf", "basic.file"])
+        # 预置确实落盘成文件，而不是只留在内存里
+        preset_file = Path(console.PRESETS_DIR) / f"{preset['id']}.json"
+        self.assertTrue(preset_file.is_file())
+        self.assertEqual(json.loads(preset_file.read_text("utf-8"))["name"], "常规审计")
+
+        with urllib.request.urlopen(f"{self.base}/api/presets", timeout=10) as response:
+            listed = json.load(response)["presets"]
+        self.assertTrue(any(item["id"] == preset["id"] for item in listed))
+
+        delete = urllib.request.Request(
+            f"{self.base}/api/presets/{preset['id']}", data=b"", method="DELETE"
+        )
+        with urllib.request.urlopen(delete, timeout=10) as response:
+            self.assertTrue(json.load(response)["ok"])
+        self.assertFalse(preset_file.exists())
+
+        with urllib.request.urlopen(f"{self.base}/api/presets", timeout=10) as response:
+            listed = json.load(response)["presets"]
+        self.assertFalse(any(item["id"] == preset["id"] for item in listed))
+
+    def test_a_scan_preset_keeps_the_combined_scan_switch(self):
+        saved = self._post_preset("全量扫描", "scan", "basic.file")
+        self.assertTrue(saved["ok"], saved.get("error"))
+        self.assertEqual(saved["preset"]["mode"], "scan")
+        # 组合扫描模式下勾选项没有意义，保存时统一清空
+        self.assertEqual(saved["preset"]["capabilities"], [])
+        console._delete_preset(saved["preset"]["id"])
+
+    def test_a_preset_without_capabilities_is_rejected(self):
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            self._post_preset("空预置", "multi", "")
+        self.assertEqual(raised.exception.code, 400)
+        payload = json.loads(raised.exception.read().decode("utf-8"))
+        self.assertIn("至少勾选一项", payload["error"])
+
+    def test_a_preset_with_an_unknown_capability_is_rejected(self):
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            self._post_preset("脏预置", "multi", "basic.file,no.such.capability")
+        self.assertEqual(raised.exception.code, 400)
+        payload = json.loads(raised.exception.read().decode("utf-8"))
+        self.assertIn("未知分析能力", payload["error"])
+
+    def test_a_preset_with_an_illegal_name_is_rejected(self):
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            self._post_preset("../逃逸", "multi", "basic.file")
+        self.assertEqual(raised.exception.code, 400)
+        payload = json.loads(raised.exception.read().decode("utf-8"))
+        self.assertIn("预置名称", payload["error"])
+
+    def test_deleting_an_unknown_preset_is_404(self):
+        request = urllib.request.Request(
+            f"{self.base}/api/presets/not-there", data=b"", method="DELETE"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(request, timeout=10)
         self.assertEqual(raised.exception.code, 404)

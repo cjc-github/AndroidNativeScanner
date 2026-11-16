@@ -21,6 +21,10 @@ API::
     GET  /api/health        服务与运行环境状态（版本、Python、已注册 Analyzer）
     GET  /api/modules       产品能力目录（42 项能力及各自实现状态）
     GET  /api/samples       in/ 目录下的验证样本列表（只读）
+    GET  /api/presets       预置分析脚本列表（.soinsight/presets/*.json）
+    POST /api/presets       保存一个预置分析脚本：?name=xxx&mode=multi|scan
+                             &capabilities=basic.elf,basic.symbols
+    DELETE /api/presets/<id>  删除一个预置分析脚本
     GET  /api/projects      项目列表（含每个项目的任务数）
     POST /api/projects      创建项目：?name=xxx&description=xxx
     DELETE /api/projects/<id>  删除项目及其全部任务
@@ -55,6 +59,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import gzip
+import hashlib
 import json
 import os
 import platform
@@ -112,6 +118,13 @@ _REPORTS_LOCK = threading.Lock()
 # （测试用临时库），默认为 .soinsight/web.db（.soinsight/ 已在 .gitignore 中）。
 DB_PATH = Path(os.environ.get("SOINSIGHT_WEB_DB") or (REPO_ROOT / ".soinsight" / "web.db"))
 
+# 预置分析脚本：把一组勾选的分析项（外加组合扫描开关）存成一个 JSON 文件，
+# 下次在「分析能力」里选中该文件即可一次性套用。同样支持环境变量覆盖（测试用）。
+PRESETS_DIR = Path(
+    os.environ.get("SOINSIGHT_WEB_PRESETS") or (REPO_ROOT / ".soinsight" / "presets")
+)
+MAX_PRESETS_KEPT = 200
+_PRESET_NAME_RE = re.compile(r"^[\w][\w .\-]{0,59}$")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -541,6 +554,110 @@ def _list_samples() -> list[dict]:
                 }
             )
     return samples
+
+
+# -- 预置分析脚本 ---------------------------------------------------------
+
+
+def _preset_id(name: str) -> str:
+    """Derive a stable, filesystem- and URL-safe id from a preset display name.
+
+    中文名无法直接作为文件名（URL 里也要转义），所以只保留 ASCII 字符；
+    当名字里没有可用 ASCII 时回退到内容哈希，保证同一个名字映射到同一个 id。
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", name.strip()).strip("._-")
+    if not slug:
+        digest = hashlib.sha1(name.strip().encode("utf-8")).hexdigest()[:12]
+        return f"preset-{digest}"
+    return slug[:60]
+
+
+def _preset_path(preset_id: str) -> Path | None:
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", preset_id or ""):
+        return None
+    return Path(PRESETS_DIR) / f"{preset_id}.json"
+
+
+def _list_presets() -> list[dict]:
+    directory = Path(PRESETS_DIR)
+    if not directory.is_dir():
+        return []
+    presets = []
+    for path in directory.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        presets.append(
+            {
+                "id": path.stem,
+                "name": str(data.get("name") or path.stem),
+                "mode": "scan" if data.get("mode") == "scan" else "multi",
+                "capabilities": [
+                    str(item) for item in data.get("capabilities") or [] if item
+                ],
+                "updated_at": path.stat().st_mtime,
+            }
+        )
+    presets.sort(key=lambda item: item["name"].lower())
+    return presets
+
+
+def _save_preset(name: str, mode: str, capabilities: list[str]) -> dict:
+    """Write one preset file. Raises ValueError with a user-facing message."""
+    display = name.strip()
+    if not display:
+        raise ValueError("预置名称不能为空")
+    if not _PRESET_NAME_RE.match(display):
+        raise ValueError("预置名称只能包含中英文、数字、空格和 . _ -，最长 60 字")
+    mode = "scan" if mode == "scan" else "multi"
+    caps = sorted({item for item in capabilities if item})
+    if mode == "multi":
+        if not caps:
+            raise ValueError("至少勾选一项分析能力后才能保存")
+        # Load the catalog first so an unknown id is caught on the very first
+        # save too; only when the catalog itself is unavailable (broken
+        # environment) do we skip the check, matching /api/health's tolerance.
+        _load_catalog()
+        known = _known_capability_ids()
+        unknown = [item for item in caps if known and item not in known]
+        if unknown:
+            raise ValueError("未知分析能力: " + ", ".join(unknown))
+    else:
+        caps = []
+    directory = Path(PRESETS_DIR)
+    directory.mkdir(parents=True, exist_ok=True)
+    preset_id = _preset_id(display)
+    target = _preset_path(preset_id)
+    if target is None:  # pragma: no cover - _preset_id already sanitises
+        raise ValueError("预置名称不合法")
+    existing = len([path for path in directory.glob("*.json")])
+    if not target.exists() and existing >= MAX_PRESETS_KEPT:
+        raise ValueError(f"预置数量已达上限 {MAX_PRESETS_KEPT}，请先删除不用的预置")
+    payload = {"name": display, "mode": mode, "capabilities": caps}
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return {
+        "id": preset_id,
+        "name": display,
+        "mode": mode,
+        "capabilities": caps,
+        "updated_at": target.stat().st_mtime,
+    }
+
+
+def _delete_preset(preset_id: str) -> bool:
+    path = _preset_path(preset_id)
+    if path is None or not path.is_file():
+        return False
+    try:
+        path.unlink()
+    except OSError:
+        return False
+    return True
 
 
 def _kill(process: subprocess.Popen) -> None:
@@ -1062,6 +1179,7 @@ _JOB_RESULT_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/result")
 _PROJECT_TASKS_ROUTE = re.compile(r"/api/projects/(\d+)/tasks")
 _PROJECT_ITEM_ROUTE = re.compile(r"/api/projects/(\d+)")
 _TASK_ROUTE = re.compile(r"/api/tasks/(\d+)")
+_PRESET_ROUTE = re.compile(r"/api/presets/([A-Za-z0-9._-]{1,80})")
 
 
 def _safe_int(value: str | None) -> tuple[int, bool]:
@@ -1218,6 +1336,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "modules": _STATE["catalog"]})
         elif route == "/api/samples":
             self._send_json({"ok": True, "samples": _list_samples()})
+        elif route == "/api/presets":
+            self._send_json({"ok": True, "presets": _list_presets()})
         elif route == "/api/projects":
             self._send_json({"ok": True, "projects": _list_projects()})
         elif route == "/api/tasks":
@@ -1321,6 +1441,28 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "project": project})
             return
 
+        if parsed.path == "/api/presets":
+            self._discard_body()
+            capabilities = [
+                item.strip()
+                for item in params.get("capabilities", "").split(",")
+                if item.strip()
+            ]
+            try:
+                preset = _save_preset(
+                    params.get("name", ""), params.get("mode", "multi"), capabilities
+                )
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            except OSError as exc:
+                self._send_json(
+                    {"ok": False, "error": f"保存预置失败: {exc}"},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+            self._send_json({"ok": True, "preset": preset})
+            return
 
         if parsed.path not in ("/api/analyze", "/api/jobs"):
             self._send_json(
@@ -1579,6 +1721,16 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
             self._send_json({"ok": True, "deleted": "task"})
+            return
+        preset_match = _PRESET_ROUTE.fullmatch(parsed.path)
+        if preset_match:
+            self._discard_body()
+            if not _delete_preset(preset_match.group(1)):
+                self._send_json(
+                    {"ok": False, "error": "预置不存在"}, HTTPStatus.NOT_FOUND
+                )
+                return
+            self._send_json({"ok": True, "deleted": "preset"})
             return
         self._send_json(
             {"ok": False, "error": f"未知路径: {parsed.path}"},
