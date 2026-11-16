@@ -266,19 +266,44 @@ class WebStaticRouteTests(unittest.TestCase):
     def test_static_assets_are_not_cached_heuristically(self):
         """index.html must revalidate on every reload.
 
-        The console is a single file under active development. Without an
-        explicit Cache-Control the browser applies heuristic caching, so after
-        an edit a plain reload can still execute the previous version and the
-        page then behaves differently from the source on disk.
+        The console is under active development. Without an explicit
+        Cache-Control the browser applies heuristic caching, so after an edit
+        a plain reload can still execute the previous version and the page
+        then behaves differently from the source on disk.
         """
-        for route in ("/", "/index.html", "/so-scan.html"):
+        for route in ("/", "/index.html", "/so-scan.html", "/console.css", "/console.js"):
             with self.subTest(route=route):
                 with urllib.request.urlopen(self.base + route) as response:
                     cache = (response.headers.get("Cache-Control") or "").lower()
                 self.assertIn("no-cache", cache)
                 self.assertIn("must-revalidate", cache)
 
+    def test_serves_split_console_assets(self):
+        """index.html pulls its CSS/JS from real files instead of inlining them.
 
+        The stylesheet and the script are separate documents now, so the
+        server must hand them out with the right content type and the page
+        must reference them -- an inline leftover would silently work while
+        the split files went unused.
+        """
+        with urllib.request.urlopen(self.base + "/index.html") as response:
+            page = response.read().decode("utf-8")
+        self.assertIn('href="console.css"', page)
+        self.assertIn('src="console.js"', page)
+        self.assertNotIn("<style>", page)
+        self.assertNotIn("<script>", page)
+
+        for route, content_type in (
+            ("/console.css", "text/css"),
+            ("/console.js", "text/javascript"),
+        ):
+            with self.subTest(route=route):
+                with urllib.request.urlopen(self.base + route) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn(content_type, response.headers.get("Content-Type", ""))
+                    self.assertGreater(len(response.read()), 0)
+
+    def test_never_serves_server_source_or_launcher(self):
         for route in ("/server.py", "/start-web.bat", "/__pycache__/server.cpython-310.pyc"):
             with self.assertRaises(urllib.error.HTTPError) as ctx:
                 urllib.request.urlopen(self.base + route)

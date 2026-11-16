@@ -1173,6 +1173,10 @@ CONTENT_TYPES = {
     ".md": "text/plain; charset=utf-8",
 }
 
+# 只有文本类资源值得压缩；图片（png/ico）本身已是压缩格式。
+_GZIP_SUFFIXES = frozenset({".html", ".css", ".js", ".json", ".svg", ".md"})
+# 小于这个体积压缩收益不抵开销，直接原样发送。
+_GZIP_MIN_BYTES = 1024
 
 _JOB_LOG_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/log")
 _JOB_RESULT_ROUTE = re.compile(r"/api/jobs/([0-9a-f]{12})/result")
@@ -1303,15 +1307,42 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         body = target.read_bytes()
+        stat = target.stat()
+        # 用「大小-修改时间」生成弱 ETag：控制台资源是开发中的静态文件，每次改动都会变。
+        etag = f'W/"{stat.st_size:x}-{int(stat.st_mtime):x}"'
+        # 页面资源没有缓存头时浏览器按启发式规则缓存，改了代码刷新后仍跑旧逻辑，
+        # 表现为"页面行为和代码对不上"。no-cache + must-revalidate 让每次刷新
+        # 都回源校验，同时允许 304 省流量。
+        cache_control = "no-cache, must-revalidate"
+
+        # 命中缓存：回 304，连响应体都不用发。
+        if etag in (self.headers.get("If-None-Match") or ""):
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache_control)
+            self.end_headers()
+            return
+
+        # 文本资源按客户端支持的编码压缩后再发，控制台体积较大，收益明显。
+        encoded = body
+        gzip_ok = (
+            target.suffix.lower() in _GZIP_SUFFIXES
+            and len(body) >= _GZIP_MIN_BYTES
+            and "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+        )
+        if gzip_ok:
+            encoded = gzip.compress(body, 6)
+
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        # index.html 是开发中的单文件控制台：没有缓存头时浏览器按启发式规则
-        # 缓存它，改了代码刷新后仍跑旧逻辑，表现为"页面行为和代码对不上"。
-        # no-cache + must-revalidate 让每次刷新都回源校验，同时允许 304 省流量。
-        self.send_header("Cache-Control", "no-cache, must-revalidate")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", cache_control)
+        if gzip_ok:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(encoded)
 
     # -- routes ----------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib name
