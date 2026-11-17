@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SOInsight Web 控制台</title>
+<script>
+/* 在样式表加载前恢复上次的界面风格（A/B/C/D），避免换肤闪烁 */
+try { document.documentElement.dataset.style = localStorage.getItem("soinsight-console-style") || "a"; } catch (e) {}
+</script>
 <link rel="stylesheet" href="console.css">
 </head>
 <body>
@@ -11,14 +15,21 @@
 <header class="topbar">
   <div class="brand">
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="#0f766e" stroke-width="1.8"/>
-      <path d="M8 8v10M8 13h3.5a2.5 2.5 0 0 0 0-5H8v10" stroke="#0f766e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M14.5 18v-6.5h4.5M16 12.5h3" stroke="#115e59" stroke-width="1.6" stroke-linecap="round"/>
+      <rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M8 8v10M8 13h3.5a2.5 2.5 0 0 0 0-5H8v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14.5 18v-6.5h4.5M16 12.5h3" stroke="currentColor" stroke-width="1.6" stroke-opacity=".7" stroke-linecap="round"/>
     </svg>
     SOInsight <span class="sub">Web 控制台 · ELF 静态分析</span>
   </div>
   <span class="topbar-spacer"></span>
   <a href="/so-scan.html" class="topbar-link">深度分析台 →</a>
+  <div class="style-switch" role="toolbar" aria-label="界面风格"
+       title="界面风格：A 暗黑指挥 / B SaaS浅色 / C 终端极简 / D 霓虹薄荷（快捷键 1-4）">
+    <button type="button" data-style="a">A</button>
+    <button type="button" data-style="b">B</button>
+    <button type="button" data-style="c">C</button>
+    <button type="button" data-style="d">D</button>
+  </div>
   <span class="badge" id="version-badge">加载中…</span>
   <div class="health">
     <span class="dot" id="health-dot"></span>
@@ -219,8 +230,8 @@
             </div>
             <h3 style="margin-top:14px">Web 控制台如何工作</h3>
             <div class="run-box">
-              <pre>py -3 web/server.py        <span style="color:#5b7080"># 启动服务并自动打开浏览器</span></pre>
-              <pre class="last">soinsight scan TARGET --enable basic.elf,basic.symbols --format json   <span style="color:#5b7080"># 页面每次运行等价于这条 CLI</span></pre>
+              <pre>py -3 web/server.py        <span style="color:var(--muted)"># 启动服务并自动打开浏览器</span></pre>
+              <pre class="last">soinsight scan TARGET --enable basic.elf,basic.symbols --format json   <span style="color:var(--muted)"># 页面每次运行等价于这条 CLI</span></pre>
             </div>
             <p class="hint" style="margin-top:8px">页面通过 <code>/api/analyze</code> 把目标交给本地服务，服务以子进程执行上面的 CLI 并回传 JSON；服务仅绑定 127.0.0.1，上传文件只写入系统临时目录、分析后即删。命令行用法见 <code>docs/quickstart.md</code>。</p>
           </div>
@@ -499,7 +510,7 @@
     <section class="view" data-view="settings">
       <div class="panel">
         <h2>设置</h2>
-        <p class="hint" style="margin-top:0">偏好只保存在本机浏览器（localStorage），项目与任务数据保存在本地 SQLite 数据库，两者互不影响。</p>
+        <p class="hint" style="margin-top:0">偏好只保存在本机浏览器（localStorage），项目与任务数据保存在本地 SQLite 数据库，两者互不影响。界面风格可在顶栏右上角 A / B / C / D 切换（快捷键 1-4），选择同样保存在本机。</p>
 
         <div class="section-title" style="margin-top:18px">当前偏好</div>
         <div id="settings-prefs"></div>
@@ -524,5 +535,43 @@
 </footer>
 
 <script src="console.js"></script>
+<script>
+/* 界面风格切换：不改动 console.js，独立成一小段脚本 */
+(function () {
+  var NAMES = {
+    a: "A · 暗黑指挥中心", b: "B · 清爽 SaaS 浅色",
+    c: "C · 极简开发者终端", d: "D · 霓虹薄荷"
+  };
+  var ORDER = ["a", "b", "c", "d"];
+  var btns = document.querySelectorAll(".style-switch button");
+
+  function setStyle(s) {
+    if (!NAMES[s]) s = "a";
+    document.documentElement.dataset.style = s;
+    try { localStorage.setItem("soinsight-console-style", s); } catch (e) {}
+    for (var i = 0; i < btns.length; i++) {
+      var key = btns[i].getAttribute("data-style");
+      var on = key === s;
+      btns[i].classList.toggle("active", on);
+      btns[i].setAttribute("aria-pressed", on ? "true" : "false");
+      btns[i].title = NAMES[key];
+    }
+  }
+
+  for (var i = 0; i < btns.length; i++) {
+    (function (btn) {
+      btn.addEventListener("click", function () { setStyle(btn.getAttribute("data-style")); });
+    })(btns[i]);
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target && e.target.tagName;
+    if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+    var idx = ["1", "2", "3", "4"].indexOf(e.key);
+    if (idx >= 0) setStyle(ORDER[idx]);
+  });
+  setStyle(document.documentElement.dataset.style);
+})();
+</script>
 </body>
 </html>
