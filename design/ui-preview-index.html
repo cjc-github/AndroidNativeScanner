@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOInsight · UI 改版预览对比</title>
+<!--
+  对比入口页：汇总所有 UI 改版预览稿，点击卡片打开对应文件。
+  均为纯静态假数据预览，不影响现有前端实现。
+-->
+<style>
+:root {
+  --bg:#F4F6F9; --surface:#FFFFFF; --text:#1B2733; --dim:#5F7186; --faint:#93A3B5;
+  --border:#E1E8EF; --accent:#2563EB;
+  --radius:14px;
+  --font:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+}
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:14px/1.6 var(--font); }
+.wrap { max-width:1080px; margin:0 auto; padding:48px 24px 64px; }
+header h1 { margin:0 0 8px; font-size:24px; letter-spacing:-.01em; }
+header p { margin:0; color:var(--dim); font-size:13.5px; }
+header .tip { margin-top:10px; font-size:12px; color:var(--faint); }
+.tip code { font-family:var(--mono); font-size:11.5px; background:#EDF1F6; padding:1px 6px; border-radius:5px; }
+.grid { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; margin-top:28px; }
+.preview-card {
+  display:block; background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:22px 24px; text-decoration:none; color:inherit;
+  transition:all .18s;
+}
+.preview-card:hover { border-color:var(--accent); box-shadow:0 10px 30px rgba(27,39,51,.1); transform:translateY(-2px); text-decoration:none; }
+.pc-top { display:flex; align-items:center; gap:10px; }
+.pc-name { font-size:16px; font-weight:700; }
+.pc-tag {
+  font-size:10.5px; font-family:var(--mono); padding:2px 8px; border-radius:99px;
+  border:1px solid var(--border); color:var(--dim); margin-left:auto;
+}
+.swatches { display:flex; gap:6px; margin:14px 0 12px; }
+.swatches i { width:22px; height:22px; border-radius:7px; border:1px solid rgba(0,0,0,.08); }
+.pc-desc { font-size:13px; color:var(--dim); margin:0 0 12px; }
+.pc-feats { display:flex; flex-wrap:wrap; gap:6px; }
+.pc-feats span {
+  font-size:11px; color:var(--dim); background:#F1F5F9;
+  padding:2px 9px; border-radius:99px;
+}
+.pc-open { margin-top:14px; font-size:12.5px; color:var(--accent); font-weight:600; }
+.pc-file { font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+footer { margin-top:36px; font-size:12px; color:var(--faint); }
+@media (max-width:820px) { .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>SOInsight 控制台 · UI 改版预览对比</h1>
+    <p>四套方向各异的设计稿：同一份演示数据、同一组页面（总览 / 项目管理 / 项目详情 / 分析结果 / 设置 + 任务向导弹窗），横向对比配色与布局。</p>
+    <p class="tip">全部为纯静态假数据，不接后端；不改动 <code>src/soinsight/web/</code> 下的任何现有文件。点击卡片打开预览，预览稿内部可切换视图、打开向导弹窗。</p>
+  </header>
+
+  <a class="preview-card" href="ui-preview-all.html" style="border-color:#B9CFF5; background:#FBFDFF; margin-top:28px;">
+    <div class="pc-top">
+      <span class="pc-name">★ 一页对比 · 四风格一键切换（推荐）</span>
+      <span class="pc-tag">A / B / C / D 合并版</span>
+    </div>
+    <div class="swatches">
+      <i style="background:#22D3EE"></i><i style="background:#2563EB"></i><i style="background:#3FB950"></i><i style="background:#5AF2C8"></i><i style="background:#F6F8FC"></i>
+    </div>
+    <p class="pc-desc">同一套页面、同一份数据，右下角按钮（或快捷键 1/2/3/4）在四种风格间即时换肤，选择会自动记忆。侧栏 / 顶栏 / 图标栏布局与密度随风格一起切换，对比选型最方便。</p>
+    <div class="pc-feats">
+      <span>即时换肤</span><span>快捷键 1-4</span><span>选择记忆</span><span>含任务向导弹窗</span><span>布局随风格变形</span>
+    </div>
+    <div class="pc-open">打开合并预览 →</div>
+    <div class="pc-file">ui-preview-all.html</div>
+  </a>
+
+  <div class="grid">
+    <a class="preview-card" href="ui-preview-a-dark-command.html">
+      <div class="pc-top">
+        <span class="pc-name">A · 暗黑指挥中心</span>
+        <span class="pc-tag">侧栏布局</span>
+      </div>
+      <div class="swatches">
+        <i style="background:#0A0E1A"></i><i style="background:#101626"></i><i style="background:#22D3EE"></i><i style="background:#34D399"></i><i style="background:#FB7185"></i>
+      </div>
+      <p class="pc-desc">近黑深蓝底 + 霓虹青主色，发光只压主按钮与关键指标。环形风险分布图、迷你趋势线、可排序表格，安全工具的专业大屏感。</p>
+      <div class="pc-feats">
+        <span>240px 分组侧栏</span><span>KPI 大数字 + Sparkline</span><span>Donut 环形图</span><span>堆叠柱趋势</span><span>表头排序</span>
+      </div>
+      <div class="pc-open">打开预览 →</div>
+      <div class="pc-file">ui-preview-a-dark-command.html</div>
+    </a>
+
+    <a class="preview-card" href="ui-preview-b-light-saas.html">
+      <div class="pc-top">
+        <span class="pc-name">B · 清爽 SaaS 浅色</span>
+        <span class="pc-tag">顶部导航</span>
+      </div>
+      <div class="swatches">
+        <i style="background:#F6F8FC"></i><i style="background:#FFFFFF"></i><i style="background:#2563EB"></i><i style="background:#06B6D4"></i><i style="background:#10B981"></i>
+      </div>
+      <p class="pc-desc">冷白底 + 蓝青渐变主按钮，大圆角卡片与柔和阴影，Stripe / Linear 风格。平滑面积趋势图、项目卡片网格，唯一采用顶部横向导航的方向。</p>
+      <div class="pc-feats">
+        <span>顶部横向导航</span><span>渐变主按钮</span><span>平滑面积图</span><span>项目卡片网格</span><span>圆角横条风险分布</span>
+      </div>
+      <div class="pc-open">打开预览 →</div>
+      <div class="pc-file">ui-preview-b-light-saas.html</div>
+    </a>
+
+    <a class="preview-card" href="ui-preview-c-dev-minimal.html">
+      <div class="pc-top">
+        <span class="pc-name">C · 极简开发者终端风</span>
+        <span class="pc-tag">窄侧栏 + 命令栏</span>
+      </div>
+      <div class="swatches">
+        <i style="background:#0D1117"></i><i style="background:#161B22"></i><i style="background:#3FB950"></i><i style="background:#58A6FF"></i><i style="background:#F85149"></i>
+      </div>
+      <p class="pc-desc">GitHub Dark 式中性近黑 + 单一绿色高亮，等宽数字、高密度表格、细边框几乎无阴影。失败列表做成终端日志，面向重度使用的工程师审美。</p>
+      <div class="pc-feats">
+        <span>52px 图标侧栏</span><span>Ctrl+K 命令栏</span><span>高密度表格</span><span>终端日志风失败列表</span><span>表头排序</span>
+      </div>
+      <div class="pc-open">打开预览 →</div>
+      <div class="pc-file">ui-preview-c-dev-minimal.html</div>
+    </a>
+
+    <a class="preview-card" href="ui-redesign-preview.html">
+      <div class="pc-top">
+        <span class="pc-name">D · 霓虹暗黑 / 蔚蓝科技（既有稿）</span>
+        <span class="pc-tag">侧栏布局 · 双主题</span>
+      </div>
+      <div class="swatches">
+        <i style="background:#0A0B12"></i><i style="background:#5AF2C8"></i><i style="background:#FF5C8A"></i><i style="background:#F2F7FE"></i><i style="background:#1D6FE8"></i>
+      </div>
+      <p class="pc-desc">此前已有的改版预览稿：右上角可切换「霓虹暗黑 / 蔚蓝科技」两套主题。分组侧栏、数字翻牌、Sparkline、Donut、FLIP 排序表格。</p>
+      <div class="pc-feats">
+        <span>双主题切换</span><span>数字翻牌滚动</span><span>Sparkline</span><span>Donut 联动</span><span>FLIP 排序动画</span>
+      </div>
+      <div class="pc-open">打开预览 →</div>
+      <div class="pc-file">ui-redesign-preview.html</div>
+    </a>
+  </div>
+
+  <footer>选定方向后，将按该稿重构 src/soinsight/web/index.html + console.css（保留 console.js 逻辑与 API 层）。预览稿文件均可直接双击在浏览器打开。</footer>
+</div>
+</body>
+</html>

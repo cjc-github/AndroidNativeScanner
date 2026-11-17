@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方向 B · 清爽 SaaS 浅色 — SOInsight UI 预览</title>
+<!--
+  静态预览稿 · 方向 B「清爽 SaaS 浅色」
+  ------------------------------------------------------------------
+  · 纯静态假数据，不接后端、不改动任何现有文件。
+  · 设计要点：
+      1. 冷白底 #F6F8FC + 蓝青渐变主按钮（#2563EB → #06B6D4）
+      2. 顶部横向导航条（区别于 A / C 的侧栏布局），内容区最大 1180px 居中
+      3. 大圆角卡片（16px）+ 柔和双层阴影 + 充足留白，Stripe / Linear 风格
+      4. 14 天趋势 = 平滑面积图（SVG 贝塞尔曲线）
+      5. 风险分布 = 圆角横向进度条组（区别于 A 的环形图）
+      6. 项目管理 = 卡片网格（区别于 A 的表格）
+      7. 页面：总览 / 项目管理 / 项目详情 / 分析结果 / 设置 + 两步任务向导弹窗
+  · 组件只引用语义变量（--brand / --surface / --sev-* 等），便于落地 console.css。
+-->
+<style>
+/* ================= 1. 设计令牌 ================= */
+:root {
+  --bg:#F6F8FC; --surface:#FFFFFF; --surface-2:#F8FAFD;
+  --text:#0F1E3D; --dim:#5B6B85; --faint:#8B9AB5;
+  --brand:#2563EB; --brand-2:#06B6D4; --on-brand:#FFFFFF;
+  --ok:#10B981; --warn:#F59E0B; --danger:#EF4444; --info:#3B82F6;
+  --sev-critical:#DC2626; --sev-high:#EA580C; --sev-medium:#D97706; --sev-low:#3B82F6; --sev-info:#94A3B8;
+  --border:#E4EAF3; --border-strong:#CBD6E6;
+  --field:#FFFFFF;
+  --shadow-sm:0 1px 2px rgba(15,30,61,.05);
+  --shadow:0 1px 3px rgba(15,30,61,.06), 0 10px 30px rgba(15,30,61,.07);
+  --shadow-lift:0 2px 6px rgba(15,30,61,.08), 0 16px 40px rgba(15,30,61,.12);
+  --grad:linear-gradient(135deg,#2563EB,#06B6D4);
+  --radius:16px; --radius-sm:10px;
+  --font:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"Cascadia Code",Consolas,"Courier New",monospace;
+  --topnav-h:62px;
+}
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font:14px/1.6 var(--font); -webkit-font-smoothing:antialiased; }
+a { color:var(--brand); text-decoration:none; }
+a:hover { text-decoration:underline; }
+button { font:inherit; color:inherit; cursor:pointer; background:none; border:none; }
+code,.mono { font-family:var(--mono); }
+::placeholder { color:var(--faint); }
+::-webkit-scrollbar { width:10px; height:10px; }
+::-webkit-scrollbar-thumb { background:#C9D5E8; border-radius:999px; }
+
+/* ================= 2. 顶部导航 ================= */
+.topnav {
+  position:sticky; top:0; z-index:50; height:var(--topnav-h);
+  display:flex; align-items:center; gap:22px; padding:0 28px;
+  background:rgba(255,255,255,.86); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+}
+.brand { display:flex; align-items:center; gap:10px; white-space:nowrap; }
+.brand-logo {
+  width:34px; height:34px; border-radius:10px; flex:none;
+  background:var(--grad); color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 4px 12px rgba(37,99,235,.35);
+}
+.brand-logo svg { width:19px; height:19px; }
+.brand-name { font-weight:700; font-size:15px; }
+.brand-sub { font-size:11px; color:var(--faint); font-family:var(--mono); }
+.top-links { display:flex; gap:4px; margin-left:14px; }
+.top-link {
+  padding:8px 15px; border-radius:999px; font-size:13.5px; color:var(--dim);
+  font-weight:550; transition:all .15s; display:flex; align-items:center; gap:7px;
+  white-space:nowrap;
+}
+.top-link svg { width:15px; height:15px; }
+.top-link:hover { color:var(--text); background:var(--surface-2); }
+.top-link.on { color:var(--brand); background:#EAF1FE; }
+.top-link .count {
+  font-size:11px; font-family:var(--mono); background:#EEF3FA; color:var(--dim);
+  padding:1px 8px; border-radius:999px;
+}
+.top-link.on .count { background:rgba(37,99,235,.12); color:var(--brand); }
+.topnav-right { margin-left:auto; display:flex; align-items:center; gap:14px; }
+.top-search {
+  display:flex; align-items:center; gap:8px; width:auto; flex:0 1 230px; min-width:150px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:999px;
+  padding:7px 14px; color:var(--faint); font-size:12.5px; white-space:nowrap;
+}
+.top-search svg { width:14px; height:14px; }
+.health { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); white-space:nowrap; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--ok); }
+.dot.pulse { animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.35; } }
+.dir-chip {
+  font-size:11px; font-family:var(--mono); color:var(--brand);
+  border:1px solid #C9DCFC; background:#F0F5FE;
+  padding:2px 9px; border-radius:999px; white-space:nowrap;
+}
+
+.stage { max-width:1180px; margin:0 auto; padding:30px 28px 72px; }
+.view { display:none; }
+.view.on { display:block; animation:fadein .25s ease; }
+@keyframes fadein { from { opacity:0; transform:translateY(6px); } }
+
+/* ================= 3. 通用组件 ================= */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+.card-pad { padding:20px 22px; }
+.card-head { display:flex; align-items:center; gap:10px; padding:17px 22px; border-bottom:1px solid var(--border); }
+.card-title { font-size:14.5px; font-weight:650; }
+.card-sub { font-size:12px; color:var(--faint); }
+.card-head .spacer { margin-left:auto; }
+.link { font-size:12.5px; color:var(--dim); }
+.link:hover { color:var(--brand); }
+
+.btn {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:8px 16px; border-radius:999px; font-size:13px; font-weight:600;
+  border:1px solid var(--border-strong); color:var(--text); background:var(--surface);
+  transition:all .15s; box-shadow:var(--shadow-sm); white-space:nowrap;
+}
+.btn svg { width:14px; height:14px; }
+.btn:hover { border-color:var(--brand); color:var(--brand); }
+.btn.primary { background:var(--grad); color:var(--on-brand); border:none; box-shadow:0 4px 14px rgba(37,99,235,.35); }
+.btn.primary:hover { filter:brightness(1.06); color:#fff; }
+.btn.danger-ghost { border-color:#F3C6C6; color:var(--danger); background:#FEF5F5; }
+.btn.danger-ghost:hover { background:#FDEDED; }
+.btn.sm { padding:4px 12px; font-size:12px; }
+
+.chip {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11.5px; font-weight:550; padding:3px 10px; border-radius:999px;
+  border:1px solid var(--border); color:var(--dim); white-space:nowrap; background:var(--surface-2);
+}
+.chip .cdot { width:6px; height:6px; border-radius:50%; background:var(--faint); }
+.chip.ok { color:#0E9F6E; border-color:#BEE9D6; background:#EBF9F3; }
+.chip.ok .cdot { background:var(--ok); }
+.chip.warn { color:#B45309; border-color:#F2DBB6; background:#FEF7EB; }
+.chip.warn .cdot { background:var(--warn); }
+.chip.fail { color:#DC2626; border-color:#F5C2C2; background:#FEF1F1; }
+.chip.fail .cdot { background:var(--danger); }
+.chip.run { color:#2563EB; border-color:#C9DCFC; background:#F0F5FE; }
+.chip.run .cdot { background:var(--brand); animation:pulse 1.4s infinite; }
+.chip.brand { color:var(--brand); border-color:#C9DCFC; background:#F0F5FE; }
+
+input[type=text], input[type=search], select {
+  font:inherit; font-size:13px; color:var(--text);
+  background:var(--field); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:8px 14px; outline:none; transition:all .15s;
+}
+input:focus, select:focus { border-color:var(--brand); box-shadow:0 0 0 4px rgba(37,99,235,.12); }
+
+/* ================= 4. KPI 指标卡 ================= */
+.kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; margin-bottom:22px; }
+.kpi { padding:20px 20px 14px; }
+.kpi-top { display:flex; align-items:center; gap:10px; }
+.kpi-ico {
+  width:34px; height:34px; border-radius:11px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+}
+.kpi-ico svg { width:16px; height:16px; }
+.kpi-ico.i1 { background:#EAF1FE; color:#2563EB; }
+.kpi-ico.i2 { background:#E8FAF3; color:#10B981; }
+.kpi-ico.i3 { background:#FEF4E6; color:#D97706; }
+.kpi-ico.i4 { background:#FDEFF2; color:#E11D48; }
+.kpi-label { font-size:12px; color:var(--dim); font-weight:550; }
+.kpi-num { font-size:30px; font-weight:750; line-height:1.25; margin-top:12px; letter-spacing:-.01em; }
+.kpi-num small { font-size:14px; color:var(--dim); font-weight:550; }
+.kpi-num.grad { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.kpi-delta { font-size:11.5px; font-family:var(--mono); margin-top:2px; }
+.kpi-delta.up { color:#0E9F6E; } .kpi-delta.down { color:#DC2626; } .kpi-delta.flat { color:var(--faint); }
+.kpi-spark { display:block; margin-top:10px; width:100%; height:36px; }
+.kpi-spark polyline { fill:none; stroke:var(--brand); stroke-width:2; stroke-linecap:round; opacity:.9; }
+.kpi-spark .fill { fill:url(#sparkGrad); stroke:none; }
+
+/* ================= 5. 图表面板 ================= */
+.grid-2 { display:grid; grid-template-columns:1.6fr 1fr; gap:18px; margin-bottom:22px; }
+.legend { display:flex; gap:14px; font-size:12px; color:var(--dim); }
+.legend i { width:9px; height:9px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:-1px; }
+.trend-wrap { padding:12px 18px 16px; }
+.trend-svg { width:100%; height:200px; display:block; }
+.trend-svg .gridline { stroke:#EAF0F8; }
+.trend-svg text { fill:var(--faint); font-size:10px; font-family:var(--mono); }
+.trend-svg .axis-val { fill:var(--dim); }
+
+/* 风险分布横条 */
+.sev-list { padding:18px 22px 20px; display:flex; flex-direction:column; gap:15px; }
+.sev-row { display:grid; grid-template-columns:52px 1fr 44px; gap:12px; align-items:center; font-size:13px; }
+.sev-name { color:var(--dim); font-weight:550; }
+.sev-track { height:10px; border-radius:999px; background:#EEF2F9; overflow:hidden; }
+.sev-track b { display:block; height:100%; border-radius:999px; transition:width .5s cubic-bezier(.2,.8,.25,1); }
+.sev-val { font-family:var(--mono); text-align:right; font-weight:650; }
+.sev-val small { color:var(--faint); font-weight:500; font-size:10.5px; }
+.sev-foot { font-size:12px; color:var(--faint); padding:0 22px 16px; }
+
+/* 失败列表 */
+.fail-list { padding:6px 22px 16px; }
+.fail-item { display:flex; gap:13px; padding:12px 0; border-bottom:1px dashed var(--border); align-items:flex-start; }
+.fail-item:last-child { border-bottom:none; }
+.fail-ico {
+  width:30px; height:30px; flex:none; border-radius:10px; margin-top:2px;
+  background:#FDECEC; color:var(--danger);
+  display:flex; align-items:center; justify-content:center;
+}
+.fail-ico svg { width:15px; height:15px; }
+.fail-main { flex:1; min-width:0; }
+.fail-title { font-size:13px; font-weight:600; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.fail-title .tid { font-family:var(--mono); font-size:11.5px; color:var(--brand); }
+.fail-title .proj { font-size:11.5px; color:var(--dim); }
+.fail-msg { font-size:12px; color:var(--dim); margin-top:3px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.fail-time { font-size:11px; color:var(--faint); font-family:var(--mono); white-space:nowrap; }
+
+/* ================= 6. 表格 ================= */
+.table-wrap { overflow-x:auto; border-radius:0 0 var(--radius) var(--radius); }
+table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.tbl th { text-align:left; font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--faint); font-weight:600; padding:11px 20px; border-bottom:1px solid var(--border); white-space:nowrap; background:var(--surface-2); }
+.tbl th:first-child { border-radius:var(--radius) 0 0 0; }
+.tbl th:last-child { border-radius:0 var(--radius) 0 0; }
+.tbl th.sortable { cursor:pointer; user-select:none; }
+.tbl th.sortable:hover { color:var(--brand); }
+.tbl th .arrow { font-size:9px; margin-left:3px; opacity:.7; }
+.tbl td { padding:13px 20px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.tbl tbody tr:last-child td { border-bottom:none; }
+.tbl tbody tr { transition:background .12s; }
+.tbl tbody tr:hover { background:#F7FAFE; }
+.tbl tbody tr.clickable { cursor:pointer; }
+.td-mono { font-family:var(--mono); font-size:12.5px; }
+.td-dim { color:var(--dim); }
+.td-strong { font-weight:600; }
+.td-actions { text-align:right; white-space:nowrap; }
+
+/* ================= 7. 项目视图 ================= */
+.page-head { display:flex; align-items:flex-end; gap:14px; margin:6px 0 20px; flex-wrap:wrap; }
+.page-title { font-size:23px; font-weight:750; margin:0; letter-spacing:-.01em; }
+.page-desc { font-size:13px; color:var(--dim); margin-top:5px; }
+.page-head .spacer { margin-left:auto; }
+.toolbar { display:flex; gap:12px; align-items:center; margin-bottom:18px; }
+.toolbar input[type=search] { width:280px; border-radius:999px; background:var(--surface); }
+
+.proj-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+.proj-card { padding:20px; cursor:pointer; transition:all .18s; position:relative; }
+.proj-card:hover { box-shadow:var(--shadow-lift); transform:translateY(-2px); border-color:#C9DCFC; }
+.pc-head { display:flex; align-items:center; gap:12px; }
+.p-ava {
+  width:38px; height:38px; border-radius:12px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:750; font-size:15px; color:#fff;
+}
+.p-ava.c1 { background:linear-gradient(135deg,#2563EB,#06B6D4); }
+.p-ava.c2 { background:linear-gradient(135deg,#10B981,#06B6D4); }
+.p-ava.c3 { background:linear-gradient(135deg,#F59E0B,#EF4444); }
+.p-ava.c4 { background:linear-gradient(135deg,#8B5CF6,#2563EB); }
+.p-name { font-weight:650; font-family:var(--mono); font-size:13.5px; }
+.p-status { position:absolute; top:16px; right:16px; }
+.p-desc { font-size:12.5px; color:var(--dim); margin-top:12px; min-height:38px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.pc-foot { display:flex; gap:14px; margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); font-size:12px; color:var(--dim); }
+.pc-foot b { font-family:var(--mono); color:var(--text); }
+.pc-foot .last { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint); }
+
+/* 项目详情 */
+.back-link { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--dim); margin-bottom:16px; }
+.back-link:hover { color:var(--brand); }
+.proj-hero { display:flex; align-items:center; gap:20px; padding:26px 28px; margin-bottom:18px; flex-wrap:wrap; }
+.proj-hero .big-ava {
+  width:60px; height:60px; border-radius:18px; flex:none;
+  background:var(--grad); display:flex; align-items:center; justify-content:center;
+  font-size:23px; font-weight:750; color:#fff; box-shadow:0 8px 20px rgba(37,99,235,.3);
+}
+.proj-hero h2 { margin:0; font-size:20px; font-family:var(--mono); }
+.proj-hero .h-desc { font-size:13px; color:var(--dim); margin-top:5px; }
+.h-chips { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.h-actions { margin-left:auto; display:flex; gap:10px; }
+.mini-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+.mini-stat { padding:16px 18px; }
+.mini-stat .v { font-size:21px; font-weight:750; }
+.mini-stat .k { font-size:11.5px; color:var(--faint); margin-top:2px; }
+
+/* ================= 8. 分析结果 ================= */
+.prog-card { margin-bottom:18px; }
+.prog-top { display:flex; align-items:center; gap:13px; flex-wrap:wrap; }
+.prog-title { font-size:15px; font-weight:650; }
+.prog-target { font-family:var(--mono); font-size:12px; color:var(--brand); margin-top:2px; }
+.prog-meta { display:flex; gap:16px; margin-left:auto; font-size:12.5px; color:var(--dim); align-items:center; flex-wrap:wrap; }
+.prog-meta b { font-family:var(--mono); color:var(--text); font-weight:650; }
+.prog-track { height:10px; border-radius:999px; background:#EAEFF7; margin:16px 0 9px; overflow:hidden; }
+.prog-fill {
+  height:100%; width:68%; border-radius:999px; position:relative;
+  background:var(--grad); box-shadow:0 2px 8px rgba(37,99,235,.4);
+  animation:grow 1.2s cubic-bezier(.2,.8,.25,1);
+}
+.prog-fill::after {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
+  animation:shine 1.8s linear infinite;
+}
+@keyframes grow { from { width:0; } }
+@keyframes shine { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
+.prog-foot { display:flex; align-items:center; font-size:12.5px; color:var(--dim); gap:8px; }
+.prog-foot b { color:var(--brand); font-family:var(--mono); font-size:14px; }
+.spinner {
+  width:15px; height:15px; border-radius:50%; flex:none;
+  border:2.5px solid #D6E4FB; border-top-color:var(--brand);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.tabs-bar { padding:14px 18px 0; border-bottom:1px solid var(--border); display:flex; gap:6px; overflow-x:auto; }
+.tab {
+  padding:8px 16px; font-size:13px; color:var(--dim); border-radius:999px;
+  white-space:nowrap; font-weight:550; transition:all .15s;
+}
+.tab:hover { color:var(--text); background:var(--surface-2); }
+.tab.on { background:#EAF1FE; color:var(--brand); font-weight:650; }
+.tab .st { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:7px; background:var(--faint); }
+.tab .st.ok { background:var(--ok); } .tab .st.fail { background:var(--danger); }
+.tab .st.run { background:var(--brand); animation:pulse 1.4s infinite; }
+.kv-list { padding:10px 22px 18px; }
+.kv-row { display:flex; gap:16px; padding:12px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+.kv-row:last-child { border-bottom:none; }
+.kv-k { width:180px; flex:none; color:var(--dim); }
+.kv-v { font-family:var(--mono); font-size:12.5px; word-break:break-all; }
+.hard-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:16px 22px 6px; }
+.hard-item {
+  display:flex; align-items:center; gap:11px; padding:14px 16px;
+  border:1px solid var(--border); border-radius:14px; font-size:13px;
+  background:var(--surface-2);
+}
+.hard-item .hi-ico {
+  width:26px; height:26px; border-radius:50%; flex:none;
+  display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:750;
+}
+.hard-item.pass { background:#F2FBF7; border-color:#CBEADD; }
+.hard-item.pass .hi-ico { background:var(--ok); color:#fff; }
+.hard-item.miss { background:#FEF4F4; border-color:#F5CBCB; }
+.hard-item.miss .hi-ico { background:var(--danger); color:#fff; }
+.hard-item .hi-name { font-family:var(--mono); font-size:12.5px; font-weight:650; }
+.hard-item .hi-state { margin-left:auto; font-size:11px; color:var(--dim); }
+.sec-sub { font-size:12px; color:var(--faint); padding:18px 22px 0; font-weight:650; letter-spacing:.04em; }
+
+/* ================= 9. 设置 ================= */
+.set-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.set-row { display:flex; align-items:center; gap:14px; padding:15px 22px; border-bottom:1px dashed var(--border); }
+.set-row:last-child { border-bottom:none; }
+.set-name { font-size:13.5px; font-weight:600; }
+.set-desc { font-size:11.5px; color:var(--faint); margin-top:1px; }
+.switch { margin-left:auto; width:40px; height:22px; border-radius:99px; background:#DDE5F0; position:relative; transition:background .2s; flex:none; }
+.switch::after {
+  content:""; position:absolute; top:2px; left:2px; width:18px; height:18px;
+  border-radius:50%; background:#fff; transition:all .2s; box-shadow:0 1px 3px rgba(15,30,61,.25);
+}
+.switch.on { background:var(--brand); }
+.switch.on::after { left:20px; }
+
+/* ================= 10. 任务向导弹窗 ================= */
+.overlay {
+  position:fixed; inset:0; z-index:90; display:flex; align-items:center; justify-content:center;
+  background:rgba(15,30,61,.4); backdrop-filter:blur(8px); padding:24px;
+}
+.overlay[hidden] { display:none; }
+.modal {
+  width:720px; max-width:100%; max-height:calc(100vh - 80px);
+  display:flex; flex-direction:column;
+  background:var(--surface); border-radius:20px; box-shadow:0 24px 64px rgba(15,30,61,.28); overflow:hidden;
+}
+.modal-head { display:flex; align-items:center; gap:12px; padding:20px 24px 16px; border-bottom:1px solid var(--border); }
+.modal-ico {
+  width:34px; height:34px; border-radius:11px; flex:none; background:var(--grad);
+  display:flex; align-items:center; justify-content:center; color:#fff;
+}
+.modal-ico svg { width:16px; height:16px; }
+.modal-title { font-size:16px; font-weight:700; }
+.modal-x { margin-left:auto; color:var(--faint); width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; }
+.modal-x:hover { color:var(--text); background:var(--surface-2); }
+.wiz-steps { display:flex; gap:10px; padding:16px 24px 0; align-items:center; }
+.wstep { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--faint); font-weight:550; }
+.wstep .n {
+  width:22px; height:22px; border-radius:50%; border:1.5px solid var(--border-strong);
+  display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px;
+}
+.wstep.on { color:var(--brand); font-weight:650; }
+.wstep.on .n { border-color:var(--brand); background:#EAF1FE; }
+.wstep.done .n { border-color:var(--ok); color:var(--ok); background:#EBF9F3; }
+.wstep-line { width:36px; height:1.5px; background:var(--border-strong); border-radius:99px; }
+.modal-body { padding:18px 24px; overflow-y:auto; }
+.modal-foot { display:flex; gap:10px; align-items:center; padding:16px 24px; border-top:1px solid var(--border); background:var(--surface-2); }
+.modal-foot .spacer { margin-left:auto; }
+.wiz-count { font-size:12.5px; color:var(--dim); }
+.wiz-count b { color:var(--brand); font-family:var(--mono); }
+
+.src-grid { display:grid; gap:10px; }
+.src-opt {
+  display:flex; align-items:center; gap:13px; padding:14px 18px;
+  border:1.5px solid var(--border); border-radius:14px;
+  background:var(--surface); cursor:pointer; transition:all .15s;
+}
+.src-opt:hover { border-color:var(--border-strong); box-shadow:var(--shadow-sm); }
+.src-opt.sel { border-color:var(--brand); background:#F5F9FF; box-shadow:0 0 0 4px rgba(37,99,235,.1); }
+.src-radio { width:17px; height:17px; border-radius:50%; flex:none; border:1.5px solid var(--border-strong); position:relative; }
+.src-opt.sel .src-radio { border-color:var(--brand); }
+.src-opt.sel .src-radio::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--grad); }
+.src-name { font-size:13.5px; font-weight:650; }
+.src-desc { font-size:11.5px; color:var(--faint); margin-top:1px; }
+.src-field { padding:8px 0 2px 36px; }
+.src-field input, .src-field select { width:100%; font-family:var(--mono); font-size:12.5px; }
+.dropzone {
+  margin:0 0 0 36px; border:1.5px dashed var(--border-strong); border-radius:14px;
+  padding:24px; text-align:center; color:var(--faint); font-size:12.5px; background:var(--surface-2);
+}
+.dropzone.hot { border-color:var(--brand); color:var(--brand); background:#F0F5FE; }
+.field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
+.field-row label { font-size:11.5px; color:var(--dim); font-weight:550; display:block; margin-bottom:6px; }
+.field-row input { width:100%; font-family:var(--mono); font-size:12.5px; }
+
+.preset-row { display:flex; gap:9px; flex-wrap:wrap; margin-bottom:16px; }
+.preset-chip {
+  font-size:12px; font-weight:550; padding:6px 14px; border-radius:999px;
+  border:1px solid var(--border-strong); color:var(--dim); background:var(--surface); transition:all .15s;
+}
+.preset-chip:hover, .preset-chip.on { border-color:var(--brand); color:var(--brand); background:#F0F5FE; }
+.cap-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+.cap-card {
+  display:flex; gap:12px; padding:14px 16px; cursor:pointer;
+  border:1.5px solid var(--border); border-radius:14px; transition:all .15s;
+}
+.cap-card:hover { border-color:var(--border-strong); box-shadow:var(--shadow-sm); }
+.cap-card.sel { border-color:var(--brand); background:#F5F9FF; }
+.cap-check {
+  width:17px; height:17px; border-radius:6px; flex:none; margin-top:2px;
+  border:1.5px solid var(--border-strong); display:flex; align-items:center; justify-content:center; background:#fff;
+}
+.cap-card.sel .cap-check { border-color:var(--brand); background:var(--grad); border:none; }
+.cap-check svg { width:10px; height:10px; color:#fff; opacity:0; }
+.cap-card.sel .cap-check svg { opacity:1; }
+.cap-name { font-size:13px; font-weight:650; }
+.cap-desc { font-size:11px; color:var(--faint); margin-top:2px; line-height:1.5; }
+
+/* ================= 11. 响应式 ================= */
+@media (max-width:1240px) {
+  .dir-chip { display:none; }
+}
+@media (max-width:1080px) {
+  .kpi-grid { grid-template-columns:repeat(2,1fr); }
+  .grid-2 { grid-template-columns:1fr; }
+  .set-grid { grid-template-columns:1fr; }
+  .proj-grid { grid-template-columns:repeat(2,1fr); }
+  .top-search, .dir-chip { display:none; }
+  .topnav { gap:14px; }
+}
+@media (max-width:760px) {
+  .proj-grid { grid-template-columns:1fr; }
+  .top-links { overflow-x:auto; }
+  .health span { display:none; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2563EB" stop-opacity=".18"/>
+    <stop offset="1" stop-color="#2563EB" stop-opacity="0"/>
+  </linearGradient>
+</defs></svg>
+
+<!-- ============ 顶部横向导航 ============ -->
+<header class="topnav">
+  <div class="brand">
+    <div class="brand-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">SOInsight</div>
+      <div class="brand-sub">ELF 深度分析平台</div>
+    </div>
+  </div>
+
+  <nav class="top-links">
+    <button class="top-link on" data-goto="overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+      分析总览
+    </button>
+    <button class="top-link" data-goto="projects">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      项目管理 <span class="count">12</span>
+    </button>
+    <button class="top-link" data-goto="results">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 8-4-16-3 8H2"/></svg>
+      分析结果
+    </button>
+    <button class="top-link" data-goto="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+      设置
+    </button>
+  </nav>
+
+  <div class="topnav-right">
+    <span class="dir-chip">方向 B · 清爽 SaaS 浅色</span>
+    <label class="top-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      搜索任务、项目…
+    </label>
+    <span class="health"><span class="dot"></span><span>本地服务在线</span></span>
+    <button class="btn primary" id="btn-new-task-top">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新建任务
+    </button>
+  </div>
+</header>
+
+<main class="stage">
+
+  <!-- ========== 视图：总览 ========== -->
+  <section class="view on" data-view="overview">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">分析总览</h1>
+        <div class="page-desc">12 个项目 · 近 14 天 48 个任务 · 累计发现 236 处风险点</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn">导出周报</button>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="card kpi">
+        <div class="kpi-top">
+          <span class="kpi-ico i1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <span class="kpi-label">项目总数</span>
+        </div>
+        <div class="kpi-num">12</div>
+        <div class="kpi-delta up">▲ 本月 +3</div>
+        <svg class="kpi-spark" data-spark="9,10,10,11,11,12,12" viewBox="0 0 100 36" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-top">
+          <span class="kpi-ico i2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></span>
+          <span class="kpi-label">任务总数</span>
+        </div>
+        <div class="kpi-num">48</div>
+        <div class="kpi-delta up">▲ 近 14 天 42 个</div>
+        <svg class="kpi-spark" data-spark="2,3,1,4,2,5,6" viewBox="0 0 100 36" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-top">
+          <span class="kpi-ico i3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+          <span class="kpi-label">成功率</span>
+        </div>
+        <div class="kpi-num">87.5<small>%</small></div>
+        <div class="kpi-delta up">▲ 较上期 +4.2%</div>
+        <svg class="kpi-spark" data-spark="78,80,79,83,84,86,87.5" viewBox="0 0 100 36" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-top">
+          <span class="kpi-ico i4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+          <span class="kpi-label">风险发现</span>
+        </div>
+        <div class="kpi-num grad">236</div>
+        <div class="kpi-delta down">▼ 其中严重 8 处</div>
+        <svg class="kpi-spark" data-spark="14,18,16,22,20,27,23" viewBox="0 0 100 36" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">近 14 天任务趋势</span>
+          <span class="spacer"></span>
+          <div class="legend">
+            <span><i style="background:#2563EB"></i>成功</span>
+            <span><i style="background:#EF4444"></i>失败</span>
+          </div>
+        </div>
+        <div class="trend-wrap"><svg class="trend-svg" id="trend-svg" viewBox="0 0 640 200"></svg></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">风险分布</span>
+          <span class="card-sub">按严重级别 · 共 236 处</span>
+        </div>
+        <div class="sev-list" id="sev-list"></div>
+        <div class="sev-foot">严重 8 处建议立即复核，高危 34 处建议排期处理。</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">最近任务</span>
+          <span class="spacer"></span>
+          <a class="link" href="javascript:void(0)" onclick="goto('detail')">查看项目全部任务 →</a>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="recent-table">
+            <thead><tr>
+              <th class="sortable" data-key="id">任务 ID<span class="arrow"></span></th>
+              <th class="sortable" data-key="name">任务名称<span class="arrow"></span></th>
+              <th>项目</th>
+              <th>目标样本</th>
+              <th class="sortable" data-key="status">状态<span class="arrow"></span></th>
+              <th class="sortable" data-key="findings">发现<span class="arrow"></span></th>
+              <th class="sortable" data-key="time">创建时间<span class="arrow"></span></th>
+            </tr></thead>
+            <tbody id="recent-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">最近失败</span>
+          <span class="card-sub">3 条</span>
+        </div>
+        <div class="fail-list" id="fail-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 视图：项目管理 ========== -->
+  <section class="view" data-view="projects">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">项目管理</h1>
+        <div class="page-desc">按项目组织分析任务，跟踪每个 .so 样本的风险变化</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="toast('预览示意：打开新建项目弹窗')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        新建项目
+      </button>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" id="proj-search" placeholder="搜索项目名称或描述…">
+      <span class="chip brand" id="proj-count-chip">共 6 个项目</span>
+    </div>
+
+    <div class="proj-grid" id="proj-grid"></div>
+  </section>
+
+  <!-- ========== 视图：项目详情 ========== -->
+  <section class="view" data-view="detail">
+    <a class="back-link" href="javascript:void(0)" onclick="goto('projects')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      返回项目管理
+    </a>
+
+    <div class="card proj-hero">
+      <div class="big-ava">LS</div>
+      <div>
+        <h2>libsecurity-core</h2>
+        <div class="h-desc">安全加固基础库 · RELRO / CFI 加固验证 · android-arm64</div>
+        <div class="h-chips">
+          <span class="chip brand">任务 8</span>
+          <span class="chip ok">成功 6</span>
+          <span class="chip fail">失败 1</span>
+          <span class="chip">风险发现 64</span>
+        </div>
+      </div>
+      <div class="h-actions">
+        <button class="btn" onclick="toast('预览示意：打开编辑项目弹窗')">编辑项目</button>
+        <button class="btn primary" onclick="openWizard()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新建任务
+        </button>
+      </div>
+    </div>
+
+    <div class="mini-stats">
+      <div class="card mini-stat"><div class="v">8</div><div class="k">累计任务</div></div>
+      <div class="card mini-stat"><div class="v">64</div><div class="k">风险发现</div></div>
+      <div class="card mini-stat"><div class="v">2m38s</div><div class="k">平均耗时</div></div>
+      <div class="card mini-stat"><div class="v" style="color:var(--ok)">86%</div><div class="k">任务成功率</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">任务列表</span>
+        <span class="card-sub">8 个任务 · 按创建时间倒序</span>
+      </div>
+      <div class="table-wrap">
+        <table class="tbl" id="detail-table">
+          <thead><tr>
+            <th>任务 ID</th><th>任务名称</th><th>能力数</th>
+            <th class="sortable" data-key="status">状态<span class="arrow"></span></th>
+            <th class="sortable" data-key="findings">发现<span class="arrow"></span></th>
+            <th class="sortable" data-key="time">创建时间<span class="arrow"></span></th>
+            <th style="text-align:right">操作</th>
+          </tr></thead>
+          <tbody id="detail-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 视图：分析结果 ========== -->
+  <section class="view" data-view="results">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">分析结果</h1>
+        <div class="page-desc">运行中的任务实时进度，已完成任务按能力分页展示</div>
+      </div>
+    </div>
+
+    <div class="card card-pad prog-card">
+      <div class="prog-top">
+        <span class="spinner"></span>
+        <div>
+          <div class="prog-title">安全分析 + 危险 API <span class="chip run" style="margin-left:8px"><span class="cdot"></span>运行中</span></div>
+          <div class="prog-target">任务 t-048 · 目标 libsecurity.so · 项目 libsecurity-core</div>
+        </div>
+        <div class="prog-meta">
+          <span>阶段 <b>4/7</b> · 符号分析</span>
+          <span>已耗时 <b>04:12</b></span>
+          <button class="btn sm danger-ghost" onclick="toast('预览示意：发送 /api/cancel')">停止分析</button>
+        </div>
+      </div>
+      <div class="prog-track"><div class="prog-fill"></div></div>
+      <div class="prog-foot"><b>68%</b> · 预计还需 2 分钟 · 已检出 12 处风险</div>
+    </div>
+
+    <div class="card">
+      <div class="tabs-bar" id="result-tabs"></div>
+      <div id="result-panel"></div>
+    </div>
+  </section>
+
+  <!-- ========== 视图：设置 ========== -->
+  <section class="view" data-view="settings">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">设置</h1>
+        <div class="page-desc">界面偏好保存在浏览器本地，运行环境来自 /api/health</div>
+      </div>
+    </div>
+
+    <div class="set-grid">
+      <div class="card">
+        <div class="card-head"><span class="card-title">偏好</span></div>
+        <div class="set-row">
+          <div><div class="set-name">自动刷新运行中的任务</div><div class="set-desc">每 3 秒轮询一次任务进度</div></div>
+          <div class="switch on" data-toggle></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-name">任务完成通知</div><div class="set-desc">长任务结束时弹出提示</div></div>
+          <div class="switch" data-toggle></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-name">保留任务历史</div><div class="set-desc">删除项目时保留其任务记录</div></div>
+          <div class="switch on" data-toggle></div>
+        </div>
+        <div class="set-row">
+          <div><div class="set-name">主题跟随系统</div><div class="set-desc">跟随操作系统的亮色 / 暗色偏好</div></div>
+          <div class="switch on" data-toggle></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><span class="card-title">运行环境</span></div>
+        <div class="kv-list">
+          <div class="kv-row"><span class="kv-k">服务版本</span><span class="kv-v">v2.4.1</span></div>
+          <div class="kv-row"><span class="kv-k">Python</span><span class="kv-v">3.11.8</span></div>
+          <div class="kv-row"><span class="kv-k">已注册分析器</span><span class="kv-v">12 个</span></div>
+          <div class="kv-row"><span class="kv-k">默认超时</span><span class="kv-v">600s</span></div>
+          <div class="kv-row"><span class="kv-k">服务地址</span><span class="kv-v">http://127.0.0.1:8765</span></div>
+          <div class="kv-row"><span class="kv-k">数据目录</span><span class="kv-v">~/.soinsight/</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ 新建任务向导（两步） ============ -->
+<div class="overlay" id="wizard-overlay" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="modal-title">新建分析任务</span>
+      <span class="chip brand">libsecurity-core</span>
+      <button class="modal-x" onclick="closeWizard()" aria-label="关闭">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="wiz-steps">
+      <div class="wstep on" id="wstep-1"><span class="n">1</span>选择分析目标</div>
+      <div class="wstep-line"></div>
+      <div class="wstep" id="wstep-2"><span class="n">2</span>选择分析能力</div>
+    </div>
+
+    <div class="modal-body">
+      <!-- 步骤 1 -->
+      <div class="w-panel" id="wpanel-1">
+        <div class="src-grid">
+          <div class="src-opt sel" data-src="upload">
+            <span class="src-radio"></span>
+            <div><div class="src-name">上传样本</div><div class="src-desc">从本机拖入或选择 .so 文件（多模态上传）</div></div>
+          </div>
+          <div class="dropzone" id="dropzone" style="display:none">
+            拖拽 .so 文件到此处，或点击选择文件<br><span style="font-size:11px">支持 arm64-v8a / armeabi-v7a / x86_64</span>
+          </div>
+          <div class="src-opt" data-src="path">
+            <span class="src-radio"></span>
+            <div><div class="src-name">服务器路径</div><div class="src-desc">填写服务端可访问的绝对路径</div></div>
+          </div>
+          <div class="src-field" id="field-path" style="display:none">
+            <input type="text" value="/data/samples/libsecurity.so">
+          </div>
+          <div class="src-opt" data-src="sample">
+            <span class="src-radio"></span>
+            <div><div class="src-name">已有样本</div><div class="src-desc">从服务端样本库选择</div></div>
+          </div>
+          <div class="src-field" id="field-sample" style="display:none">
+            <select>
+              <option>libsecurity.so（2026-11-14 上传 · 8.2 MB）</option>
+              <option>libanticheat.so（2026-11-12 上传 · 12.6 MB）</option>
+              <option>libpaycore.so（2026-11-08 上传 · 5.1 MB）</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div><label>Include 模式（可选）</label><input type="text" placeholder="如 jni/*"></div>
+          <div><label>Exclude 模式（可选）</label><input type="text" placeholder="如 test/*"></div>
+        </div>
+      </div>
+
+      <!-- 步骤 2 -->
+      <div class="w-panel" id="wpanel-2" style="display:none">
+        <div class="preset-row">
+          <span class="preset-chip" data-preset="quick">快速体检</span>
+          <span class="preset-chip" data-preset="audit">发布前审计</span>
+          <span class="preset-chip" data-preset="strings">字符串情报</span>
+          <span style="font-size:11.5px;color:var(--faint);align-self:center">点击套用预置方案</span>
+        </div>
+        <div class="cap-grid" id="cap-grid"></div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <span class="wiz-count" id="wiz-count">已选 <b>0</b> 项能力</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeWizard()">取消</button>
+      <button class="btn" id="wiz-prev" style="display:none" onclick="wizPrev()">上一步</button>
+      <button class="btn primary" id="wiz-next" onclick="wizNext()">下一步</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-box" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99"></div>
+
+<script>
+/* ================= 数据（与真实 /api/overview 字段对齐） ================= */
+const CAPS = [
+  { id:'file',    name:'文件分析',   desc:'Hash、熵、Magic、架构、ABI、Strip 状态' },
+  { id:'elf',     name:'ELF 解析',   desc:'Header、Section、Segment、Dynamic、重定位' },
+  { id:'symbols', name:'符号分析',   desc:'导入/导出符号、Weak/Hidden、JNI 注册' },
+  { id:'dwarf',   name:'DWARF 解析', desc:'源文件、变量、结构体、类、模板、命名空间' },
+  { id:'danger',  name:'危险 API',   desc:'strcpy / system / memcpy 等高危调用点定位' },
+  { id:'strings', name:'字符串分析', desc:'URL、IP、JSON、路径、日志、配置项' },
+  { id:'risk',    name:'安全分析',   desc:'RELRO、NX、PIE、Canary、FORTIFY、CFI' },
+];
+const PRESET_CAPS = {
+  quick:  ['file','elf','risk'],
+  audit:  ['file','elf','symbols','dwarf','danger','strings','risk'],
+  strings:['strings'],
+};
+const PROJECTS = [
+  { name:'libsecurity-core', desc:'安全加固基础库 · RELRO/CFI 加固验证 · android-arm64', tasks:8, findings:64, last:'2026-11-16 09:32', status:'ok',    c:'c1' },
+  { name:'native-pay-sdk',   desc:'支付 SDK 原生层合规检查，覆盖字符串与危险 API', tasks:6, findings:41, last:'2026-11-15 18:04', status:'ok',    c:'c2' },
+  { name:'game-anti-cheat',  desc:'反作弊模块加密算法审计，最近一次全能力分析失败', tasks:9, findings:87, last:'2026-11-15 14:41', status:'fail',  c:'c3' },
+  { name:'media-codec-lib',  desc:'音视频编解码第三方库识别（OpenSSL / FFmpeg）',  tasks:5, findings:23, last:'2026-11-14 11:20', status:'ok',    c:'c4' },
+  { name:'iot-firmware-net', desc:'IoT 固件网络组件危险 API 扫描',                tasks:4, findings:15, last:'2026-11-12 16:55', status:'warn',  c:'c2' },
+  { name:'legacy-wrapper',   desc:'历史遗留 JNI 封装层，超过 7 天未扫描',          tasks:2, findings:6,  last:'2026-10-28 10:12', status:'stale', c:'c1' },
+];
+const RECENT_TASKS = [
+  { id:'t-048', name:'安全分析 + 危险 API',   proj:'libsecurity-core', target:'libsecurity.so',  status:'run',  findings:'—', time:'11-16 09:32' },
+  { id:'t-047', name:'全能力深度分析',        proj:'game-anti-cheat',  target:'libanticheat.so', status:'fail', findings:12,  time:'11-15 14:41' },
+  { id:'t-046', name:'ELF + 符号分析',        proj:'media-codec-lib',  target:'libcodec.so',     status:'ok',   findings:5,   time:'11-14 11:20' },
+  { id:'t-045', name:'字符串分析',            proj:'native-pay-sdk',   target:'libpaycore.so',   status:'ok',   findings:18,  time:'11-13 20:15' },
+  { id:'t-044', name:'DWARF + 类型恢复',      proj:'libsecurity-core', target:'libsec_jni.so',   status:'ok',   findings:3,   time:'11-13 15:47' },
+];
+const PROJECT_TASKS = [
+  { id:'t-048', name:'安全分析 + 危险 API', caps:3, status:'run',  findings:'—', time:'2026-11-16 09:32' },
+  { id:'t-044', name:'DWARF + 类型恢复',    caps:2, status:'ok',   findings:3,   time:'2026-11-13 15:47' },
+  { id:'t-039', name:'全能力深度分析',      caps:7, status:'ok',   findings:28,  time:'2026-11-10 10:05' },
+  { id:'t-036', name:'字符串分析',          caps:1, status:'ok',   findings:11,  time:'2026-11-08 16:22' },
+  { id:'t-033', name:'ELF 解析 + 符号分析', caps:2, status:'fail', findings:0,   time:'2026-11-06 09:14' },
+  { id:'t-031', name:'算法识别 + 常量分析', caps:2, status:'ok',   findings:9,   time:'2026-11-04 13:30' },
+];
+const FAILURES = [
+  { tid:'t-047', proj:'game-anti-cheat',  name:'全能力深度分析',      time:'11-15 14:41', msg:'DWARF 解析超时（> 600s），目标缺少调试段，建议关闭 DWARF 能力或补充符号' },
+  { tid:'t-043', proj:'iot-firmware-net', name:'字符串 + 危险 API',   time:'11-12 17:03', msg:'样本校验失败：SHA256 与登记值不匹配，文件可能被替换' },
+  { tid:'t-041', proj:'native-pay-sdk',   name:'符号恢复 + 类型恢复', time:'11-11 09:18', msg:'分析器异常退出：strip 后符号表为空，无法继续符号恢复' },
+];
+const TREND = [
+  { d:'11-03', ok:2, err:0 }, { d:'11-04', ok:2, err:1 }, { d:'11-05', ok:1, err:0 },
+  { d:'11-06', ok:3, err:1 }, { d:'11-07', ok:2, err:0 }, { d:'11-08', ok:4, err:1 },
+  { d:'11-09', ok:2, err:1 }, { d:'11-10', ok:5, err:1 }, { d:'11-11', ok:4, err:0 },
+  { d:'11-12', ok:6, err:1 }, { d:'11-13', ok:3, err:0 }, { d:'11-14', ok:4, err:1 },
+  { d:'11-15', ok:2, err:0 }, { d:'11-16', ok:1, err:0 },
+];
+const SEVERITY = [
+  { key:'critical', name:'严重', n:8,  color:'var(--sev-critical)' },
+  { key:'high',     name:'高危', n:34, color:'var(--sev-high)' },
+  { key:'medium',   name:'中危', n:87, color:'var(--sev-medium)' },
+  { key:'low',      name:'低危', n:96, color:'var(--sev-low)' },
+  { key:'info',     name:'提示', n:11, color:'var(--sev-info)' },
+];
+const HARDENING = [
+  { name:'RELRO',  pass:true },  { name:'NX',     pass:true },
+  { name:'PIE',    pass:false }, { name:'Canary', pass:true },
+  { name:'FORTIFY',pass:true },  { name:'CFI',    pass:false },
+];
+const DANGER_APIS = [
+  { api:'strcpy', lib:'libc.so',        n:6,  sev:'critical', loc:'jni/crypto_check.c:142' },
+  { api:'system', lib:'libexec.so',     n:2,  sev:'critical', loc:'exec/runner.c:58' },
+  { api:'dlopen', lib:'libloader.so',   n:3,  sev:'high',     loc:'loader/plugin.c:77' },
+  { api:'memcpy', lib:'libsecurity.so', n:14, sev:'medium',   loc:'core/buffer.c:210' },
+];
+const TAB_STATUS = [
+  { id:'file', st:'ok' }, { id:'elf', st:'ok' }, { id:'symbols', st:'run' },
+  { id:'dwarf', st:'ok' }, { id:'danger', st:'fail' }, { id:'strings', st:'ok' }, { id:'risk', st:'ok' },
+];
+const TAB_CONTENT = {
+  file:[['SHA256','3f9a7e…c21d'],['架构','AArch64'],['ABI','arm64-v8a'],['熵值','6.42'],['Strip','未剥离'],['Magic','ELF 64-bit LSB shared object, ARM aarch64']],
+  elf:[['Sections','28'],['Segments','8'],['动态依赖','libc.so · liblog.so · libm.so'],['重定位','312'],['TLS 段','1']],
+  symbols:[['导出符号','486'],['导入符号','217'],['Weak 符号','12'],['Hidden 符号','34'],['JNI 注册函数','24']],
+  dwarf:[['编译单元','18'],['结构体','64'],['类','12'],['模板实例','7'],['命名空间','9']],
+  strings:[['URL','32 条 · 例 https://api.example.com/v2/report'],['IP','8 条 · 例 10.12.34.7'],['JSON 配置','5 处'],['文件路径','17 处']],
+};
+
+/* ================= 基础工具 ================= */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const STATUS_CHIP = {
+  ok:   '<span class="chip ok"><span class="cdot"></span>成功</span>',
+  warn: '<span class="chip warn"><span class="cdot"></span>部分失败</span>',
+  fail: '<span class="chip fail"><span class="cdot"></span>失败</span>',
+  run:  '<span class="chip run"><span class="cdot"></span>运行中</span>',
+  stale:'<span class="chip"><span class="cdot"></span>陈旧</span>',
+};
+const STATUS_ORDER = { run:0, fail:1, warn:2, ok:3, stale:4 };
+const STATUS_CARD = {
+  ok:'<span class="chip ok"><span class="cdot"></span>正常</span>',
+  warn:'<span class="chip warn"><span class="cdot"></span>部分失败</span>',
+  fail:'<span class="chip fail"><span class="cdot"></span>上次失败</span>',
+  stale:'<span class="chip"><span class="cdot"></span>陈旧</span>',
+};
+
+function toast(msg) {
+  const box = $('#toast-box');
+  const el = document.createElement('div');
+  el.className = 'chip brand';
+  el.style.cssText = 'margin-top:8px;padding:9px 18px;font-size:13px;box-shadow:0 8px 24px rgba(15,30,61,.2)';
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+/* ================= 视图切换 ================= */
+function goto(view) {
+  $$('.top-link[data-goto]').forEach(b => b.classList.toggle('on', b.dataset.goto === view || (view === 'detail' && b.dataset.goto === 'projects')));
+  $$('.view').forEach(v => v.classList.toggle('on', v.dataset.view === view));
+  window.scrollTo({ top:0 });
+}
+$$('.top-link[data-goto]').forEach(b => b.addEventListener('click', () => goto(b.dataset.goto)));
+
+/* ================= Sparkline ================= */
+$$('svg[data-spark]').forEach(svg => {
+  const vals = svg.dataset.spark.split(',').map(Number);
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const pts = vals.map((v, i) => [i * (100 / (vals.length - 1)), 30 - ((v - min) / span) * 24 + 2]);
+  const line = pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  svg.innerHTML =
+    '<polygon class="fill" points="' + line + ' 100,36 0,36"></polygon>' +
+    '<polyline points="' + line + '"></polyline>';
+});
+
+/* ================= 14 天趋势（平滑面积图） ================= */
+(function renderTrend() {
+  const svg = $('#trend-svg'), W = 640, H = 200;
+  const padL = 34, padR = 14, padB = 26, padT = 14;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(...TREND.map(t => t.ok + t.err)) + 1;
+  const X = i => padL + iw * i / (TREND.length - 1);
+  const Y = v => padT + ih - (v / max) * ih;
+
+  // Catmull-Rom → Bezier 平滑路径
+  function smoothPath(pts) {
+    if (pts.length < 2) return '';
+    let d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ' C' + c1x.toFixed(1) + ' ' + c1y.toFixed(1) + ',' + c2x.toFixed(1) + ' ' + c2y.toFixed(1) + ',' + p2[0].toFixed(1) + ' ' + p2[1].toFixed(1);
+    }
+    return d;
+  }
+
+  const okPts = TREND.map((t, i) => [X(i), Y(t.ok)]);
+  const errPts = TREND.map((t, i) => [X(i), Y(t.err)]);
+  const okLine = smoothPath(okPts);
+  const okArea = okLine + ' L' + X(TREND.length - 1).toFixed(1) + ' ' + (padT + ih) + ' L' + padL + ' ' + (padT + ih) + ' Z';
+  const errLine = smoothPath(errPts);
+
+  let out = '<defs><linearGradient id="areaOk" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0" stop-color="#2563EB" stop-opacity=".22"/><stop offset="1" stop-color="#2563EB" stop-opacity="0"/></linearGradient></defs>';
+  for (let g = 0; g <= 3; g++) {
+    const y = padT + ih - (ih * g / 3), val = Math.round(max * g / 3);
+    out += '<line class="gridline" x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '"></line>';
+    out += '<text class="axis-val" x="' + (padL - 7) + '" y="' + (y + 3) + '" text-anchor="end">' + val + '</text>';
+  }
+  TREND.forEach((t, i) => {
+    if (i % 2 === 0 || i === TREND.length - 1) out += '<text x="' + X(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + t.d + '</text>';
+  });
+  out += '<path d="' + okArea + '" fill="url(#areaOk)"></path>';
+  out += '<path d="' + errLine + '" fill="none" stroke="#EF4444" stroke-width="1.6" stroke-dasharray="4 4" opacity=".75"></path>';
+  out += '<path d="' + okLine + '" fill="none" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round"></path>';
+  okPts.forEach((p, i) => {
+    if (i % 2 === 1 || i === okPts.length - 1) out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.2" fill="#fff" stroke="#2563EB" stroke-width="2"><title>' + TREND[i].d + ' 成功 ' + TREND[i].ok + '</title></circle>';
+  });
+  svg.innerHTML = out;
+})();
+
+/* ================= 风险分布横条 ================= */
+(function renderSev() {
+  const total = SEVERITY.reduce((s, x) => s + x.n, 0);
+  const maxN = Math.max(...SEVERITY.map(s => s.n));
+  $('#sev-list').innerHTML = SEVERITY.map(s =>
+    '<div class="sev-row"><span class="sev-name">' + s.name + '</span>'
+    + '<span class="sev-track"><b style="width:' + (s.n / maxN * 100).toFixed(1) + '%;background:' + s.color + '"></b></span>'
+    + '<span class="sev-val">' + s.n + '<small> · ' + Math.round(s.n / total * 100) + '%</small></span></div>'
+  ).join('');
+})();
+
+/* ================= 表格渲染 + 排序 ================= */
+function renderRecent(rows) {
+  $('#recent-body').innerHTML = rows.map(t =>
+    '<tr class="clickable" onclick="goto(\'results\')" title="点击查看结果回放">'
+    + '<td class="td-mono" style="color:var(--brand)">' + esc(t.id) + '</td>'
+    + '<td class="td-strong">' + esc(t.name) + '</td>'
+    + '<td class="td-dim td-mono">' + esc(t.proj) + '</td>'
+    + '<td class="td-mono">' + esc(t.target) + '</td>'
+    + '<td>' + STATUS_CHIP[t.status] + '</td>'
+    + '<td class="td-mono">' + t.findings + '</td>'
+    + '<td class="td-dim td-mono">' + esc(t.time) + '</td></tr>'
+  ).join('');
+}
+function renderProjects(rows) {
+  $('#proj-grid').innerHTML = rows.map(p =>
+    '<div class="card proj-card" onclick="goto(\'detail\')">'
+    + '<div class="pc-head"><span class="p-ava ' + p.c + '">' + esc(p.name[0].toUpperCase()) + '</span>'
+    + '<div class="p-name">' + esc(p.name) + '</div></div>'
+    + '<div class="p-status">' + STATUS_CARD[p.status] + '</div>'
+    + '<div class="p-desc">' + esc(p.desc) + '</div>'
+    + '<div class="pc-foot"><span>任务 <b>' + p.tasks + '</b></span><span>发现 <b>' + p.findings + '</b></span>'
+    + '<span class="last">' + esc(p.last.slice(5)) + '</span></div></div>'
+  ).join('');
+  $('#proj-count-chip').textContent = '共 ' + rows.length + ' 个项目';
+}
+function renderDetail() {
+  $('#detail-body').innerHTML = PROJECT_TASKS.map(t =>
+    '<tr class="clickable" onclick="goto(\'results\')" title="成功任务可点击回放结果">'
+    + '<td class="td-mono" style="color:var(--brand)">' + esc(t.id) + '</td>'
+    + '<td class="td-strong">' + esc(t.name) + '</td>'
+    + '<td class="td-mono">' + t.caps + '</td>'
+    + '<td>' + STATUS_CHIP[t.status] + '</td>'
+    + '<td class="td-mono">' + t.findings + '</td>'
+    + '<td class="td-dim td-mono">' + esc(t.time) + '</td>'
+    + '<td class="td-actions">'
+    + (t.status === 'ok' ? '<button class="btn sm" onclick="event.stopPropagation();goto(\'results\')">回放结果</button> ' : '')
+    + '<button class="btn sm danger-ghost" onclick="event.stopPropagation();toast(\'预览示意：删除确认弹窗\')">删除</button></td></tr>'
+  ).join('');
+}
+renderRecent(RECENT_TASKS);
+renderProjects(PROJECTS);
+renderDetail();
+
+function makeSortable(tableSel, rows, renderFn) {
+  const ths = $$(tableSel + ' th.sortable');
+  ths.forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    const dir = th.dataset.dir === 'asc' ? 'desc' : 'asc';
+    ths.forEach(t => { t.dataset.dir = ''; const a = t.querySelector('.arrow'); if (a) a.textContent = ''; });
+    th.dataset.dir = dir;
+    const arrow = th.querySelector('.arrow'); if (arrow) arrow.textContent = dir === 'asc' ? '▲' : '▼';
+    const sorted = rows.slice().sort((a, b) => {
+      let va = a[key], vb = b[key];
+      if (key === 'status') { va = STATUS_ORDER[va]; vb = STATUS_ORDER[vb]; }
+      if (typeof va === 'string' && typeof vb === 'string') return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      va = (va === '—' || va === undefined) ? -1 : Number(va);
+      vb = (vb === '—' || vb === undefined) ? -1 : Number(vb);
+      return dir === 'asc' ? va - vb : vb - va;
+    });
+    renderFn(sorted);
+  }));
+}
+makeSortable('#recent-table', RECENT_TASKS, renderRecent);
+makeSortable('#detail-table', PROJECT_TASKS, renderDetail);
+
+/* 项目搜索过滤 */
+$('#proj-search').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  renderProjects(PROJECTS.filter(p => !q || p.name.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)));
+});
+
+/* 失败列表 */
+$('#fail-list').innerHTML = FAILURES.map(f =>
+  '<div class="fail-item"><div class="fail-ico">'
+  + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg></div>'
+  + '<div class="fail-main"><div class="fail-title"><span class="tid">' + esc(f.tid) + '</span>' + esc(f.name)
+  + '<span class="proj">' + esc(f.proj) + '</span></div>'
+  + '<div class="fail-msg">' + esc(f.msg) + '</div></div>'
+  + '<div class="fail-time">' + esc(f.time) + '</div></div>'
+).join('');
+
+/* ================= 结果 Tab ================= */
+function kvPanel(rows) {
+  return '<div class="kv-list">' + rows.map(r =>
+    '<div class="kv-row"><span class="kv-k">' + esc(r[0]) + '</span><span class="kv-v">' + esc(r[1]) + '</span></div>'
+  ).join('') + '</div>';
+}
+function riskPanel() {
+  const hard = '<div class="sec-sub">安全加固检查</div><div class="hard-grid">'
+    + HARDENING.map(h => '<div class="hard-item ' + (h.pass ? 'pass' : 'miss') + '"><span class="hi-ico">' + (h.pass ? '✓' : '✕') + '</span>'
+    + '<span class="hi-name">' + h.name + '</span><span class="hi-state">' + (h.pass ? '已启用' : '未启用') + '</span></div>').join('')
+    + '</div>';
+  const tbl = '<div class="sec-sub">危险 API 检出（' + DANGER_APIS.length + ' 个）</div><div class="table-wrap"><table class="tbl"><thead><tr>'
+    + '<th>API</th><th>所在库</th><th>调用点</th><th>级别</th><th>示例位置</th></tr></thead><tbody>'
+    + DANGER_APIS.map(d => '<tr><td class="td-mono td-strong">' + esc(d.api) + '</td><td class="td-mono">' + esc(d.lib) + '</td>'
+    + '<td class="td-mono">' + d.n + '</td>'
+    + '<td><span class="chip" style="color:var(--sev-' + d.sev + ');border-color:var(--sev-' + d.sev + ');background:transparent">' + (d.sev === 'critical' ? '严重' : d.sev === 'high' ? '高危' : '中危') + '</span></td>'
+    + '<td class="td-mono td-dim">' + esc(d.loc) + '</td></tr>').join('')
+    + '</tbody></table></div>';
+  return '<div style="padding-bottom:16px">' + hard + tbl + '</div>';
+}
+function renderResultTabs(activeId) {
+  $('#result-tabs').innerHTML = CAPS.map(c => {
+    const st = (TAB_STATUS.find(s => s.id === c.id) || {}).st || 'ok';
+    return '<button class="tab' + (c.id === activeId ? ' on' : '') + '" data-tab="' + c.id + '">'
+      + '<span class="st ' + st + '"></span>' + c.name + '</button>';
+  }).join('');
+  const panel = activeId === 'risk' ? riskPanel() : kvPanel(TAB_CONTENT[activeId] || [['提示','该能力暂无数据']]);
+  $('#result-panel').innerHTML = panel;
+  $$('#result-tabs .tab').forEach(b => b.addEventListener('click', () => renderResultTabs(b.dataset.tab)));
+}
+renderResultTabs('risk');
+
+/* ================= 设置开关 ================= */
+$$('[data-toggle]').forEach(sw => sw.addEventListener('click', () => sw.classList.toggle('on')));
+
+/* ================= 向导 ================= */
+const SRC_FIELD = { upload:'dropzone', path:'field-path', sample:'field-sample' };
+let wizStep = 1;
+const selCaps = new Set(['file', 'elf', 'symbols', 'risk']);
+
+function openWizard() { $('#wizard-overlay').hidden = false; setWizStep(1); }
+function closeWizard() { $('#wizard-overlay').hidden = true; }
+$('#btn-new-task-top').addEventListener('click', openWizard);
+$('#wizard-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeWizard(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeWizard(); });
+
+$$('.src-opt').forEach(opt => opt.addEventListener('click', () => {
+  $$('.src-opt').forEach(o => o.classList.remove('sel'));
+  opt.classList.add('sel');
+  Object.values(SRC_FIELD).forEach(id => { $('#' + id).style.display = 'none'; });
+  const f = SRC_FIELD[opt.dataset.src];
+  if (f) $('#' + f).style.display = '';
+}));
+
+function renderCaps() {
+  $('#cap-grid').innerHTML = CAPS.map(c =>
+    '<div class="cap-card' + (selCaps.has(c.id) ? ' sel' : '') + '" data-cap="' + c.id + '">'
+    + '<span class="cap-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l6 6L20 6"/></svg></span>'
+    + '<div><div class="cap-name">' + c.name + '</div><div class="cap-desc">' + c.desc + '</div></div></div>'
+  ).join('');
+  $$('.cap-card').forEach(card => card.addEventListener('click', () => {
+    const id = card.dataset.cap;
+    selCaps.has(id) ? selCaps.delete(id) : selCaps.add(id);
+    renderCaps();
+  }));
+  $$('.preset-chip').forEach(ch => ch.classList.toggle('on', JSON.stringify(PRESET_CAPS[ch.dataset.preset].slice().sort()) === JSON.stringify(Array.from(selCaps).sort())));
+  $('#wiz-count').innerHTML = '已选 <b>' + selCaps.size + '</b> 项能力';
+}
+$$('.preset-chip').forEach(ch => ch.addEventListener('click', () => {
+  PRESET_CAPS[ch.dataset.preset].forEach(id => selCaps.add(id));
+  renderCaps();
+}));
+renderCaps();
+
+function setWizStep(n) {
+  wizStep = n;
+  $('#wpanel-1').style.display = n === 1 ? '' : 'none';
+  $('#wpanel-2').style.display = n === 2 ? '' : 'none';
+  $('#wstep-1').className = 'wstep ' + (n >= 1 ? (n === 1 ? 'on' : 'done') : '');
+  $('#wstep-2').className = 'wstep ' + (n === 2 ? 'on' : '');
+  $('#wstep-1 .n').textContent = n >= 2 ? '✓' : '1';
+  $('#wiz-prev').style.display = n === 2 ? '' : 'none';
+  $('#wiz-next').textContent = n === 1 ? '下一步' : '开始分析';
+}
+function wizPrev() { if (wizStep === 2) setWizStep(1); }
+function wizNext() {
+  if (wizStep === 1) setWizStep(2);
+  else { closeWizard(); toast('预览示意：POST /api/analyze 开始分析（' + selCaps.size + ' 项能力）'); }
+}
+
+/* dropzone 演示 */
+const dz = $('#dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('hot'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('hot'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('hot'); toast('预览示意：接收文件 ' + (e.dataTransfer.files[0] ? e.dataTransfer.files[0].name : 'demo.so')); });
+</script>
+</body>
+</html>

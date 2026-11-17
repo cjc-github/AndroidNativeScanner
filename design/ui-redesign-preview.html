@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="neon">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOInsight 控制台 · UI 改版静态预览</title>
+<!--
+  静态预览说明
+  ------------------------------------------------------------------
+  · 本文件是「预览稿」，不改动任何现有文件，不接后端、不请求接口。
+  · 数据全部为演示假数据，用于展示布局 / 配色 / 交互。
+  · 右上角可切换两套知识库配色：霓虹暗黑 / 蔚蓝科技。
+  · 采用的设计（UI 设计知识库）：
+      1. 配色方案：霓虹暗黑      —— 近黑底 + 霓虹青主色，发光只压主按钮
+      2. 配色方案：蔚蓝科技      —— 蓝青主色 + 冷白底，渐变主按钮（可切换对照）
+      3. 侧边栏导航              —— 左侧竖排分组导航 + 当前项高亮
+      4. 数字滚动                —— 关键指标翻牌滚轮
+      5. 迷你趋势线 Sparkline    —— 指标卡里的 7 天小折线 + hover 气泡
+      6. 环形图 Donut Chart      —— 风险分布 4 段占比 + 段/图例联动
+      7. 数据表格                —— 表头排序 + FLIP 位移动画 + 状态徽标
+  ------------------------------------------------------------------
+-->
+<style>
+/* ==================================================================
+   1. 主题变量
+   两套配色共用同一套 --ui-* 语义变量，切换 data-theme 即整体换肤。
+   所有组件只引用 --ui-*，不直接写死颜色，便于之后落到 console.css。
+   ================================================================== */
+:root {
+  --radius: 12px;
+  --radius-sm: 8px;
+  --mono: ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
+  --font: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* 霓虹暗黑（默认）—— 知识库固定色值，不跟随系统主题 */
+  --bg:#0A0B12; --surface:#14161F; --surface-2:#1A1D28;
+  --text:#E9EDF8; --text-dim:#8B93A8;
+  --brand:#5AF2C8; --on-brand:#0A0B12;
+  --success:#34F5A3; --warn:#FFD166; --danger:#FF5C8A;
+  --border:rgba(233,237,248,.14); --border-strong:rgba(233,237,248,.22);
+  --field:rgba(255,255,255,.05); --placeholder:#6E7890;
+  --topbar-bg:rgba(10,11,18,.88);
+  --glow:0 0 12px rgba(90,242,200,.55);
+  --shadow:0 8px 26px rgba(0,0,0,.45);
+  --grid-line:rgba(233,237,248,.10);
+  --track:rgba(255,255,255,.06);
+  --sidenav-bg:#0E101A;
+}
+
+html[data-theme="azure"] {
+  /* 蔚蓝科技 —— 冷白底 + 蓝青主色 */
+  --bg:#F2F7FE; --surface:#FFFFFF; --surface-2:#F7FAFF;
+  --text:#0B2545; --text-dim:#5A7290;
+  --brand:#1D6FE8; --on-brand:#FFFFFF;
+  --success:#12A35A; --warn:#E08A1E; --danger:#DC3545;
+  --border:#D8E3F2; --border-strong:#C9DAF0;
+  --field:#FFFFFF; --placeholder:#8AA0BC;
+  --topbar-bg:rgba(255,255,255,.90);
+  --glow:none;
+  --shadow:0 4px 14px rgba(11,37,69,.06);
+  --grid-line:#E6EEFA;
+  --track:#EDF2FB;
+  --sidenav-bg:#FFFFFF;
+}
+
+/* --ui-* 是组件唯一使用的语义层 */
+:root {
+  --ui-bg:var(--bg); --ui-surface:var(--surface); --ui-surface-2:var(--surface-2);
+  --ui-text:var(--text); --ui-text-dim:var(--text-dim);
+  --ui-brand:var(--brand); --ui-on-brand:var(--on-brand);
+  --ui-success:var(--success); --ui-warn:var(--warn); --ui-danger:var(--danger);
+  --ui-border:var(--border); --ui-border-strong:var(--border-strong);
+  --ui-field:var(--field); --ui-placeholder:var(--placeholder);
+  --ui-shadow:var(--shadow); --ui-grid-line:var(--grid-line); --ui-track:var(--track);
+}
+
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  margin:0; min-height:100vh; background:var(--ui-bg); color:var(--ui-text);
+  font:14px/1.6 var(--font);
+  -webkit-font-smoothing:antialiased;
+}
+code, pre, .mono { font-family:var(--mono); }
+a { color:var(--ui-brand); text-decoration:none; }
+a:hover { text-decoration:underline; }
+button { font:inherit; }
+
+/* 深色底分层靠「明度差 + 1px 描边」，不靠阴影 */
+.card {
+  background:var(--ui-surface); border:1px solid var(--ui-border);
+  border-radius:var(--radius); box-shadow:var(--ui-shadow);
+}
+/* 浅色主题下白卡与冷白底只差一点，必须靠边框 + 淡阴影分层 */
+html[data-theme="azure"] .card { box-shadow:0 4px 14px rgba(11,37,69,.06); }
+
+/* ==================================================================
+   2. 骨架：左侧固定竖排导航 + 右侧舞台
+   ================================================================== */
+.sidenav {
+  position:fixed; left:0; top:0; bottom:0; z-index:60; width:236px;
+  display:flex; flex-direction:column; gap:0;
+  background:var(--sidenav-bg); border-right:1px solid var(--ui-border);
+  padding:18px 12px 14px; overflow-y:auto; overflow-x:hidden;
+  /* 折叠态宽度过渡：曲线与知识库「侧边栏折叠」一致 */
+  transition:width .32s cubic-bezier(.2,.8,.25,1), padding .32s cubic-bezier(.2,.8,.25,1);
+}
+.sidenav::-webkit-scrollbar { width:8px; }
+.sidenav::-webkit-scrollbar-thumb { background:var(--ui-track); border-radius:999px; }
+
+.brand { display:flex; align-items:center; gap:10px; padding:0 8px 18px; white-space:nowrap; }
+.brand-logo {
+  width:34px; height:34px; flex:none; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  background:color-mix(in srgb,var(--ui-brand) 15%,transparent);
+  border:1px solid color-mix(in srgb,var(--ui-brand) 38%,transparent);
+  color:var(--ui-brand);
+}
+.brand-logo svg { width:20px; height:20px; display:block; }
+.brand-text { min-width:0; flex:1; }
+.brand-name { display:block; font-size:15px; font-weight:700; letter-spacing:.4px; line-height:1.2;
+  overflow:hidden; text-overflow:ellipsis; }
+.brand-sub { display:block; font-size:10.5px; color:var(--ui-text-dim); line-height:1.3; margin-top:2px;
+  overflow:hidden; text-overflow:ellipsis; }
+
+/* 折叠开关：按知识库设计放在侧栏 .brand 内靠右，不放到主区域 */
+.nav-toggle {
+  appearance:none; flex:0 0 auto; margin-left:auto;
+  width:30px; height:30px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--ui-border); background:var(--ui-surface-2); color:var(--ui-text);
+  font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center;
+  transition:filter .16s ease, transform .1s ease, border-color .16s ease, color .16s ease;
+}
+.nav-toggle:hover { filter:brightness(1.12); border-color:var(--ui-brand); color:var(--ui-brand); }
+.nav-toggle:active { transform:scale(.92); }
+
+.nav-group-label {
+  font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+  color:var(--ui-text-dim); opacity:.72; padding:14px 10px 6px;
+}
+.nav-item {
+  position:relative; display:flex; align-items:center; gap:11px;
+  width:100%; padding:9px 10px; margin-bottom:2px;
+  border:none; border-radius:var(--radius-sm); background:transparent;
+  color:var(--ui-text-dim); font-size:13px; font-weight:500; text-align:left;
+  cursor:pointer;
+  transition:background .15s ease, color .15s ease,
+             flex-direction .32s cubic-bezier(.2,.8,.25,1),
+             padding .32s cubic-bezier(.2,.8,.25,1), gap .32s cubic-bezier(.2,.8,.25,1);
+}
+.nav-item .ico { width:18px; height:18px; flex:none; display:block; }
+.nav-item .label {
+  flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  transition:opacity .2s ease;
+}
+.nav-item .cnt {
+  flex:none; min-width:20px; padding:0 6px; border-radius:999px; font-size:10.5px;
+  font-weight:700; line-height:18px; text-align:center;
+  background:color-mix(in srgb,var(--ui-brand) 14%,transparent);
+  color:var(--ui-brand); font-family:var(--mono);
+  transition:opacity .2s ease;
+}
+.nav-item:hover { background:var(--ui-surface-2); color:var(--ui-text); }
+.nav-item.on {
+  background:color-mix(in srgb,var(--ui-brand) 9%,transparent);
+  color:var(--ui-brand); font-weight:650;
+}
+/* 当前项左侧 3px 竖条：比单纯淡底更能指路 */
+.nav-item.on::before {
+  content:""; position:absolute; left:0; top:8px; bottom:8px; width:3px;
+  border-radius:0 3px 3px 0; background:var(--ui-brand);
+}
+.nav-sep { height:1px; background:var(--ui-border); margin:12px 6px 2px; }
+.sidenav-foot { margin-top:auto; padding:14px 8px 0; }
+.sidenav-foot .sf-line { font-size:10.5px; color:var(--ui-text-dim); line-height:1.7; }
+.sidenav-foot .sf-ver {
+  display:inline-flex; align-items:center; gap:6px; margin-top:8px;
+  font-size:10.5px; font-family:var(--mono); padding:3px 9px; border-radius:999px;
+  border:1px solid var(--ui-border); color:var(--ui-text-dim);
+}
+
+/* ---------- 折叠态（对应知识库「侧边栏折叠」） ----------
+   96px 窄条：图标在上、文字在下；隐藏分组标题 / 角标 / 底部信息；
+   当前项改为整块淡底（右图形态）。宽度 236 → 96px，.32s 过渡。 */
+.sidenav.collapsed { width:96px; padding:18px 6px 14px; }
+/* 折叠态 brand 改成竖排：logo 在上、折叠按钮在下，居中；不遮挡菜单 */
+.sidenav.collapsed .brand {
+  position:relative; flex-direction:column; gap:10px;
+  padding:0 0 18px; justify-content:center;
+}
+.sidenav.collapsed .brand-logo { width:30px; height:30px; border-radius:9px; }
+/* 品牌文字淡出并收窄（不用 display:none，避免跳变） */
+.sidenav.collapsed .brand-text { flex:0 0 auto; opacity:0; width:0; height:0; overflow:hidden; }
+.sidenav.collapsed .nav-toggle { margin:0; }
+.sidenav.collapsed .nav-group-label,
+.sidenav.collapsed .nav-sep,
+.sidenav.collapsed .sidenav-foot { display:none; }
+.sidenav.collapsed .nav-item {
+  flex-direction:column; justify-content:center; gap:4px;
+  padding:10px 4px; margin-bottom:4px; font-size:11.5px; text-align:center;
+}
+.sidenav.collapsed .nav-item .ico { width:20px; height:20px; }
+.sidenav.collapsed .nav-item .label {
+  flex:0 0 auto; width:100%; line-height:14px; word-break:keep-all;
+}
+/* 折叠态按右图保持干净：角标隐藏（绝对定位会压住图标/文字） */
+.sidenav.collapsed .nav-item .cnt { display:none; }
+/* 折叠态当前项：整块淡底 + 品牌色文字，不再用左侧竖条 */
+.sidenav.collapsed .nav-item.on {
+  background:color-mix(in srgb,var(--ui-brand) 12%,transparent);
+  color:var(--ui-brand); font-weight:650;
+}
+.sidenav.collapsed .nav-item.on::before { display:none; }
+/* 折叠后图标无法自解释：用 title 提示（JS 写入），hover 也给原生 tooltip */
+.sidenav.collapsed .nav-item:hover { background:var(--ui-surface-2); }
+
+/* 主区随侧栏宽度联动 */
+.main { margin-left:236px; min-width:0; transition:margin-left .32s cubic-bezier(.2,.8,.25,1); }
+.foot { margin-left:236px; transition:margin-left .32s cubic-bezier(.2,.8,.25,1); }
+.sidenav.collapsed ~ .main { margin-left:96px; }
+.sidenav.collapsed ~ .foot { margin-left:96px; }
+.topbar {
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:14px;
+  height:60px; padding:0 26px;
+  background:var(--topbar-bg); backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--ui-border);
+}
+.crumb { display:flex; align-items:center; gap:8px; font-size:13px; min-width:0; }
+.crumb .c-root { color:var(--ui-text-dim); }
+.crumb .c-sep { color:var(--ui-text-dim); opacity:.5; }
+.crumb .c-now { font-weight:650; white-space:nowrap; }
+.topbar-spacer { flex:1; }
+.global-search {
+  display:flex; align-items:center; gap:8px; width:230px;
+  height:34px; padding:0 11px; border-radius:var(--radius-sm);
+  background:var(--ui-field); border:1px solid var(--ui-border-strong);
+  color:var(--ui-text-dim);
+}
+.global-search svg { width:15px; height:15px; flex:none; }
+.global-search input {
+  flex:1; min-width:0; border:none; outline:none; background:transparent;
+  color:var(--ui-text); font:inherit; font-size:12.5px;
+}
+.global-search input::placeholder { color:var(--ui-placeholder); }
+.global-search:focus-within {
+  border-color:var(--ui-brand);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-brand) 20%,transparent);
+}
+.theme-switch {
+  display:flex; align-items:center; gap:7px; height:34px; padding:0 12px;
+  border-radius:var(--radius-sm); border:1px solid var(--ui-border-strong);
+  background:var(--ui-surface); color:var(--ui-text); cursor:pointer;
+  font-size:12px; font-weight:600; white-space:nowrap;
+  transition:border-color .15s, color .15s;
+}
+.theme-switch:hover { border-color:var(--ui-brand); color:var(--ui-brand); }
+.theme-switch .sw-dot {
+  width:9px; height:9px; border-radius:50%; background:var(--ui-brand);
+  box-shadow:0 0 8px color-mix(in srgb,var(--ui-brand) 60%,transparent);
+}
+.health {
+  display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ui-text-dim);
+  white-space:nowrap;
+}
+.health .dot { width:8px; height:8px; border-radius:50%; background:var(--ui-success); }
+.health .dot::after {
+  content:""; display:block; width:8px; height:8px; border-radius:50%;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-success) 22%,transparent);
+}
+.avatar {
+  width:32px; height:32px; flex:none; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:color-mix(in srgb,var(--ui-brand) 18%,transparent);
+  border:1px solid color-mix(in srgb,var(--ui-brand) 40%,transparent);
+  color:var(--ui-brand); font-size:12px; font-weight:700;
+}
+
+.stage { padding:24px 26px 56px; max-width:1600px; }
+.view { display:none; animation:view-in .18s ease; }
+.view.on { display:block; }
+@keyframes view-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+/* ==================================================================
+   3. 通用组件：按钮 / 徽标 / 面板头
+   ================================================================== */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  height:34px; padding:0 14px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--ui-border-strong); background:var(--ui-surface);
+  color:var(--ui-text); font-size:12.5px; font-weight:600;
+  transition:transform .1s ease, border-color .15s ease, color .15s ease, background .15s ease, filter .15s ease;
+}
+.btn:hover { border-color:var(--ui-brand); color:var(--ui-brand); }
+.btn:active { transform:scale(.97); }
+.btn-primary {
+  background:var(--ui-brand); border-color:var(--ui-brand); color:var(--ui-on-brand);
+  box-shadow:var(--glow); font-weight:700;
+}
+.btn-primary:hover { color:var(--ui-on-brand); }
+html[data-theme="neon"] .btn-primary:hover { background:color-mix(in srgb,var(--ui-brand) 78%,transparent); }
+html[data-theme="azure"] .btn-primary {
+  background:linear-gradient(180deg,#2E7EF0,#1D6FE8); border-color:#1D6FE8; color:#FFFFFF;
+}
+html[data-theme="azure"] .btn-primary:hover { filter:brightness(1.05); color:#FFFFFF; }
+.btn-lg { height:40px; padding:0 20px; font-size:13.5px; }
+.btn-quiet { background:transparent; }
+.btn-danger { color:var(--ui-danger); border-color:color-mix(in srgb,var(--ui-danger) 45%,transparent); }
+.btn-danger:hover { color:var(--ui-danger); border-color:var(--ui-danger); background:color-mix(in srgb,var(--ui-danger) 10%,transparent); }
+.btn-icon { width:32px; height:32px; padding:0; }
+
+.panel-head { display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+.panel-head .ph-main { flex:1; min-width:220px; }
+.panel-head h2 { margin:0 0 3px; font-size:15px; font-weight:700; letter-spacing:.1px; }
+.panel-head .ph-sub { font-size:12px; color:var(--ui-text-dim); line-height:1.55; }
+.panel-head .ph-acts { display:flex; gap:8px; flex:none; align-items:center; }
+
+.badge {
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+  line-height:1; padding:5px 9px 5px 8px; border-radius:999px;
+  background:var(--ui-surface); border:1px solid transparent;
+}
+.badge::before { content:""; width:5px; height:5px; border-radius:50%; background:currentColor; }
+.badge.ok { color:var(--ui-success); background:color-mix(in srgb,var(--ui-success) 13%,var(--ui-surface)); border-color:color-mix(in srgb,var(--ui-success) 30%,transparent); }
+.badge.run { color:var(--ui-warn); background:color-mix(in srgb,var(--ui-warn) 14%,var(--ui-surface)); border-color:color-mix(in srgb,var(--ui-warn) 30%,transparent); }
+.badge.fail { color:var(--ui-danger); background:color-mix(in srgb,var(--ui-danger) 13%,var(--ui-surface)); border-color:color-mix(in srgb,var(--ui-danger) 30%,transparent); }
+.badge.info { color:var(--ui-text-dim); background:var(--ui-surface-2); border-color:var(--ui-border); }
+
+.pill {
+  display:inline-flex; align-items:center; font-size:10.5px; line-height:1;
+  padding:4px 8px; border-radius:999px; color:var(--ui-text-dim);
+  background:var(--ui-surface-2); border:1px solid var(--ui-border);
+}
+
+/* ==================================================================
+   4. 首屏 Hero
+   ================================================================== */
+.hero {
+  position:relative; overflow:hidden;
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  padding:22px 24px; margin-bottom:18px;
+  border-radius:var(--radius); border:1px solid var(--ui-border);
+  background:
+    radial-gradient(560px 240px at 88% -20%,color-mix(in srgb,var(--ui-brand) 14%,transparent),transparent 65%),
+    var(--ui-surface);
+  box-shadow:var(--ui-shadow);
+}
+.hero-main { flex:1; min-width:260px; }
+.hero h1 { margin:0 0 6px; font-size:20px; font-weight:750; letter-spacing:.2px; }
+.hero p { margin:0; font-size:12.8px; color:var(--ui-text-dim); line-height:1.7; max-width:74ch; }
+.hero-acts { display:flex; gap:9px; flex-wrap:wrap; margin-top:16px; }
+.hero-badge {
+  position:absolute; right:22px; top:20px; font-size:10.5px;
+  font-family:var(--mono); color:var(--ui-text-dim);
+  padding:4px 10px; border:1px dashed var(--ui-border-strong); border-radius:999px;
+}
+
+/* ==================================================================
+   5. KPI 指标卡（数字滚动 + 迷你趋势线）
+   ================================================================== */
+.kpi-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+.kpi { padding:14px 16px 12px; min-height:158px; display:flex; flex-direction:column; }
+.kpi-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.kpi-label { font-size:11px; color:var(--ui-text-dim); font-weight:600; letter-spacing:.2px; }
+.kpi-pill { font-size:9.5px; line-height:1; padding:4px 7px; border-radius:999px; color:var(--ui-text-dim); background:var(--ui-surface-2); border:1px solid var(--ui-border); }
+.kpi-refresh {
+  appearance:none; cursor:pointer; font:inherit; font-size:9.5px; font-weight:600;
+  padding:3px 9px; border-radius:7px; color:var(--ui-brand);
+  border:1px solid color-mix(in srgb,var(--ui-brand) 36%,transparent);
+  background:color-mix(in srgb,var(--ui-brand) 8%,transparent);
+  transition:background .15s ease, transform .1s ease;
+}
+.kpi-refresh:hover { background:color-mix(in srgb,var(--ui-brand) 16%,transparent); }
+.kpi-refresh:active { transform:scale(.94); }
+
+/* 数字滚动：容器用专用 .roll-num，内部 .d/.strip 全部作用域化。
+   注意：表格数字列用的是 .num（右对齐），若这里也写全局 .num 会把
+   <th>/<td> 变成 32px 的 flex 容器、脱离表格流纵向堆叠（曾导致「发现项/耗时」列塌陷）。 */
+.roll-num {
+  display:flex; align-items:flex-start; font-size:32px; font-weight:700; line-height:1.15;
+  font-variant-numeric:tabular-nums; letter-spacing:.01em; margin-top:8px;
+}
+.roll-num .d { display:inline-block; width:.62em; height:1.15em; overflow:hidden; text-align:center;
+  color:var(--ui-text); transition:color .35s ease; }
+.roll-num .d.flash { color:var(--ui-brand); }
+.roll-num .strip { display:block; will-change:transform; }
+.roll-num .strip b { display:block; height:1.15em; line-height:1.15em; font-weight:700; color:inherit; }
+.kpi-delta { margin-top:6px; font-size:11px; color:var(--ui-text-dim); }
+.kpi-delta b { color:var(--ui-success); font-weight:650; }
+.kpi-delta b.down { color:var(--ui-danger); }
+.kpi-foot { margin-top:auto; padding-top:12px; }
+.kpi-meters { display:flex; flex-direction:column; gap:6px; }
+.kpi-meter { display:flex; align-items:center; gap:8px; font-size:10.5px; color:var(--ui-text-dim); }
+.kpi-meter span { flex:none; width:56px; }
+.kpi-meter .bar { flex:1; height:5px; border-radius:999px; background:var(--ui-track); overflow:hidden; }
+.kpi-meter .bar i { display:block; height:100%; border-radius:999px; background:var(--ui-brand); }
+.kpi-meter .bar i.s { background:var(--ui-success); }
+.kpi-meter .bar i.w { background:var(--ui-warn); }
+
+/* 迷你趋势线 */
+.kpi-num-s { font-size:21px; font-weight:650; line-height:1.15; margin-top:6px;
+  font-variant-numeric:tabular-nums; letter-spacing:-.2px; }
+.kpi-num-s small { font-size:10px; font-weight:600; color:var(--ui-success); margin-left:5px; letter-spacing:0; }
+.kpi-num-s small.down { color:var(--ui-danger); }
+.sparkbox { position:relative; margin-top:auto; height:56px; }
+svg.spark { display:block; width:100%; height:56px; overflow:visible; cursor:crosshair; }
+.spark .area { fill:url(#sp-grad-a); }
+.spark .area2 { fill:url(#sp-grad-b); }
+.spark .line { fill:none; stroke:var(--ui-brand); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.spark .end { fill:var(--ui-brand); }
+.spark .end-halo { fill:color-mix(in srgb,var(--ui-brand) 26%,transparent); }
+.spark .guide { stroke:color-mix(in srgb,var(--ui-text) 22%,transparent); stroke-width:1; stroke-dasharray:2 2; }
+.spark .hover { fill:var(--ui-surface); stroke:var(--ui-brand); stroke-width:2; opacity:0; }
+.spark .hover.on { opacity:1; }
+.tip {
+  position:absolute; left:0; top:0; transform:translate(-50%,-130%);
+  padding:3px 7px; border-radius:6px; font-size:10px; line-height:1.25; white-space:nowrap;
+  color:var(--ui-bg); background:var(--ui-text); opacity:0; transition:opacity .12s ease;
+  pointer-events:none; font-variant-numeric:tabular-nums; z-index:5;
+}
+.tip.on { opacity:1; }
+.tip b { font-weight:700; }
+
+/* ==================================================================
+   6. 中部三栏：风险环形图 / 14 天趋势 / 最近失败
+   ================================================================== */
+.mid-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr); gap:14px; margin-bottom:18px; }
+.panel { padding:16px 18px; }
+.panel-head.compact { margin-bottom:12px; }
+.panel-head.compact h2 { font-size:13.5px; }
+
+/* 环形图 */
+.donut-wrap { display:flex; align-items:center; gap:18px; }
+.donut { position:relative; flex:0 0 auto; width:150px; height:150px; }
+svg.ring { display:block; width:100%; height:100%; transform:rotate(-90deg); overflow:visible; }
+.seg { fill:none; stroke-width:13; stroke-linecap:butt; cursor:pointer;
+  transition:stroke-width .16s ease, opacity .16s ease; }
+.seg.hot { stroke-width:17; }
+.ring.dim .seg:not(.hot) { opacity:.45; }
+.donut-center {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; pointer-events:none; text-align:center;
+}
+.donut-center b { font-size:24px; font-weight:700; line-height:1.05; font-variant-numeric:tabular-nums; letter-spacing:-.5px; }
+.donut-center span { margin-top:3px; font-size:10.5px; line-height:1.2; color:var(--ui-text-dim); max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.legend { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:5px; }
+.lg { display:flex; align-items:center; gap:7px; font-size:11.5px; line-height:16px;
+  color:var(--ui-text-dim); cursor:default; border-radius:5px; padding:3px 5px; margin:-3px -5px; }
+.lg i { flex:0 0 auto; width:9px; height:9px; border-radius:2px; }
+.lg span { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lg b { flex:0 0 auto; font-weight:700; color:var(--ui-text); font-variant-numeric:tabular-nums; }
+.lg.hot { background:color-mix(in srgb,var(--ui-text) 7%,transparent); color:var(--ui-text); }
+.donut-foot { margin-top:12px; padding-top:10px; border-top:1px dashed var(--ui-border);
+  display:flex; justify-content:space-between; font-size:11px; color:var(--ui-text-dim); }
+.donut-foot b { color:var(--ui-text); font-family:var(--mono); }
+
+/* 14 天趋势（堆叠柱） */
+.trend-legend { display:flex; gap:14px; margin-bottom:10px; color:var(--ui-text-dim); font-size:11px; }
+.trend-legend span { display:inline-flex; align-items:center; gap:5px; }
+.trend-legend i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.trend-legend .lg-ok { background:var(--ui-success); }
+.trend-legend .lg-err { background:var(--ui-danger); }
+.trend {
+  display:flex; align-items:flex-end; gap:6px; height:150px; padding:4px 2px 0; overflow-x:auto;
+  background:repeating-linear-gradient(to top,transparent 0,transparent 36px,var(--ui-grid-line) 36px,var(--ui-grid-line) 37px);
+}
+.trend-col { flex:1 1 0; min-width:26px; height:100%; display:flex; flex-direction:column;
+  align-items:center; justify-content:flex-end; gap:6px; }
+.trend-track { width:100%; max-width:34px; flex:1; display:flex; align-items:flex-end; }
+/* flex 子项要有可分配空间，父级必须有确定的高度：这里由 JS 按当天总量算出 %。
+   stack 自身是 column，内部 err/ok 用 flex 份数按「失败:成功」真实比例分配。 */
+.trend-stack { width:100%; min-height:4px; display:flex; flex-direction:column;
+  border-radius:4px 4px 2px 2px; overflow:hidden;
+  background:color-mix(in srgb,var(--ui-brand) 10%,transparent); }
+.trend-err { display:block; width:100%; flex:0 0 auto; background:var(--ui-danger); }
+.trend-ok { display:block; width:100%; flex:1 1 auto; background:var(--ui-success); }
+.trend-zero { width:5px; height:5px; margin:0 auto 2px; border-radius:50%; background:var(--ui-border-strong); }
+.trend-day { color:var(--ui-text-dim); font-size:9.5px; white-space:nowrap; }
+
+/* 最近失败 */
+.fail-item { padding:10px 11px; margin-bottom:8px; cursor:pointer;
+  border:1px solid var(--ui-border); border-radius:9px; background:var(--ui-surface-2);
+  transition:border-color .12s ease, background .12s ease; }
+.fail-item:last-child { margin-bottom:0; }
+.fail-item:hover { border-color:var(--ui-border-strong); background:var(--ui-surface); }
+.fi-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+.fi-head b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:650; }
+.fi-head time { flex:none; color:var(--ui-text-dim); font-size:10.5px; font-family:var(--mono); }
+.fi-meta { margin-top:3px; color:var(--ui-text-dim); font-size:10.5px; }
+.fi-reason { margin-top:7px; padding:6px 9px; border-radius:7px; font-size:11px; line-height:1.5;
+  color:var(--ui-danger); background:color-mix(in srgb,var(--ui-danger) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--ui-danger) 26%,transparent);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.empty-line { padding:18px 4px; text-align:center; color:var(--ui-text-dim); font-size:12px; }
+
+/* ==================================================================
+   7. 数据表格（排序 + FLIP + 状态徽标）
+   ================================================================== */
+.table-panel { display:flex; flex-direction:column; padding:0; overflow:hidden; }
+.table-panel .panel-head { padding:16px 18px 12px; margin:0; border-bottom:1px solid var(--ui-border); }
+.tw { flex:1; min-height:0; overflow:auto; max-height:420px; }
+/* 自绘滚动条：只写 webkit 伪元素，不写 scrollbar-width，避免 Chromium 整体忽略 */
+.tw::-webkit-scrollbar { width:10px; height:10px; }
+.tw::-webkit-scrollbar-button { display:none; width:0; height:0; }
+.tw::-webkit-scrollbar-track { background:transparent; margin:5px; }
+.tw::-webkit-scrollbar-thumb { background:color-mix(in srgb,var(--ui-text) 30%,transparent);
+  border:3px solid transparent; border-right-width:4px; background-clip:padding-box; border-radius:999px; }
+.tw::-webkit-scrollbar-thumb:hover { background:color-mix(in srgb,var(--ui-text) 50%,transparent); background-clip:padding-box; }
+.tw::-webkit-scrollbar-corner { background:transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  .tw { scrollbar-width:thin; scrollbar-color:var(--ui-text-dim) transparent; }
+}
+table.data { width:100%; border-collapse:separate; border-spacing:0; }
+th, td { padding:10px 14px; text-align:left; font-size:12.5px; white-space:nowrap; line-height:1.3; }
+thead th { font-size:11px; font-weight:600; color:var(--ui-text-dim); background:var(--ui-surface);
+  border-bottom:1px solid var(--ui-border); position:sticky; top:0; z-index:3; }
+tbody td { border-bottom:1px solid color-mix(in srgb,var(--ui-border) 55%,transparent); background:var(--ui-surface); }
+tbody tr:last-child td { border-bottom:0; }
+th:first-child, td:first-child { position:sticky; left:0; z-index:2; box-shadow:1px 0 0 var(--ui-border); }
+th:first-child { z-index:4; }
+tbody tr:hover td { background:color-mix(in srgb,var(--ui-brand) 8%,var(--ui-surface)); }
+.srt { display:inline-flex; align-items:center; gap:5px; padding:1px 2px; margin:-1px -2px;
+  border:0; border-radius:6px; background:none; font:inherit; color:inherit; cursor:pointer;
+  transition:transform .1s ease, color .15s ease; }
+.srt:hover { color:var(--ui-text); }
+.srt:active { transform:scale(.94); }
+th[aria-sort="ascending"] .srt, th[aria-sort="descending"] .srt { color:var(--ui-text); font-weight:700; }
+.arw { width:0; height:0; border-left:3.5px solid transparent; border-right:3.5px solid transparent;
+  border-bottom:5px solid currentColor; opacity:.4; transition:transform .2s ease, opacity .2s ease; }
+th[aria-sort="ascending"] .arw { opacity:1; }
+th[aria-sort="descending"] .arw { transform:rotate(180deg); opacity:1; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.tname { font-family:var(--mono); font-size:12px; font-weight:600; }
+.tsub { font-size:10.5px; color:var(--ui-text-dim); margin-top:2px; }
+.tlink { color:var(--ui-brand); cursor:pointer; }
+.tlink:hover { text-decoration:underline; }
+
+/* ==================================================================
+   8. 其它视图（项目 / 任务 / 结果 / 设置）
+   ================================================================== */
+.proj-banner {
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-bottom:18px;
+  padding:22px 24px; border-radius:var(--radius);
+  background:linear-gradient(135deg,color-mix(in srgb,var(--ui-brand) 82%,#0A0B12) 0%,color-mix(in srgb,var(--ui-brand) 55%,#0A0B12) 100%);
+  border:1px solid color-mix(in srgb,var(--ui-brand) 40%,transparent);
+  color:#06120E;
+}
+html[data-theme="azure"] .proj-banner { background:linear-gradient(135deg,#2E7EF0,#1D6FE8); color:#FFFFFF; }
+.pb-avatar { width:48px; height:48px; border-radius:13px; flex:none;
+  background:rgba(255,255,255,.20); border:1px solid rgba(255,255,255,.35);
+  display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:750; }
+.pb-info { flex:1; min-width:0; }
+.pb-name { font-size:20px; font-weight:750; letter-spacing:.3px; }
+.pb-meta { font-size:11.5px; opacity:.85; margin-top:4px; }
+.pb-acts { display:flex; gap:9px; }
+.pb-acts .btn { background:rgba(255,255,255,.92); border-color:transparent; color:#0B2545; }
+/* 霓虹暗黑下横幅文字是近黑（#06120E），幽灵按钮不能用 inherit（会变成看不清的深色字） */
+.pb-acts .btn.ghost { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.42); color:#FFFFFF; }
+html[data-theme="azure"] .pb-acts .btn.ghost { color:inherit; }
+
+.filter-bar { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:14px; }
+.filter-bar input, .filter-bar select {
+  height:34px; padding:0 11px; border-radius:var(--radius-sm); font:inherit; font-size:12.5px;
+  background:var(--ui-field); color:var(--ui-text); border:1px solid var(--ui-border-strong); outline:none;
+}
+.filter-bar input { width:230px; }
+.filter-bar input::placeholder { color:var(--ui-placeholder); }
+.filter-bar input:focus, .filter-bar select:focus {
+  border-color:var(--ui-brand); box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-brand) 20%,transparent);
+}
+
+.result-tabs { display:flex; gap:4px; border-bottom:1px solid var(--ui-border); margin-bottom:16px; }
+.result-tabs button {
+  border:none; background:transparent; color:var(--ui-text-dim); cursor:pointer;
+  padding:9px 14px; font-size:12.5px; font-weight:600; border-bottom:2px solid transparent; margin-bottom:-1px;
+}
+.result-tabs button:hover { color:var(--ui-text); }
+.result-tabs button.on { color:var(--ui-brand); border-bottom-color:var(--ui-brand); }
+.finding { border:1px solid var(--ui-border); border-left-width:3px; border-radius:9px;
+  padding:11px 14px; margin-bottom:10px; background:var(--ui-surface); }
+.finding.critical { border-left-color:var(--ui-danger); }
+.finding.high { border-left-color:var(--ui-warn); }
+.finding.medium { border-left-color:var(--ui-brand); }
+.finding .fh { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:5px; }
+.finding .ft { font-weight:650; font-size:13px; }
+.finding .fr { font-family:var(--mono); font-size:10.5px; color:var(--ui-text-dim); }
+.finding .fm { font-size:12.5px; color:var(--ui-text-dim); line-height:1.6; }
+.sev { font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; }
+.sev.critical { color:var(--ui-danger); background:color-mix(in srgb,var(--ui-danger) 13%,transparent); }
+.sev.high { color:var(--ui-warn); background:color-mix(in srgb,var(--ui-warn) 14%,transparent); }
+.sev.medium { color:var(--ui-brand); background:color-mix(in srgb,var(--ui-brand) 14%,transparent); }
+
+.settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.set-row { display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:11px 0; border-bottom:1px dashed var(--ui-border); }
+.set-row:last-child { border-bottom:none; }
+.set-row .sr-t { font-size:13px; font-weight:600; }
+.set-row .sr-d { font-size:11.5px; color:var(--ui-text-dim); margin-top:2px; }
+.switch { position:relative; width:40px; height:22px; flex:none; border-radius:999px; cursor:pointer;
+  background:var(--ui-track); border:1px solid var(--ui-border-strong); transition:background .18s ease; }
+.switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background:var(--ui-text-dim); transition:transform .18s ease, background .18s ease; }
+.switch.on { background:color-mix(in srgb,var(--ui-brand) 35%,transparent); border-color:var(--ui-brand); }
+.switch.on::after { transform:translateX(18px); background:var(--ui-brand); }
+.design-list { margin:0; padding:0; list-style:none; }
+.design-list li { display:flex; align-items:baseline; gap:9px; padding:7px 0;
+  border-bottom:1px dashed var(--ui-border); font-size:12.5px; }
+.design-list li:last-child { border-bottom:none; }
+.design-list .dl-tag { flex:none; font-size:10px; font-family:var(--mono); color:var(--ui-brand);
+  padding:1px 7px; border-radius:999px; background:color-mix(in srgb,var(--ui-brand) 12%,transparent); }
+.design-list .dl-d { color:var(--ui-text-dim); font-size:11.5px; }
+.kv-line { display:flex; gap:10px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed var(--ui-border); }
+.kv-line:last-child { border-bottom:none; }
+.kv-line .k { flex:none; width:120px; color:var(--ui-text-dim); }
+.kv-line .v { font-family:var(--mono); word-break:break-all; }
+
+/* ==================================================================
+   9. 创建任务向导弹窗
+   ================================================================== */
+.overlay { position:fixed; inset:0; z-index:1000; display:none;
+  align-items:center; justify-content:center; padding:20px;
+  background:var(--overlay-bg,rgba(3,6,12,.72)); backdrop-filter:blur(4px); }
+.overlay.on { display:flex; }
+html[data-theme="azure"] .overlay { background:rgba(11,37,69,.42); }
+.modal { width:min(94vw,820px); max-height:88vh; display:flex; flex-direction:column;
+  background:var(--ui-surface); border:1px solid var(--ui-border-strong);
+  border-radius:14px; box-shadow:0 24px 64px rgba(0,0,0,.5); overflow:hidden; }
+.modal-head { display:flex; align-items:center; justify-content:space-between;
+  padding:15px 20px; border-bottom:1px solid var(--ui-border); }
+.modal-head .t { font-size:15px; font-weight:700; }
+.modal-head .x { width:28px; height:28px; border:none; background:transparent;
+  color:var(--ui-text-dim); cursor:pointer; border-radius:7px; font-size:15px; }
+.modal-head .x:hover { background:var(--ui-surface-2); color:var(--ui-text); }
+.wizard { display:flex; flex:1; min-height:0; }
+.wizard-nav { width:196px; flex:none; background:var(--ui-surface-2);
+  border-right:1px solid var(--ui-border); padding:16px 12px; }
+.w-step { display:flex; gap:10px; align-items:flex-start; padding:10px; border-radius:8px;
+  color:var(--ui-text-dim); cursor:pointer; }
+.w-step .n { width:22px; height:22px; border-radius:50%; flex:none;
+  background:var(--ui-field); border:1px solid var(--ui-border-strong);
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+.w-step.on { background:color-mix(in srgb,var(--ui-brand) 9%,transparent); color:var(--ui-brand); }
+.w-step.on .n { background:var(--ui-brand); border-color:var(--ui-brand); color:var(--ui-on-brand); }
+.w-step b { display:block; font-size:12.5px; }
+.w-step small { font-size:10.5px; color:var(--ui-text-dim); }
+.wizard-main { flex:1; min-width:0; overflow-y:auto; padding:20px 22px; }
+.w-panel { display:none; }
+.w-panel.on { display:block; }
+.w-panel h3 { margin:0 0 14px; font-size:14px; }
+.dropzone { border:2px dashed var(--ui-border-strong); border-radius:var(--radius);
+  padding:30px 16px; text-align:center; color:var(--ui-text-dim); cursor:pointer; font-size:12.5px;
+  transition:border-color .15s ease, background .15s ease; }
+.dropzone:hover, .dropzone.drag { border-color:var(--ui-brand);
+  background:color-mix(in srgb,var(--ui-brand) 8%,transparent); color:var(--ui-brand); }
+.dropzone b { display:block; font-size:14px; color:var(--ui-text); margin-bottom:4px; }
+.cap-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+.cap { position:relative; border:1px solid var(--ui-border); border-radius:9px; padding:11px 34px 11px 12px;
+  background:var(--ui-surface-2); cursor:pointer; transition:border-color .12s ease, background .12s ease; }
+.cap:hover { border-color:var(--ui-border-strong); }
+.cap.sel { border-color:var(--ui-brand); background:color-mix(in srgb,var(--ui-brand) 9%,transparent); }
+.cap .cc { position:absolute; top:12px; right:12px; width:16px; height:16px; border-radius:5px;
+  border:1.5px solid var(--ui-border-strong); background:var(--ui-field);
+  display:flex; align-items:center; justify-content:center; font-size:10px; color:transparent; }
+.cap.sel .cc { background:var(--ui-brand); border-color:var(--ui-brand); color:var(--ui-on-brand); }
+.cap .ct { font-family:var(--mono); font-size:12px; font-weight:650; }
+.cap .cd { font-size:11px; color:var(--ui-text-dim); margin-top:3px; }
+.modal-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px;
+  padding:12px 20px; border-top:1px solid var(--ui-border); background:var(--ui-surface-2); }
+.modal-foot .mf-status { flex:1; min-width:0; font-size:11.5px; color:var(--ui-text-dim); }
+
+/* 页脚（margin-left 联动在折叠态规则块里定义） */
+.foot { border-top:1px solid var(--ui-border); padding:18px 26px; text-align:center;
+  color:var(--ui-text-dim); font-size:11.5px; }
+
+/* ==================================================================
+   10. 响应式
+   ================================================================== */
+/* 需要 4 列但又要跟随响应式时加 .kpi-4；不要用内联 grid-template-columns，
+   内联样式优先级高于媒体查询，窄屏会击穿成 4 条细柱。 */
+.kpi-grid.kpi-4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+
+@media (max-width:1240px) {
+  .kpi-grid, .kpi-grid.kpi-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .mid-grid { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .mid-grid .panel:last-child { grid-column:1 / -1; }
+}
+@media (max-width:960px) {
+  /* 窄屏侧栏变成顶部横向条：折叠态在此完全不生效，折叠按钮也隐藏，
+     避免 .sidenav.collapsed 的高优先级规则把主区重新推回 96px。 */
+  .sidenav, .sidenav.collapsed { position:static; width:auto; height:auto;
+    flex-direction:row; flex-wrap:wrap; padding:10px 12px; gap:4px; overflow:visible;
+    border-right:none; border-bottom:1px solid var(--ui-border); transition:none; }
+  .brand, .sidenav.collapsed .brand { padding:0 10px 0 4px; position:static; justify-content:flex-start; }
+  .sidenav.collapsed .brand-logo { width:34px; height:34px; border-radius:10px; }
+  .sidenav.collapsed .brand-text { flex:1; opacity:1; width:auto; }
+  .nav-toggle, .sidenav.collapsed .nav-toggle { display:none; }
+  .nav-group-label, .nav-sep, .sidenav-foot,
+  .sidenav.collapsed .nav-group-label, .sidenav.collapsed .nav-sep, .sidenav.collapsed .sidenav-foot { display:none; }
+  .nav-item, .sidenav.collapsed .nav-item { width:auto; flex:none; flex-direction:row;
+    justify-content:flex-start; gap:8px; padding:7px 11px; margin-bottom:0; font-size:13px; text-align:left; }
+  .sidenav.collapsed .nav-item .ico { width:18px; height:18px; }
+  .sidenav.collapsed .nav-item .label { width:auto; flex:1; line-height:inherit; opacity:1; }
+  .sidenav.collapsed .nav-item .cnt { position:static; font-size:10.5px; line-height:18px; padding:0 6px; }
+  .nav-item.on::before, .sidenav.collapsed .nav-item.on::before { display:none; }
+  .main, .foot, .sidenav.collapsed ~ .main, .sidenav.collapsed ~ .foot { margin-left:0; transition:none; }
+  .topbar { padding:0 16px; }
+  .global-search { width:170px; }
+  .stage { padding:18px 16px 40px; }
+  .settings-grid { grid-template-columns:1fr; }
+}
+@media (max-width:680px) {
+  .kpi-grid, .kpi-grid.kpi-4, .mid-grid { grid-template-columns:1fr; }
+  .mid-grid .panel:last-child { grid-column:auto; }
+  .global-search, .health { display:none; }
+  .topbar { height:auto; min-height:56px; flex-wrap:wrap; padding:8px 14px; gap:10px; }
+  .wizard { flex-direction:column; }
+  .wizard-nav { width:auto; border-right:none; border-bottom:1px solid var(--ui-border);
+    display:flex; gap:4px; padding:8px; }
+  .w-step { flex:1; }
+  .w-step small { display:none; }
+  .cap-grid { grid-template-columns:1fr; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html { scroll-behavior:auto; }
+  *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 左侧导航 ============ -->
+<aside class="sidenav" id="sidenav">
+  <div class="brand">
+    <span class="brand-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="5"/>
+        <path d="M8 8v8M8 12h3a2 2 0 0 0 0-4H8"/><path d="M14.5 16V10h3.5"/>
+      </svg>
+    </span>
+    <span class="brand-text">
+      <span class="brand-name">SOInsight</span>
+      <span class="brand-sub">ELF 静态分析 · Web 控制台</span>
+    </span>
+    <button type="button" class="nav-toggle" id="nav-toggle" aria-label="折叠侧栏" aria-expanded="true" title="折叠侧栏">☰</button>
+  </div>
+
+  <div class="nav-group-label">工作区</div>
+  <nav id="nav-main" aria-label="侧边栏导航">
+    <button type="button" class="nav-item on" data-view="overview" aria-current="location">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+      <span class="label">总览</span>
+    </button>
+    <button type="button" class="nav-item" data-view="projects">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span class="label">项目管理</span>
+      <span class="cnt">6</span>
+    </button>
+    <button type="button" class="nav-item" data-view="tasks">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 1.9"/></svg>
+      <span class="label">任务管理</span>
+      <span class="cnt">24</span>
+    </button>
+    <button type="button" class="nav-item" data-view="results">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M6.5 20v-5"/><path d="M12 20V6"/><path d="M17.5 20v-8"/></svg>
+      <span class="label">分析结果</span>
+    </button>
+  </nav>
+
+  <div class="nav-sep"></div>
+  <div class="nav-group-label">工具</div>
+  <button type="button" class="nav-item" data-view="settings">
+    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.94 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08A1.7 1.7 0 0 0 10 3.04V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.03z"/></svg>
+    <span class="label">设置</span>
+  </button>
+
+  <div class="sidenav-foot">
+    <div class="sf-line">本地分析服务仅绑定 127.0.0.1<br>上传文件写入临时目录，分析后即删</div>
+    <span class="sf-ver"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--ui-success);display:inline-block"></span> v2.0.0 · 本地服务在线</span>
+  </div>
+</aside>
+
+<!-- ============ 主区 ============ -->
+<div class="main">
+  <header class="topbar">
+    <div class="crumb">
+      <span class="c-root">SOInsight</span>
+      <span class="c-sep">/</span>
+      <span class="c-now" id="crumb-now">总览</span>
+    </div>
+    <span class="topbar-spacer"></span>
+    <label class="global-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+      <input type="search" placeholder="搜索项目 / 任务 / 能力…" aria-label="全局搜索">
+    </label>
+    <button type="button" class="theme-switch" id="theme-toggle" title="切换配色方案">
+      <span class="sw-dot"></span><span id="theme-label">霓虹暗黑</span>
+    </button>
+    <div class="health"><span class="dot"></span><span>服务在线</span></div>
+    <div class="avatar" aria-label="当前用户">SO</div>
+  </header>
+
+  <main class="stage">
+
+    <!-- ========== 视图：总览 ========== -->
+    <section class="view on" data-view="overview">
+      <div class="hero">
+        <div class="hero-main">
+          <span class="hero-badge">PREVIEW / 静态演示数据</span>
+          <h1>下午好，欢迎回到 SOInsight</h1>
+          <p>模块化 ELF / Android Native 静态分析工具箱。这里汇总本地 SQLite 里的项目、任务与风险分布，以及当前分析服务的运行状态。命令行与控制台的结果完全一致。</p>
+          <div class="hero-acts">
+            <button type="button" class="btn btn-primary btn-lg" id="hero-new-task">＋ 新建分析任务</button>
+            <button type="button" class="btn btn-lg" data-goto="projects">项目管理</button>
+            <a class="btn btn-lg btn-quiet" href="#" onclick="return false">深度分析台 →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI：数字滚动 ×2 + 迷你趋势线 ×2 -->
+      <div class="kpi-grid">
+        <div class="card kpi">
+          <div class="kpi-top"><span class="kpi-label">项目总数</span>
+            <button type="button" class="kpi-refresh" data-roll>刷新</button></div>
+          <div class="roll-num roll" data-values="24,26,23,25,24" aria-label="项目总数 24"></div>
+          <div class="kpi-delta"><b>▲ 2</b> 较上周新增项目</div>
+          <div class="kpi-foot"><div class="kpi-meters">
+            <div class="kpi-meter"><span>活跃</span><div class="bar"><i style="width:72%"></i></div><b class="mono">72%</b></div>
+            <div class="kpi-meter"><span>陈旧</span><div class="bar"><i class="w" style="width:28%"></i></div><b class="mono">28%</b></div>
+          </div></div>
+        </div>
+        <div class="card kpi">
+          <div class="kpi-top"><span class="kpi-label">分析任务</span>
+            <button type="button" class="kpi-refresh" data-roll>刷新</button></div>
+          <div class="roll-num roll" data-values="1284,1397,1206,1312,1284" aria-label="分析任务 1284"></div>
+          <div class="kpi-delta"><b>▲ 8.8%</b> 近 30 天任务量</div>
+          <div class="kpi-foot"><div class="kpi-meters">
+            <div class="kpi-meter"><span>成功</span><div class="bar"><i class="s" style="width:91%"></i></div><b class="mono">91%</b></div>
+            <div class="kpi-meter"><span>失败</span><div class="bar"><i class="w" style="width:9%"></i></div><b class="mono">9%</b></div>
+          </div></div>
+        </div>
+        <div class="card kpi spark-card" data-spark="0">
+          <div class="kpi-top"><span class="kpi-label">本周任务量</span><span class="kpi-pill">近 7 天</span></div>
+          <div class="kpi-num-s">286<small>+12.4%</small></div>
+          <div class="sparkbox">
+            <svg class="spark" role="img" aria-label="近 7 天任务量趋势，数值从 28 升到 52">
+              <defs><linearGradient id="sp-grad-a" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--ui-brand)" stop-opacity=".30"/>
+                <stop offset="1" stop-color="var(--ui-brand)" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path class="area" d=""/><line class="guide" x1="0" y1="0" x2="0" y2="0" style="opacity:0"/>
+              <path class="line" d=""/><circle class="hover" r="3.5"/>
+              <circle class="end-halo" r="5"/><circle class="end" r="3"/>
+            </svg>
+            <div class="tip"><b>周日</b> · 52</div>
+          </div>
+        </div>
+        <div class="card kpi spark-card" data-spark="1">
+          <div class="kpi-top"><span class="kpi-label">发现风险项</span><span class="kpi-pill">近 7 天</span></div>
+          <div class="kpi-num-s">1,042<small class="down">−3.1%</small></div>
+          <div class="sparkbox">
+            <svg class="spark" role="img" aria-label="近 7 天风险发现趋势，数值从 168 降到 132">
+              <defs><linearGradient id="sp-grad-b" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--ui-brand)" stop-opacity=".30"/>
+                <stop offset="1" stop-color="var(--ui-brand)" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path class="area2" d=""/><line class="guide" x1="0" y1="0" x2="0" y2="0" style="opacity:0"/>
+              <path class="line" d=""/><circle class="hover" r="3.5"/>
+              <circle class="end-halo" r="5"/><circle class="end" r="3"/>
+            </svg>
+            <div class="tip"><b>周日</b> · 132</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 中部：环形图 / 趋势 / 失败 -->
+      <div class="mid-grid">
+        <div class="card panel">
+          <div class="panel-head compact"><div class="ph-main"><h2>风险分布</h2>
+            <div class="ph-sub">所有已保存任务的发现项按严重级别汇总</div></div></div>
+          <div class="donut-wrap">
+            <div class="donut">
+              <svg class="ring" id="ring" viewBox="0 0 120 120" role="img"
+                   aria-label="风险分布占比：严重 12%、高危 28%、中危 35%、低危 25%">
+                <circle class="seg" data-i="0" cx="60" cy="60" r="46"/>
+                <circle class="seg" data-i="1" cx="60" cy="60" r="46"/>
+                <circle class="seg" data-i="2" cx="60" cy="60" r="46"/>
+                <circle class="seg" data-i="3" cx="60" cy="60" r="46"/>
+              </svg>
+              <div class="donut-center"><b id="cVal">100%</b><span id="cLbl">总计 1,042 项</span></div>
+            </div>
+            <div class="legend" id="legend"></div>
+          </div>
+          <div class="donut-foot"><span>严重 + 高危合计 <b>40%</b></span><span>较上周 <b style="color:var(--ui-danger)">+4.2%</b></span></div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-head compact"><div class="ph-main"><h2>近 14 天趋势</h2>
+            <div class="ph-sub">每天的任务量、成功数与失败数变化</div></div></div>
+          <div class="trend-legend"><span><i class="lg-ok"></i>成功</span><span><i class="lg-err"></i>失败</span></div>
+          <div class="trend" id="trend"></div>
+        </div>
+
+        <div class="card panel">
+          <div class="panel-head compact"><div class="ph-main"><h2>最近失败</h2>
+            <div class="ph-sub">最近 3 条失败任务，可点击回看结果</div></div></div>
+          <div class="fail-item"><div class="fi-head"><b>libcrypto.so · 完整审计</b><time>14:22</time></div>
+            <div class="fi-meta">XX 应用安全审计 · 12 项能力</div>
+            <div class="fi-reason">DWARF 段解析失败：.debug_info 版本 5 尚不支持，basic.dwarf 分析器提前退出。</div></div>
+          <div class="fail-item"><div class="fi-head"><b>libfoo.so · 符号核对</b><time>11:08</time></div>
+            <div class="fi-meta">三方 SDK 评估 · 6 项能力</div>
+            <div class="fi-reason">目标文件读取超时（&gt; 120s），运行时看门狗主动终止子进程。</div></div>
+          <div class="fail-item"><div class="fi-head"><b>libbar.so · 危险 API</b><time>昨天</time></div>
+            <div class="fi-meta">回归基线 · 8 项能力</div>
+            <div class="fi-reason">依赖规划器未找到 basic.elf 的产物：上游分析器返回空 Artifact。</div></div>
+        </div>
+      </div>
+
+      <!-- 最近任务表格 -->
+      <div class="card table-panel">
+        <div class="panel-head"><div class="ph-main"><h2>最近任务</h2>
+          <div class="ph-sub">按创建时间倒序，点表头可排序；状态与发现项一眼可辨</div></div>
+          <div class="ph-acts"><button type="button" class="btn" data-goto="tasks">查看全部</button></div></div>
+        <div class="tw">
+          <table class="data">
+            <thead><tr>
+              <th scope="col" data-col="name" aria-sort="none"><button class="srt" type="button">任务名称<span class="arw"></span></button></th>
+              <th scope="col">所属项目</th>
+              <th scope="col">状态</th>
+              <th scope="col" class="num" data-col="findings" aria-sort="none"><button class="srt" type="button">发现项<span class="arw"></span></button></th>
+              <th scope="col" class="num" data-col="dur" aria-sort="none"><button class="srt" type="button">耗时<span class="arw"></span></button></th>
+              <th scope="col" data-col="time" aria-sort="none"><button class="srt" type="button">创建时间<span class="arw"></span></button></th>
+            </tr></thead>
+            <tbody id="tbody-overview"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 视图：项目管理 ========== -->
+    <section class="view" data-view="projects">
+      <div class="proj-banner">
+        <div class="pb-avatar">安</div>
+        <div class="pb-info"><div class="pb-name">XX 应用安全审计 <span class="pill" style="background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.35);color:inherit">进行中</span></div>
+          <div class="pb-meta">创建于 2026-10-28 · 最近扫描 2 小时前 · 共 8 个任务</div></div>
+        <div class="pb-acts"><button type="button" class="btn" id="proj-new-task">＋ 新建任务</button>
+          <button type="button" class="btn ghost">编辑项目</button></div>
+      </div>
+      <div class="kpi-grid kpi-4">
+        <div class="card kpi" style="min-height:112px"><div class="kpi-top"><span class="kpi-label">任务总数</span></div><div class="roll-num roll" data-values="8,9,7,8" aria-label="任务总数 8"></div><div class="kpi-delta"><b>▲ 1</b> 本周</div></div>
+        <div class="card kpi" style="min-height:112px"><div class="kpi-top"><span class="kpi-label">成功 / 失败</span></div><div style="font-size:28px;font-weight:700;margin-top:8px" class="mono">7 <span style="color:var(--ui-text-dim);font-size:16px">/ 1</span></div><div class="kpi-delta">成功率 <b>87.5%</b></div></div>
+        <div class="card kpi" style="min-height:112px"><div class="kpi-top"><span class="kpi-label">发现项</span></div><div class="roll-num roll" data-values="186,192,178,186" aria-label="发现项 186"></div><div class="kpi-delta"><b>▲ 6</b> 较上次扫描</div></div>
+        <div class="card kpi" style="min-height:112px"><div class="kpi-top"><span class="kpi-label">平均耗时</span></div><div style="font-size:28px;font-weight:700;margin-top:8px" class="mono">14.2<span style="font-size:14px;color:var(--ui-text-dim)"> s</span></div><div class="kpi-delta">12 项分析能力</div></div>
+      </div>
+      <div class="card table-panel">
+        <div class="panel-head"><div class="ph-main"><h2>项目内任务</h2><div class="ph-sub">点击任务名称回放完整结果</div></div></div>
+        <div class="tw"><table class="data">
+          <thead><tr>
+            <th scope="col" data-col="name" aria-sort="none"><button class="srt" type="button">任务名称<span class="arw"></span></button></th>
+            <th scope="col">所属项目</th><th scope="col">状态</th>
+            <th scope="col" class="num" data-col="findings" aria-sort="none"><button class="srt" type="button">发现项<span class="arw"></span></button></th>
+            <th scope="col" class="num" data-col="dur" aria-sort="none"><button class="srt" type="button">耗时<span class="arw"></span></button></th>
+            <th scope="col" data-col="time" aria-sort="none"><button class="srt" type="button">创建时间<span class="arw"></span></button></th>
+          </tr></thead><tbody id="tbody-projects"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ========== 视图：任务管理 ========== -->
+    <section class="view" data-view="tasks">
+      <div class="card panel" style="margin-bottom:14px">
+        <div class="panel-head"><div class="ph-main"><h2>任务管理</h2>
+          <div class="ph-sub">任务与完整分析结果保存在本地 SQLite，刷新页面后仍然保留</div></div>
+          <div class="ph-acts"><button type="button" class="btn btn-primary" id="tasks-new">＋ 新建任务</button></div></div>
+        <div class="filter-bar">
+          <input type="search" placeholder="搜索任务名称…" aria-label="搜索任务">
+          <select aria-label="状态筛选"><option>全部状态</option><option>成功</option><option>进行中</option><option>失败</option></select>
+          <select aria-label="项目筛选"><option>全部项目</option><option>XX 应用安全审计</option><option>三方 SDK 评估</option></select>
+          <button type="button" class="btn">重置</button>
+        </div>
+        <div class="tw" style="max-height:520px"><table class="data">
+          <thead><tr>
+            <th scope="col" data-col="name" aria-sort="none"><button class="srt" type="button">任务名称<span class="arw"></span></button></th>
+            <th scope="col">所属项目</th><th scope="col">状态</th>
+            <th scope="col" class="num" data-col="findings" aria-sort="none"><button class="srt" type="button">发现项<span class="arw"></span></button></th>
+            <th scope="col" class="num" data-col="dur" aria-sort="none"><button class="srt" type="button">耗时<span class="arw"></span></button></th>
+            <th scope="col" data-col="time" aria-sort="none"><button class="srt" type="button">创建时间<span class="arw"></span></button></th>
+          </tr></thead><tbody id="tbody-tasks"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ========== 视图：分析结果 ========== -->
+    <section class="view" data-view="results">
+      <div class="card panel" style="margin-bottom:14px">
+        <div class="panel-head"><div class="ph-main"><h2>libcrypto.so · 完整审计</h2>
+          <div class="ph-sub">XX 应用安全审计 · 12 项分析能力 · 完成于 2026-11-16 14:20</div></div>
+          <div class="ph-acts"><span class="badge ok">分析成功</span>
+            <button type="button" class="btn">下载 JSON</button></div></div>
+        <div class="result-tabs" id="result-tabs">
+          <button type="button" class="on" data-rtab="summary">本次运行</button>
+          <button type="button" data-rtab="findings">发现项</button>
+          <button type="button" data-rtab="raw">原始数据</button>
+        </div>
+        <div id="rpanel-summary">
+          <div class="kpi-grid kpi-4" style="margin-bottom:0">
+            <div class="card kpi" style="min-height:96px"><div class="kpi-top"><span class="kpi-label">分析能力</span></div><div style="font-size:26px;font-weight:700;margin-top:6px" class="mono">12</div></div>
+            <div class="card kpi" style="min-height:96px"><div class="kpi-top"><span class="kpi-label">发现项</span></div><div style="font-size:26px;font-weight:700;margin-top:6px" class="mono">38</div></div>
+            <div class="card kpi" style="min-height:96px"><div class="kpi-top"><span class="kpi-label">高危以上</span></div><div style="font-size:26px;font-weight:700;margin-top:6px;color:var(--ui-danger)" class="mono">6</div></div>
+            <div class="card kpi" style="min-height:96px"><div class="kpi-top"><span class="kpi-label">总耗时</span></div><div style="font-size:26px;font-weight:700;margin-top:6px" class="mono">18.4<span style="font-size:13px;color:var(--ui-text-dim)"> s</span></div></div>
+          </div>
+        </div>
+        <div id="rpanel-findings" style="display:none">
+          <div class="finding critical"><div class="fh"><span class="sev critical">严重</span><span class="ft">未启用栈保护</span><span class="fr">security.hardening / STACK_CANARY_MISSING</span></div><div class="fm">目标 ELF 未发现 __stack_chk_fail 引用，编译期很可能未开启 -fstack-protector，存在栈溢出利用风险。</div></div>
+          <div class="finding high"><div class="fh"><span class="sev high">高危</span><span class="ft">使用不安全的字符串函数</span><span class="fr">security.dangerous-api / STRCPY</span></div><div class="fm">在 0x1A3F0 处检测到 strcpy 调用，未做长度校验，建议替换为 strncpy / strlcpy。</div></div>
+          <div class="finding medium"><div class="fh"><span class="sev medium">中危</span><span class="ft">导出符号缺少可见性控制</span><span class="fr">basic.symbols / EXPORT_ALL</span></div><div class="fm">共 2943 个导出符号，建议通过 version script 收敛对外接口。</div></div>
+        </div>
+        <div id="rpanel-raw" style="display:none">
+          <div class="kv-line"><span class="k">结果文件</span><span class="v">E:\soinsight\artifacts\a1f3c9\result.json</span></div>
+          <div class="kv-line"><span class="k">等价命令</span><span class="v">soinsight scan libcrypto.so --enable basic.elf,basic.symbols,security.hardening --format json</span></div>
+          <div class="kv-line"><span class="k">SHA-256</span><span class="v">9f2c…e41b</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 视图：设置 ========== -->
+    <section class="view" data-view="settings">
+      <div class="settings-grid">
+        <div class="card panel">
+          <div class="panel-head compact"><div class="ph-main"><h2>本地偏好</h2>
+            <div class="ph-sub">仅保存在本机浏览器 localStorage，不影响 SQLite 数据</div></div></div>
+          <div class="set-row"><div><div class="sr-t">默认暗色主题</div><div class="sr-d">跟随系统或固定使用深色</div></div><div class="switch on" data-switch></div></div>
+          <div class="set-row"><div><div class="sr-t">记住上次勾选的能力</div><div class="sr-d">下次创建任务时自动套用</div></div><div class="switch on" data-switch></div></div>
+          <div class="set-row"><div><div class="sr-t">分析完成弹出提示</div><div class="sr-d">右下角 toast 播报成功 / 失败</div></div><div class="switch" data-switch></div></div>
+          <div class="set-row"><div><div class="sr-t">减少动态效果</div><div class="sr-d">遵循系统 prefers-reduced-motion</div></div><div class="switch" data-switch></div></div>
+          <div style="margin-top:14px"><button type="button" class="btn btn-danger">清除本地偏好</button></div>
+        </div>
+        <div class="card panel">
+          <div class="panel-head compact"><div class="ph-main"><h2>运行环境</h2>
+            <div class="ph-sub">来自本地分析服务 /api/health</div></div></div>
+          <div class="kv-line"><span class="k">服务地址</span><span class="v">http://127.0.0.1:8765</span></div>
+          <div class="kv-line"><span class="k">Python</span><span class="v">3.10.11</span></div>
+          <div class="kv-line"><span class="k">Analyzer 数量</span><span class="v">42</span></div>
+          <div class="kv-line"><span class="k">数据库</span><span class="v">E:\soinsight\data\console.db</span></div>
+          <div class="kv-line"><span class="k">版本</span><span class="v">v2.0.0</span></div>
+        </div>
+        <div class="card panel" style="grid-column:1 / -1">
+          <div class="panel-head compact"><div class="ph-main"><h2>本预览采用的设计方案</h2>
+            <div class="ph-sub">来自 UI 设计知识库；确认后按同一套语义变量落到 console.css</div></div></div>
+          <ul class="design-list">
+            <li><span class="dl-tag">配色</span><span><b>配色方案：霓虹暗黑</b> <span class="dl-d">— 近黑底 + 霓虹青主色，发光只压主按钮；深色块之间必须描 1px 白 16% 边</span></span></li>
+            <li><span class="dl-tag">配色</span><span><b>配色方案：蔚蓝科技</b> <span class="dl-d">— 右上角可切换的浅色对照版：蓝青主色 + 冷白底 + 渐变主按钮</span></span></li>
+            <li><span class="dl-tag">导航</span><span><b>侧边栏导航</b> <span class="dl-d">— 左侧竖排分组导航，当前项品牌色 + 9% 淡底 + 左侧竖条</span></span></li>
+            <li><span class="dl-tag">动画</span><span><b>数字滚动</b> <span class="dl-d">— 关键指标翻牌滚轮，460ms，9→0 多滚一圈，闪一下品牌色</span></span></li>
+            <li><span class="dl-tag">数据</span><span><b>迷你趋势线 Sparkline</b> <span class="dl-d">— 7 天小折线 + 渐变面积 + hover 气泡与虚线引导</span></span></li>
+            <li><span class="dl-tag">数据</span><span><b>环形图 Donut Chart</b> <span class="dl-d">— 4 段占比、段间 2.4px 缝、段/图例联动中心数值</span></span></li>
+            <li><span class="dl-tag">数据</span><span><b>数据表格</b> <span class="dl-d">— 表头排序 + FLIP 位移动画 + 状态徽标 + 首列固定</span></span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">SOInsight · Web 控制台 UI 改版静态预览 · 演示数据，未连接后端 · 右上角可切换「霓虹暗黑 / 蔚蓝科技」两套配色</footer>
+
+<!-- ============ 创建任务向导 ============ -->
+<div class="overlay" id="task-overlay" role="dialog" aria-modal="true" aria-labelledby="task-title">
+  <div class="modal">
+    <div class="modal-head"><span class="t" id="task-title">创建分析任务</span>
+      <button type="button" class="x" data-close aria-label="关闭">✕</button></div>
+    <div class="wizard">
+      <div class="wizard-nav">
+        <div class="w-step on" data-ws="1"><span class="n">1</span><div><b>选择目标</b><small>拖拽上传 / 已有数据</small></div></div>
+        <div class="w-step" data-ws="2"><span class="n">2</span><div><b>分析能力</b><small>内置组合 / 自行勾选</small></div></div>
+      </div>
+      <div class="wizard-main">
+        <div class="w-panel on" data-wp="1">
+          <h3>选择目标</h3>
+          <div class="dropzone" id="dropzone"><b>拖拽 .so / ELF 到这里</b>或点击选择文件（仅在本地内存与临时文件中处理，不会外传）</div>
+          <div style="margin-top:14px"><label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px">目标名称</label>
+            <input style="width:100%;height:34px;padding:0 11px;border-radius:8px;background:var(--ui-field);color:var(--ui-text);border:1px solid var(--ui-border-strong);outline:none" placeholder="默认取 SO 文件名"></div>
+        </div>
+        <div class="w-panel" data-wp="2">
+          <h3>分析能力 <span style="font-size:11px;color:var(--ui-text-dim);font-weight:400">依赖会自动补齐</span></h3>
+          <div class="cap-grid" id="cap-grid">
+            <div class="cap sel"><span class="cc">✓</span><div class="ct">basic.elf</div><div class="cd">ELF 头 / 段 / 节解析</div></div>
+            <div class="cap sel"><span class="cc">✓</span><div class="ct">basic.symbols</div><div class="cd">符号表与 demangle</div></div>
+            <div class="cap"><span class="cc">✓</span><div class="ct">basic.dwarf</div><div class="cd">DWARF 调试信息</div></div>
+            <div class="cap sel"><span class="cc">✓</span><div class="ct">security.hardening</div><div class="cd">加固项检查</div></div>
+            <div class="cap"><span class="cc">✓</span><div class="ct">security.dangerous-api</div><div class="cd">危险 API 调用</div></div>
+            <div class="cap"><span class="cc">✓</span><div class="ct">jni.exports</div><div class="cd">JNI 导出函数</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="mf-status" id="w-status">第 1 / 2 步 · 选择目标</span>
+      <button type="button" class="btn" data-close>取消</button>
+      <button type="button" class="btn" id="w-prev" disabled>上一步</button>
+      <button type="button" class="btn" id="w-next">下一步</button>
+      <button type="button" class="btn btn-primary" id="w-run" style="display:none">完成并运行</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* 这是真实可交互的预览（不是知识库里那个自动演示的卡片），
+     所以显式关掉 demo 的自动光标 / 自动扫线逻辑。 */
+  window.__uiInteractive = true;
+  var $  = function(s,r){ return (r||document).querySelector(s); };
+  var $$ = function(s,r){ return [].slice.call((r||document).querySelectorAll(s)); };
+
+  /* ================================================================
+     1) 主题切换（霓虹暗黑 / 蔚蓝科技）
+     ================================================================ */
+  var root = document.documentElement;
+  var tBtn = $('#theme-toggle'), tLabel = $('#theme-label');
+  tBtn.addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'neon' ? 'azure' : 'neon';
+    root.setAttribute('data-theme', next);
+    tLabel.textContent = next === 'neon' ? '霓虹暗黑' : '蔚蓝科技';
+    /* 主题切换后重新量一次 sparkline 宽度，避免布局微调导致坐标错位 */
+    requestAnimationFrame(function(){ sparks.forEach(function(s){ s.render(); }); });
+  });
+
+  /* ================================================================
+     2) 侧边栏导航：当前项高亮 + 切换右侧内容
+     ================================================================ */
+  /* ================================================================
+      1.5) 侧边栏折叠（知识库「侧边栏折叠」）
+      ☰ 在侧栏内；折叠 236 → 96px，文字改竖排、隐藏分组/底部信息；
+      折叠态菜单项加 title 提示；宽度变化后重算图表坐标。
+      ================================================================ */
+  var sidenav = $('#sidenav'), navToggle = $('#nav-toggle');
+  function relayoutCharts(){
+    /* 折叠只改侧栏宽度，KPI 卡字号/格高不变：只重算 sparkline 宽度。
+       不要在这里调 measure()——它会把正在滚动的数字列 transform 重设到
+       静止位置，与 WAAPI 滚轮动画打架，出现数字上下错位的中间态。 */
+    setTimeout(function(){
+      sparks.forEach(function(s){ s.render(); });
+    }, 340);
+  }
+  function applyTitles(collapsed){
+    $$('.nav-item').forEach(function(b){
+      var label = $('.label', b);
+      if(collapsed && label) b.title = label.textContent.trim();
+      else b.removeAttribute('title');
+    });
+  }
+  if(navToggle){
+    navToggle.addEventListener('click', function(){
+      var collapsed = sidenav.classList.toggle('collapsed');
+      navToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      navToggle.setAttribute('aria-label', collapsed ? '展开侧栏' : '折叠侧栏');
+      navToggle.title = collapsed ? '展开侧栏' : '折叠侧栏';
+      applyTitles(collapsed);
+      relayoutCharts();
+    });
+    navToggle.setAttribute('aria-expanded','true');
+  }
+
+  var VIEW_NAME = { overview:'总览', projects:'项目管理', tasks:'任务管理', results:'分析结果', settings:'设置' };
+  function goto(view){
+    $$('.nav-item').forEach(function(b){
+      var on = b.getAttribute('data-view') === view;
+      b.classList.toggle('on', on);
+      if(on) b.setAttribute('aria-current','location'); else b.removeAttribute('aria-current');
+    });
+    $$('.view').forEach(function(v){ v.classList.toggle('on', v.getAttribute('data-view') === view); });
+    $('#crumb-now').textContent = VIEW_NAME[view] || view;
+    /* 隐藏视图里的图表宽度为 0，切回来必须重新计算坐标 */
+    requestAnimationFrame(function(){ sparks.forEach(function(s){ s.render(); });
+      $$('.roll-num').forEach(function(el){ if(el._api) el._api.measure(); }); });
+    window.scrollTo({ top:0, behavior:'smooth' });
+  }
+  $$('.nav-item[data-view]').forEach(function(b){
+    b.addEventListener('click', function(){ goto(b.getAttribute('data-view')); });
+  });
+  $$('[data-goto]').forEach(function(b){
+    b.addEventListener('click', function(){ goto(b.getAttribute('data-goto')); });
+  });
+
+  /* ================================================================
+     3) 数字滚动（每位一列 0–9 两遍，WAAPI 滚轮）
+     ================================================================ */
+  $$('.roll-num').forEach(function(el){
+    var values = el.getAttribute('data-values').split(',').map(Number);
+    var idx = 0, digits = [], h = 0;
+    function build(v){
+      el.innerHTML = ''; digits = [];
+      String(v).split('').forEach(function(ch){
+        var d = document.createElement('span'); d.className = 'd';
+        var strip = document.createElement('span'); strip.className = 'strip';
+        for(var k=0;k<2;k++){ for(var n=0;n<10;n++){
+          var b = document.createElement('b'); b.textContent = n; strip.appendChild(b);
+        }}
+        d.appendChild(strip); el.appendChild(d);
+        digits.push({ el:d, strip:strip, v:0, anim:null });
+      });
+      measure();
+      digits.forEach(function(dd,i){
+        var val = Number(String(v)[i]); dd.v = val;
+        dd.strip.style.transform = 'translateY(-' + (val*h) + 'px)';
+      });
+      el.setAttribute('aria-label', (el.getAttribute('aria-label')||'').replace(/\d+$/, v));
+    }
+    function measure(){
+      if(!digits.length) return;
+      var rect = digits[0].strip.firstChild.getBoundingClientRect();
+      if(!rect.height) return;              /* 隐藏视图里测不到，等切回可见时再算 */
+      var newH = rect.height;
+      if(h && Math.abs(newH - h) < 0.5) return;   /* 格高没变就不动，避免打断滚轮动画 */
+      h = newH;
+      /* 格高变了才按当前值重排每一列，否则隐藏视图初次 h=0 会错位 */
+      digits.forEach(function(dd){
+        if(dd.anim){ try{ dd.anim.cancel(); }catch(e){} dd.anim=null; }
+        dd.strip.style.transform = 'translateY(-' + (dd.v*h) + 'px)';
+      });
+    }
+    function roll(dd,newV){
+      var oldV = dd.v; if(oldV === newV) return;
+      dd.v = newV;
+      if(dd.anim){ try{ dd.anim.cancel(); }catch(e){} }
+      var to = newV; if(to < oldV) to += 10;   /* 9→0 多滚一圈 */
+      var a = dd.strip.animate(
+        [{transform:'translateY(-'+(oldV*h)+'px)'},{transform:'translateY(-'+(to*h)+'px)'}],
+        {duration:460, easing:'cubic-bezier(.2,.8,.25,1)', fill:'both'}
+      );
+      dd.anim = a;
+      a.onfinish = function(){
+        dd.strip.style.transform = 'translateY(-'+(newV*h)+'px)';
+        try{ a.cancel(); }catch(e){}
+      };
+    }
+    function tick(){
+      idx = (idx+1) % values.length;
+      var v = values[idx], s = String(v);
+      if(s.length !== digits.length){ build(v); return; }
+      if(!h) measure();
+      digits.forEach(function(dd,i){ roll(dd, Number(s[i])); });
+      el.setAttribute('aria-label', (el.getAttribute('aria-label')||'').replace(/\d+$/, v));
+      el.animate([{transform:'translateY(0)'},{transform:'translateY(-2px)'},{transform:'translateY(0)'}],
+        {duration:420, easing:'ease-out'});
+      digits.forEach(function(dd){
+        dd.el.classList.add('flash');
+        setTimeout(function(){ dd.el.classList.remove('flash'); },260);
+      });
+    }
+    build(values[0]);
+    el._api = { measure:measure, tick:tick };
+    var btn = el.parentNode.querySelector('[data-roll]');
+    if(btn) btn.addEventListener('click', tick);
+    /* 载入后演示一次，便于评审直接看到效果（隐藏视图里的卡不空跑） */
+    setTimeout(function(){ if(el.getBoundingClientRect().width) { measure(); tick(); } }, 700);
+  });
+
+  /* ================================================================
+     4) 迷你趋势线 Sparkline（7 点、贝塞尔平滑、hover 气泡）
+     ================================================================ */
+  var SPARK_DATA = [
+    [ {d:'周一',v:28},{d:'周二',v:34},{d:'周三',v:31},{d:'周四',v:44},
+      {d:'周五',v:39},{d:'周六',v:47},{d:'周日',v:52} ],
+    [ {d:'周一',v:168},{d:'周二',v:152},{d:'周三',v:160},{d:'周四',v:143},
+      {d:'周五',v:149},{d:'周六',v:137},{d:'周日',v:132} ]
+  ];
+  var sparks = [];
+  $$('.spark-card').forEach(function(card){
+    var key = +card.getAttribute('data-spark');
+    var DATA = SPARK_DATA[key];
+    var svg = $('.spark', card), tip = $('.tip', card);
+    var area = $('.area, .area2', svg), line = $('.line', svg), guide = $('.guide', svg);
+    var hoverDot = $('.hover', svg), endDot = $('.end', svg), endHalo = $('.end-halo', svg);
+    var W=0, H=56, PAD=6, pts=[];
+    function render(){
+      var r = svg.getBoundingClientRect();
+      if(!r.width || !r.height) return false;
+      W = Math.round(r.width); H = Math.round(r.height);
+      svg.setAttribute('viewBox','0 0 '+W+' '+H);
+      var min=Infinity, max=-Infinity;
+      DATA.forEach(function(p){ if(p.v<min)min=p.v; if(p.v>max)max=p.v; });
+      var span = (max-min) || 1;
+      pts = DATA.map(function(p,i){
+        return { x: DATA.length===1 ? W/2 : (i*(W-2)/(DATA.length-1))+1,
+                 y: H-PAD-((p.v-min)/span)*(H-PAD*2-4) };
+      });
+      var d = 'M'+pts[0].x+','+pts[0].y;
+      for(var i=1;i<pts.length;i++){
+        var p0=pts[i-1], p1=pts[i], cx=(p0.x+p1.x)/2;
+        d += ' C'+cx+','+p0.y+' '+cx+','+p1.y+' '+p1.x+','+p1.y;
+      }
+      line.setAttribute('d',d);
+      area.setAttribute('d', d+' L'+pts[pts.length-1].x+','+H+' L'+pts[0].x+','+H+' Z');
+      endDot.setAttribute('cx',pts[pts.length-1].x); endDot.setAttribute('cy',pts[pts.length-1].y);
+      endHalo.setAttribute('cx',pts[pts.length-1].x); endHalo.setAttribute('cy',pts[pts.length-1].y);
+      return true;
+    }
+    function show(i){
+      if(!pts[i]) return;
+      hoverDot.setAttribute('cx',pts[i].x); hoverDot.setAttribute('cy',pts[i].y);
+      hoverDot.classList.add('on');
+      guide.setAttribute('x1',pts[i].x); guide.setAttribute('x2',pts[i].x);
+      guide.setAttribute('y1',pts[i].y); guide.setAttribute('y2',H);
+      guide.style.opacity = '1';
+      /* 气泡是 .sparkbox 的子元素（包含块 = position:relative 的 .sparkbox），
+         必须拿 sparkbox 作参照；用整张 card 会带入 padding 和上方标题高度，
+         气泡会明显偏右偏下甚至飘出卡片。 */
+      var sr = svg.getBoundingClientRect(), box = svg.parentNode.getBoundingClientRect();
+      tip.innerHTML = '<b>'+DATA[i].d+'</b> · '+DATA[i].v.toLocaleString('en-US');
+      tip.style.left = (sr.left-box.left+pts[i].x)+'px';
+      tip.style.top  = (sr.top-box.top+pts[i].y)+'px';
+      tip.classList.add('on');
+    }
+    function hide(){
+      hoverDot.classList.remove('on'); guide.style.opacity='0'; tip.classList.remove('on');
+    }
+    function nearest(clientX){
+      var x = clientX - svg.getBoundingClientRect().left, best=0, bd=Infinity;
+      pts.forEach(function(p,i){ var dd=Math.abs(p.x-x); if(dd<bd){bd=dd;best=i;} });
+      return best;
+    }
+    svg.addEventListener('pointermove', function(e){ if(W) show(nearest(e.clientX)); });
+    svg.addEventListener('pointerleave', hide);
+    var api = { render:render };
+    sparks.push(api);
+    /* 首帧宽度为 0 时等布局，最多重试几次 */
+    var tries = 0;
+    (function boot(){
+      if(render()){ show(DATA.length-1); setTimeout(hide, 500); return; }
+      if(tries++ < 20) setTimeout(boot, 200);
+    })();
+  });
+  window.addEventListener('resize', function(){ sparks.forEach(function(s){ s.render(); }); });
+
+  /* ================================================================
+     5) 环形图 Donut（stroke-dasharray 分段 + 段/图例联动）
+     ================================================================ */
+  (function(){
+    var DATA = [
+      {name:'严重', v:12, tone:'100%'},
+      {name:'高危', v:28, tone:'62%'},
+      {name:'中危', v:35, tone:'38%'},
+      {name:'低危', v:25, tone:'20%'}
+    ];
+    var R=46, C=2*Math.PI*R, GAP=2.4;
+    var ring=$('#ring'), segs=$$('.seg',ring), legend=$('#legend');
+    var cVal=$('#cVal'), cLbl=$('#cLbl'), colors=[];
+    DATA.forEach(function(d){ colors.push('color-mix(in srgb, var(--ui-brand) '+d.tone+', transparent)'); });
+    var acc=0;
+    segs.forEach(function(sg,i){
+      var len=C*DATA[i].v/100, dash=Math.max(.5,len-GAP);
+      sg.style.stroke=colors[i];
+      sg.setAttribute('stroke-dasharray', dash.toFixed(2)+' '+(C-dash).toFixed(2));
+      sg.setAttribute('stroke-dashoffset', (-acc).toFixed(2));  /* 负数：从 12 点顺时针推 */
+      acc += len;
+    });
+    DATA.forEach(function(d,i){
+      var row=document.createElement('div'); row.className='lg'; row.setAttribute('data-i',i);
+      var dot=document.createElement('i'); dot.style.background=colors[i];
+      var nm=document.createElement('span'); nm.textContent=d.name;
+      var pc=document.createElement('b'); pc.textContent=d.v+'%';
+      row.appendChild(dot); row.appendChild(nm); row.appendChild(pc);
+      row.addEventListener('pointerenter',function(){ hot(i); });
+      row.addEventListener('pointerleave',cool);
+      legend.appendChild(row);
+    });
+    function hot(i){
+      segs.forEach(function(s){ s.classList.remove('hot'); });
+      $$('.lg',legend).forEach(function(r){ r.classList.remove('hot'); });
+      if(i<0){ ring.classList.remove('dim'); cVal.textContent='100%'; cLbl.textContent='总计 1,042 项'; return; }
+      ring.classList.add('dim');
+      segs[i].classList.add('hot');
+      $$('.lg',legend)[i].classList.add('hot');
+      cVal.textContent = DATA[i].v+'%';
+      cLbl.textContent = DATA[i].name;
+    }
+    function cool(){ hot(-1); }
+    segs.forEach(function(sg){
+      sg.addEventListener('pointerenter',function(){ hot(+sg.getAttribute('data-i')); });
+    });
+    ring.addEventListener('pointerleave',cool);
+    hot(0); setTimeout(cool, 900);
+  })();
+
+  /* ================================================================
+     6) 14 天趋势柱
+     ================================================================ */
+  (function(){
+    var arr = [ [4,1],[6,0],[5,2],[8,1],[7,0],[3,0],[2,1],
+                [9,1],[11,2],[8,0],[6,1],[10,0],[12,1],[9,0] ];
+    var box = $('#trend'); if(!box) return;
+    var max = 0; arr.forEach(function(a){ max = Math.max(max, a[0]+a[1]); });
+    arr.forEach(function(a,i){
+      var col=document.createElement('div'); col.className='trend-col';
+      var track=document.createElement('div'); track.className='trend-track';
+      if(a[0]+a[1]===0){
+        var z=document.createElement('span'); z.className='trend-zero'; track.appendChild(z);
+      }else{
+        var stack=document.createElement('span'); stack.className='trend-stack';
+        /* 总高度按当天量相对峰值；父级有确定高度后，内部 flex 才分得出空间 */
+        stack.style.height = Math.round((a[0]+a[1])/max*100)+'%';
+        var err=document.createElement('i'); err.className='trend-err';
+        /* 失败段按「失败数 : 成功数」的份数占据 stack 的比例；份数为 0 时不追加 */
+        if(a[1] > 0){ err.style.flex = a[1]+' 0 0'; stack.appendChild(err); }
+        var ok=document.createElement('i'); ok.className='trend-ok'; ok.style.flex = a[0]+' 0 0';
+        stack.appendChild(ok); track.appendChild(stack);
+      }
+      var day=document.createElement('span'); day.className='trend-day';
+      day.textContent = (i+2)+'日';
+      col.title = (i+2)+' 日 · 成功 '+a[0]+' · 失败 '+a[1];
+      col.appendChild(track); col.appendChild(day); box.appendChild(col);
+    });
+  })();
+
+  /* ================================================================
+     7) 数据表格：表头排序 + FLIP 位移动画
+     ================================================================ */
+  var ROWS = [
+    ['libcrypto.so · 完整审计','XX 应用安全审计','ok',38,18.4,'11-16 14:20'],
+    ['libssl.so · 加固检查','XX 应用安全审计','ok',12,9.1,'11-16 13:52'],
+    ['libfoo.so · 符号核对','三方 SDK 评估','fail',0,120.0,'11-16 11:08'],
+    ['libnative-lib.so · JNI 导出','XX 应用安全审计','run',7,6.3,'11-16 10:41'],
+    ['libbar.so · 危险 API','回归基线','fail',0,4.8,'11-15 18:30'],
+    ['libutils.so · 字符串','三方 SDK 评估','ok',21,11.7,'11-15 16:02'],
+    ['libmedia.so · 全量扫描','XX 应用安全审计','ok',45,22.6,'11-15 09:14'],
+    ['libjni.so · 依赖复核','回归基线','ok',9,7.9,'11-14 20:11'],
+    ['libnet.so · 协议解析','三方 SDK 评估','fail',0,3.2,'11-14 15:46'],
+    ['libcore.so · 基线回归','回归基线','ok',16,13.5,'11-14 09:03']
+  ];
+  var BADGE = { ok:'<span class="badge ok">成功</span>', run:'<span class="badge run">进行中</span>', fail:'<span class="badge fail">失败</span>' };
+  function fillTable(tbody, rows){
+    tbody.innerHTML = '';
+    rows.forEach(function(r){
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-name', r[0]); tr.setAttribute('data-findings', r[3]);
+      tr.setAttribute('data-dur', r[4]); tr.setAttribute('data-time', r[5].replace(/\D/g,''));
+      tr.innerHTML =
+        '<td><div class="tname tlink">'+r[0]+'</div><div class="tsub">12 项能力 · 单文件</div></td>'+
+        '<td>'+r[1]+'</td><td>'+BADGE[r[2]]+'</td>'+
+        '<td class="num mono">'+r[3]+'</td>'+
+        '<td class="num mono">'+r[4].toFixed(1)+' s</td>'+
+        '<td class="mono">'+r[5]+'</td>';
+      tbody.appendChild(tr);
+    });
+  }
+  var TABLE_VIEWS = ['overview','projects','tasks'];
+  TABLE_VIEWS.forEach(function(v){
+    var tb = $('#tbody-'+v); if(!tb) return;
+    var rows = v==='overview' ? ROWS.slice(0,8) : (v==='projects' ? ROWS.slice(0,5) : ROWS);
+    fillTable(tb, rows);
+    var panel = tb.closest('.table-panel') || tb.closest('.card');
+    var ths = $$('th[data-col]', panel);
+    var sortKey=null, dir=1;
+    function val(tr,key){
+      if(key==='name'||key==='time') return tr.getAttribute('data-'+key);
+      return parseFloat(tr.getAttribute('data-'+key))||0;
+    }
+    function sortRows(){
+      if(!sortKey) return;
+      var list = $$('tr', tb), before = new Map();
+      list.forEach(function(r){ before.set(r, r.getBoundingClientRect().top); });
+      var sorted = list.slice().sort(function(a,b){
+        var x=val(a,sortKey), y=val(b,sortKey);
+        if(typeof x==='string') return dir*x.localeCompare(y,'zh');
+        return dir*(x-y);
+      });
+      sorted.forEach(function(r){ tb.appendChild(r); });
+      requestAnimationFrame(function(){
+        sorted.forEach(function(r){
+          var prev=before.get(r); if(prev===undefined) return;
+          var d=prev-r.getBoundingClientRect().top; if(!d) return;
+          r.animate([{transform:'translateY('+d+'px)'},{transform:'translateY(0px)'}],
+            {duration:300, easing:'cubic-bezier(.2,.9,.25,1)'});
+        });
+      });
+    }
+    ths.forEach(function(th){
+      $('.srt',th).addEventListener('click',function(){
+        var col=th.getAttribute('data-col');
+        if(sortKey===col) dir=-dir; else { sortKey=col; dir=1; }
+        ths.forEach(function(t){
+          var on=t.getAttribute('data-col')===col;
+          t.setAttribute('aria-sort', on ? (dir===1?'ascending':'descending') : 'none');
+        });
+        sortRows();
+      });
+    });
+  });
+
+  /* ================================================================
+     8) 结果页 tab / 设置开关
+     ================================================================ */
+  $$('#result-tabs button').forEach(function(b){
+    b.addEventListener('click',function(){
+      $$('#result-tabs button').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      ['summary','findings','raw'].forEach(function(k){
+        var p=$('#rpanel-'+k); if(p) p.style.display = (k===b.getAttribute('data-rtab'))?'block':'none';
+      });
+    });
+  });
+  $$('[data-switch]').forEach(function(s){
+    s.addEventListener('click',function(){ s.classList.toggle('on'); });
+  });
+
+  /* ================================================================
+     9) 创建任务向导弹窗
+     ================================================================ */
+  var overlay = $('#task-overlay'), step = 1;
+  function openWizard(){ overlay.classList.add('on'); setStep(1); }
+  function closeWizard(){ overlay.classList.remove('on'); }
+  function setStep(n){
+    step = n;
+    $$('.w-step').forEach(function(s){ s.classList.toggle('on', +s.getAttribute('data-ws')===n); });
+    $$('.w-panel').forEach(function(p){ p.classList.toggle('on', +p.getAttribute('data-wp')===n); });
+    $('#w-prev').disabled = (n===1);
+    $('#w-next').style.display = (n===2)?'none':'';
+    $('#w-run').style.display  = (n===2)?'':'none';
+    $('#w-status').textContent = '第 '+n+' / 2 步 · '+(n===1?'选择目标':'分析能力');
+  }
+  ['#hero-new-task','#proj-new-task','#tasks-new'].forEach(function(sel){
+    var el=$(sel); if(el) el.addEventListener('click', openWizard);
+  });
+  $$('[data-close]').forEach(function(b){ b.addEventListener('click', closeWizard); });
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) closeWizard(); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeWizard(); });
+  $$('.w-step').forEach(function(s){
+    s.addEventListener('click',function(){ setStep(+s.getAttribute('data-ws')); });
+  });
+  $('#w-prev').addEventListener('click',function(){ setStep(1); });
+  $('#w-next').addEventListener('click',function(){ setStep(2); });
+  $('#w-run').addEventListener('click',function(){
+    $('#w-status').textContent='已提交（预览演示，未真正运行）';
+    setTimeout(closeWizard, 900);
+  });
+  $$('#cap-grid .cap').forEach(function(c){
+    c.addEventListener('click',function(){ c.classList.toggle('sel'); });
+  });
+  var dz = $('#dropzone');
+  ['dragenter','dragover'].forEach(function(ev){
+    dz.addEventListener(ev,function(e){ e.preventDefault(); dz.classList.add('drag'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    dz.addEventListener(ev,function(e){ e.preventDefault(); dz.classList.remove('drag'); });
+  });
+
+})();
+</script>
+</body>
+</html>
