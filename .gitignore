@@ -192,7 +192,8 @@ tmp_sos/
 
 
 # Input and output directories
-in/
+in/*
+!in/libtest_demo.so
 out/
 # Claude Code 本地运行时（worktrees 等）
 .claude/
