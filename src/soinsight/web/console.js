@@ -323,6 +323,8 @@ var CAP_META_ORDER = Object.keys(CAP_META);
 /* /api/modules 返回的登记信息：{ "<capability id>": { name, desc } }。
    服务端的名称与说明是权威来源，CAP_META 只在服务端没登记时兜底。 */
 var CATALOG_META = {};
+/* 完整能力目录（含规划中能力），供设置页的只读能力地图使用。 */
+var CATALOG_MODULES = [];
 
 /* 运行时能力清单：由 /api/health 的 registered_analyzers 决定，见 buildPresets() */
 var PRESETS = [];
@@ -1244,7 +1246,6 @@ function bindEvents() {
     });
   }
   $("project-new").addEventListener("click", openProjectModal);
-  $("overview-new-project").addEventListener("click", openProjectModal);
   $("overview-retry").addEventListener("click", function () { checkHealth(); });
   projectModalClose.addEventListener("click", closeProjectModal);
   projectModalCancel.addEventListener("click", closeProjectModal);
@@ -1381,7 +1382,8 @@ function loadCatalog() {
     .then(function (data) {
       if (!data || !data.ok) return;
       var meta = {};
-      (data.modules || []).forEach(function (mod) {
+      CATALOG_MODULES = data.modules || [];
+      CATALOG_MODULES.forEach(function (mod) {
         (mod.capabilities || []).forEach(function (cap) {
           meta[cap.id] = {
             name: cap.name || "",
@@ -1390,6 +1392,7 @@ function loadCatalog() {
         });
       });
       CATALOG_META = meta;
+      renderCapabilityMap();
     })
     .catch(function () { /* 说明缺失时退回页面内置 CAP_META */ });
 }
@@ -1552,6 +1555,7 @@ function applyAnalyzers(registered) {
     return PRESETS.filter(function (p) { return p.id === id; }).length > 0;
   });
   renderCapabilityGrid();
+  renderCapabilityMap();
   renderCapCount();
   updateRunButton();
 }
@@ -1568,15 +1572,21 @@ function renderCapCount() {
     (unknown ? "（其中 " + unknown + " 个页面缺少中文说明，显示原名）" : "") + "。";
 }
 
-/* 模块分组元数据：id 前缀 -> 展示名。新模块在此补一条即可。 */
+/* 模块分组元数据：id 前缀 -> 展示名。新模块在此补一条即可。
+   open 仅用于结果页分组的默认展开状态；创建任务的能力树与设置页能力地图
+   一律默认折叠（见 renderCapabilityGrid / renderCapabilityMap）。 */
 var CAP_GROUPS = [
-  { key: "basic",     name: "基础解析",   open: true },
-  { key: "advanced",  name: "深度分析",   open: true },
-  { key: "security",  name: "安全检测",   open: true },
-  { key: "dynamic",   name: "动态执行",   open: false },
-  { key: "automation", name: "自动化",     open: false },
-  { key: "ai",        name: "AI 辅助",    open: false }
+  { key: "basic",      name: "基础解析",   open: true },
+  { key: "advanced",   name: "高级分析",   open: true },
+  { key: "security",   name: "安全分析",   open: true },
+  { key: "dynamic",    name: "动态分析",   open: false },
+  { key: "ai",         name: "AI 分析",    open: false },
+  { key: "automation", name: "自动化",     open: false }
 ];
+/* 树形折叠箭头（SVG chevron，字符三角在小字号下发糊） */
+var CAP_CHEV = '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true">' +
+  '<path d="M4.6 3 L7.4 6 L4.6 9" stroke="currentColor" stroke-width="1.8" ' +
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function groupOf(id) {
   var dot = id.indexOf(".");
@@ -1585,15 +1595,15 @@ function groupOf(id) {
 
 function renderCapabilityGrid() {
   // 主行：英文能力 id；副行：中文名 + 简短说明。id 是 CLI / JSON 里的正式名称，
-  // 放主位便于与服务端输出对照，中文短语只作辅助说明。
+  // 能力叶子：主行英文 id（等宽，便于和 CLI/JSON 对照），右侧中文名。
+  // 保留 .cap-card / data-cap / .check / .cmd 类，复用选中态同步逻辑。
   var cardHtml = function (preset) {
-    return '<div class="cap-card" data-cap="' + esc(preset.id) + '" role="button" tabindex="0" aria-pressed="false"' +
+    return '<div class="cap-card" data-cap="' + esc(preset.id) + '" role="treeitem" tabindex="0" aria-selected="false"' +
       (preset.desc ? ' title="' + esc(preset.desc) + '"' : "") + ">" +
       '<span class="check" aria-hidden="true">✓</span>' +
-      '<div class="t"><span class="cmd">' + esc(preset.id) + "</span></div>" +
-      '<div class="d"><b>' + esc(preset.name) + "</b>" +
-      (preset.brief ? " · " + esc(preset.brief) : "") +
-      "</div></div>";
+      '<span class="cmd">' + esc(preset.id) + "</span>" +
+      '<span class="cn">' + esc(preset.name) + (preset.brief ? " · " + esc(preset.brief) : "") + "</span>" +
+      "</div>";
   };
 
   var buckets = {};
@@ -1608,34 +1618,54 @@ function renderCapabilityGrid() {
     }
   });
 
-  var html = CAP_GROUPS.map(function (group) {
+  // 二维树：每栏一个能力域，默认折叠；域头 = chevron + 名称 + 计数 + 全选
+  var html = '<div class="cap-tree" role="tree">';
+  CAP_GROUPS.forEach(function (group) {
     var items = buckets[group.key] || [];
-    if (!items.length) return "";
+    if (!items.length) return;
     var selected = items.filter(function (p) {
       return state.capabilities.indexOf(p.id) >= 0;
     }).length;
-    return '<details class="cap-group" data-group="' + esc(group.key) + '"' +
-      (group.open ? " open" : "") + ">" +
-      "<summary>" +
+    html += '<section class="cap-group" data-group="' + esc(group.key) + '" role="treeitem" aria-expanded="false">' +
+      '<div class="domain-head" role="group">' +
+        '<button class="tw" type="button" aria-expanded="false" aria-label="展开或收起 ' + esc(group.name) + '">' + CAP_CHEV + '</button>' +
         '<span class="g-name">' + esc(group.name) + "</span>" +
         '<span class="g-count">' + selected + "/" + items.length + "</span>" +
         '<button type="button" class="g-all" data-group-all="' + esc(group.key) + '">全选</button>' +
-      "</summary>" +
-      '<div class="g-body">' + items.map(cardHtml).join("") + "</div>" +
-      "</details>";
-  }).join("");
+      "</div>" +
+      '<div class="children" role="group">' + items.map(cardHtml).join("") + "</div>" +
+      "</section>";
+  });
 
-  // 组合扫描开关保留在末尾，与分组列表互斥
-  html += '<details class="cap-group" data-group="__scan">' +
-    "<summary>" +
+  // 组合扫描开关保留为末尾一栏，与分组列表互斥
+  html += '<section class="cap-group" data-group="__scan" role="treeitem" aria-expanded="false">' +
+    '<div class="domain-head" role="group">' +
+      '<button class="tw" type="button" aria-expanded="false" aria-label="展开或收起组合扫描">' + CAP_CHEV + '</button>' +
       '<span class="g-name">' + esc(SCAN_PRESET.name) + "</span>" +
       '<span class="g-count">scan --module-available</span>' +
-    "</summary>" +
-    '<div class="g-body">' +
+    "</div>" +
+    '<div class="children" role="group">' +
       cardHtml({ id: "scan", name: SCAN_PRESET.name, brief: SCAN_PRESET.brief }) +
-    "</div></details>";
+    "</div></section>";
+  html += "</div>";
 
   capGrid.innerHTML = html;
+
+  // 折叠/展开：点域头（chevron 或整行）切换 .open；点全选按钮不折叠
+  Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-group"), function (group) {
+    var head = group.querySelector(".domain-head");
+    var toggle = function () {
+      var open = group.classList.toggle("open");
+      group.setAttribute("aria-expanded", open ? "true" : "false");
+      var tw = group.querySelector(".tw");
+      if (tw) tw.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    head.addEventListener("click", function (e) {
+      if (e.target.closest(".g-all")) return;  // 全选按钮自己处理
+      toggle();
+    });
+  });
+
   Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
     var activate = function () {
       if (card.dataset.cap === "scan") {
@@ -1658,7 +1688,7 @@ function renderCapabilityGrid() {
   Array.prototype.forEach.call(capGrid.querySelectorAll("[data-group-all]"), function (btn) {
     btn.addEventListener("click", function (e) {
       e.preventDefault();
-      e.stopPropagation();   // 别顺手把 <details> 折叠了
+      e.stopPropagation();   // 别顺手把树折叠了
       toggleGroup(btn.dataset.groupAll);
     });
   });
@@ -1682,6 +1712,56 @@ function toggleGroup(groupKey) {
   updateRunButton();
 }
 
+/* 设置页只读能力地图：二维树，数据取自 /api/modules 的完整目录（含规划中能力）。
+   与创建任务的可勾选树共用样式，但不带勾选框/全选，叶子右侧用圆点标注实现状态。 */
+function renderCapabilityMap() {
+  var box = $("settings-capability-map");
+  if (!box) return;
+  if (!CATALOG_MODULES || !CATALOG_MODULES.length) {
+    box.innerHTML = '<p class="hint" style="margin:0">未获取到能力目录，连接本地服务后自动显示。</p>';
+    return;
+  }
+  var done = 0, total = 0;
+  var html = '<div class="cap-tree" role="tree">';
+  CATALOG_MODULES.forEach(function (mod) {
+    var caps = mod.capabilities || [];
+    if (!caps.length) return;
+    var implemented = caps.filter(function (c) { return c.implemented; }).length;
+    done += implemented; total += caps.length;
+    html += '<section class="cap-group" data-group="' + esc(mod.id) + '" role="treeitem" aria-expanded="false">' +
+      '<div class="domain-head" role="group">' +
+        '<button class="tw" type="button" aria-expanded="false" aria-label="展开或收起 ' + esc(mod.name) + '">' + CAP_CHEV + '</button>' +
+        '<span class="g-name">' + esc(mod.name) + "</span>" +
+        '<span class="g-count">' + implemented + "/" + caps.length + "</span>" +
+      "</div>" +
+      '<div class="children" role="group">';
+    caps.forEach(function (cap) {
+      var ok = !!cap.implemented;
+      html += '<div class="cap-card map-leaf" role="treeitem">' +
+        '<span class="map-dot ' + (ok ? "done" : "planned") + '" aria-hidden="true"></span>' +
+        '<span class="cmd">' + esc(cap.id) + "</span>" +
+        '<span class="cn">' + esc(cap.name || "") + "</span>" +
+        "</div>";
+    });
+    html += "</div></section>";
+  });
+  html += "</div>";
+  html += '<p class="hint" style="margin:10px 0 0">共 <b>' + total + "</b> 项能力，已实现 <b>" + done +
+    "</b> 项，规划中 <b>" + (total - done) + "</b> 项。<span class=\"map-dot done\" style=\"display:inline-block;vertical-align:middle\"></span> 已实现　" +
+    '<span class="map-dot planned" style="display:inline-block;vertical-align:middle"></span> 规划中。点域头展开查看。</p>';
+  box.innerHTML = html;
+
+  Array.prototype.forEach.call(box.querySelectorAll(".cap-group"), function (group) {
+    var head = group.querySelector(".domain-head");
+    head.addEventListener("click", function () {
+      var open = group.classList.toggle("open");
+      group.setAttribute("aria-expanded", open ? "true" : "false");
+      var tw = group.querySelector(".tw");
+      if (tw) tw.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  });
+}
+
 function syncCapabilitySelection() {
   var scanMode = state.mode === "scan";
   Array.prototype.forEach.call(capGrid.querySelectorAll(".cap-card"), function (card) {
@@ -1689,7 +1769,7 @@ function syncCapabilitySelection() {
     var selected = isScan ? scanMode : state.capabilities.indexOf(card.dataset.cap) >= 0;
     card.classList.toggle("selected", selected);
     card.classList.toggle("dim", !selected && scanMode);
-    card.setAttribute("aria-pressed", selected ? "true" : "false");
+    card.setAttribute("aria-selected", selected ? "true" : "false");
   });
   syncGroupCounts();
   prefsCleared = false;   // 用户又做了选择，重新开始持久化

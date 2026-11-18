@@ -261,30 +261,83 @@ a.btn-link:hover { border-color: var(--accent); color: var(--accent-strong); }
 #target-chip .meta { color: var(--muted); font-size: 12.5px; }
 #target-chip .clear { margin-left: auto; }
 
-/* ---------- capability cards ---------- */
-.cap-card {
-  position: relative;
-  border: 1px solid var(--border); border-radius: 9px; padding: 9px 34px 9px 12px;
-  cursor: pointer; background: var(--surface-2); transition: border-color .12s, background .12s, opacity .12s;
+/* ---------- capability 二维树 ----------
+   横向按能力域分栏，纵向为「域 → 能力」两级折叠树。
+   折叠箭头用 SVG chevron（字符三角在小字号下发糊），展开旋转 90°。 */
+.cap-tree { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+@media (max-width: 720px) { .cap-tree { grid-template-columns: 1fr; } }
+.cap-group {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--surface); min-width: 0;
 }
-.cap-card:hover { border-color: var(--accent-border); }
-.cap-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.domain-head {
+  display: flex; align-items: center; gap: 7px; padding: 8px 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none; min-width: 0;
+}
+.domain-head:hover { background: var(--accent-soft); }
+.domain-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.domain-head .g-name {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .18s ease;
+}
+.cap-group.open > .domain-head .g-name { color: var(--accent); }
+.domain-head .g-count { font-size: 11.5px; color: var(--muted); font-family: var(--mono); flex: none; }
+.domain-head .g-all {
+  flex: none; padding: 2px 8px; font-size: 11.5px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--field-bg); color: var(--muted); cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.domain-head .g-all:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--accent-soft); }
+/* SVG chevron：viewBox 12×12，path M4.6 3 L7.4 6 L4.6 9，stroke 1.8 round，11px */
+.tw {
+  width: 20px; height: 20px; flex: none; border: 0; background: transparent;
+  color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0;
+  border-radius: 4px; transition: transform .22s ease, color .15s ease, background .15s ease;
+}
+.tw svg { width: 11px; height: 11px; display: block; }
+.tw:hover { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.cap-group.open > .domain-head .tw { transform: rotate(90deg); }
+.children {
+  max-height: 0; overflow: hidden; padding: 0 8px;
+  transition: max-height .28s ease;
+}
+.cap-group.open > .children { max-height: 340px; overflow-y: auto; padding: 6px 8px 9px; }
+/* 能力叶子（保留 .cap-card 类以复用选中态同步逻辑） */
+.cap-card {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  border: 1px solid transparent; border-radius: 7px; padding: 5px 8px;
+  cursor: pointer; background: transparent; min-width: 0;
+  transition: border-color .12s, background .12s, opacity .12s;
+}
+.cap-card:hover { background: var(--surface-2); border-color: var(--border); }
+.cap-card.selected { border-color: var(--accent); background: var(--accent-soft); }
 .cap-card.dim { opacity: .45; }
 .cap-card .check {
-  position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; border-radius: 4px;
+  width: 15px; height: 15px; flex: none; border-radius: 4px;
   border: 1.5px solid var(--border-strong); background: var(--field-bg); color: transparent;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; line-height: 1;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  transition: background .16s, border-color .16s;
 }
 .cap-card.selected .check { border-color: var(--accent); background: var(--accent); color: var(--on-accent, #fff); }
-/* 主行 = 英文能力 id（等宽，便于和服务端 JSON / CLI 对照） */
-.cap-card .t { font-size: 12.5px; display: flex; align-items: center; gap: 7px; }
-.cap-card .t .cmd { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 600; }
-.cap-card.selected .t .cmd { color: var(--accent-strong); }
-/* 副行 = 中文名 + 简短说明 */
-.cap-card .d { font-size: 11.8px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
-.cap-card .d b { color: var(--text); font-weight: 600; }
-.cap-card.scan .t { color: var(--accent-strong); }
+.cap-card .cmd {
+  font-family: var(--mono); font-size: 11.5px; color: var(--text); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.cap-card.selected .cmd { color: var(--accent-strong); }
+.cap-card .cn {
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; margin-left: auto; flex: none; max-width: 45%;
+}
+.cap-card.scan { color: var(--accent-strong); }
+/* 只读能力地图的叶子：无勾选框，用圆点标注实现状态 */
+.map-leaf { cursor: default; }
+.map-leaf:hover { background: transparent; border-color: transparent; }
+.map-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.map-dot.done { background: var(--ok); }
+.map-dot.planned { background: var(--border-strong); }
 .cap-actions { margin-left: auto; display: flex; gap: 6px; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
@@ -297,31 +350,7 @@ a.btn-link:hover { border-color: var(--accent); color: var(--accent-strong); }
 .preset-bar select { flex: 1; min-width: 0; }
 .preset-bar .hint { margin: 6px 0 8px; }
 
-/* ---------- capability groups ---------- */
-.cap-group { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 8px; overflow: hidden; }
-.cap-group > summary {
-  display: flex; align-items: center; gap: 9px; padding: 9px 12px;
-  background: var(--surface-2); cursor: pointer; user-select: none;
-  font-size: 13.5px; font-weight: 600; list-style: none;
-}
-.cap-group > summary::-webkit-details-marker { display: none; }
-.cap-group > summary::before {
-  content: "▸"; color: var(--muted); font-size: 11px; flex: none;
-  transition: transform .15s;
-}
-.cap-group[open] > summary::before { transform: rotate(90deg); }
-.cap-group > summary:hover { background: var(--accent-soft); }
-.cap-group .g-name { flex: 1; min-width: 0; }
-.cap-group .g-count { font-size: 12px; color: var(--muted); font-weight: 400; font-family: var(--mono); }
-.cap-group .g-all {
-  flex: none; padding: 2px 8px; font-size: 11.5px; border-radius: 6px;
-  border: 1px solid var(--border-strong); background: var(--field-bg); color: var(--muted); cursor: pointer;
-}
-.cap-group .g-all:hover { border-color: var(--accent); color: var(--accent-strong); }
-.cap-group .g-body {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 12px 12px;
-}
-@media (max-width: 620px) { .cap-group .g-body { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .tw, .children { transition: none; } }
 
 /* ---------- result groups（结果页按大类折叠） ---------- */
 .result-group { border-bottom: 1px solid var(--border); padding-bottom: 2px; margin-bottom: 2px; }
@@ -1201,7 +1230,6 @@ details.raw pre, #panel-raw pre {
 }
 .ov-hero h2 { margin: 0 0 6px; font-size: 18px; }
 .ov-hero p { margin: 0; font-size: 13px; color: var(--muted); max-width: 82ch; line-height: 1.65; }
-.ov-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
 
 /* 总览新增面板：风险 / 失败 / 项目扫描时间 */
 .ov-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
@@ -1311,36 +1339,6 @@ details.raw pre, #panel-raw pre {
 }
 .metric .n { font-size: 21px; font-weight: 750; color: var(--accent-strong); font-family: var(--mono); }
 .metric .l { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 900px) { .about-grid { grid-template-columns: 1fr; } }
-.about-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; }
-.about-panel h3 { margin: 0 0 10px; font-size: 14px; }
-.chain {
-  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-  font-family: var(--mono); font-size: 12px; margin-bottom: 9px;
-}
-.chain .node {
-  background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent-strong);
-  border-radius: 7px; padding: 2px 9px; white-space: nowrap;
-}
-.chain .arrow { color: var(--muted); }
-.layer {
-  border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px; margin-bottom: 8px;
-  background: var(--surface-2); font-size: 12.8px;
-}
-.layer b { font-size: 13px; }
-.layer .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-.layer .tags span {
-  font-family: var(--mono); font-size: 11px; background: var(--field-bg);
-  border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; color: var(--muted);
-}
-.run-box pre {
-  margin: 0 0 8px; padding: 10px 13px; background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: 8px; font-size: 12.3px; overflow-x: auto;
-}
-.run-box .last { margin-bottom: 0; }
-ul.tight { margin: 8px 0 0; padding-left: 20px; font-size: 12.8px; color: color-mix(in srgb, var(--text) 80%, var(--muted)); }
-ul.tight li { margin-bottom: 4px; }
 
 /* 页脚为左侧固定导航让出位置，否则文字会压在导航列下 */
 footer {

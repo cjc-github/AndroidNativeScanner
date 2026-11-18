@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh" data-style="b"><head><meta charset="utf-8">
+<title>分析能力 · 二维树预览</title>
+<style>
+:root{
+  /* 主题 B（SaaS 浅色）变量，取自 console.css */
+  --bg:#f6f8fc; --surface:#fff; --surface-2:#f8fafd;
+  --border:#e4eaf3; --border-strong:#cbd6e6;
+  --text:#0f1e3d; --muted:#5b6b85;
+  --accent:#2563eb; --accent-strong:#1d4ed8; --on-accent:#fff;
+  --ok:#0e9f6e; --warn:#b45309;
+  /* 设计别名（树设计里的 --ui-* 映射到主题 B） */
+  --ui-text:var(--text); --ui-text-dim:var(--muted);
+  --ui-bg:var(--bg); --ui-surface:var(--surface); --ui-surface-2:var(--surface-2);
+  --ui-border:var(--border); --ui-brand:var(--accent);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,"Microsoft YaHei",sans-serif;color:var(--ui-text);background:var(--ui-bg);padding:28px 22px 60px}
+.wrap{max-width:1360px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+.lead{color:var(--ui-text-dim);font-size:13px;margin:0 0 22px;line-height:1.6}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ui-text-dim);margin:0 0 22px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.i-ok{background:var(--ok)} .i-todo{background:var(--ui-border-strong)}
+
+.section{background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:16px;padding:18px 18px 20px;margin-bottom:24px;box-shadow:0 1px 2px rgba(15,30,61,.05),0 10px 30px rgba(15,30,61,.06)}
+.section > h2{font-size:15px;margin:0 0 2px}
+.section > .sub{font-size:12px;color:var(--ui-text-dim);margin:0 0 16px}
+
+/* ===== 分栏二维树：横向能力域，纵向 域→能力 层级 ===== */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media(max-width:1050px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.grid{grid-template-columns:1fr}}
+
+.domain{border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface);overflow:hidden;min-width:0}
+.domain-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--ui-surface-2);border-bottom:1px solid var(--ui-border)}
+.domain-head .dot{width:8px;height:8px;border-radius:50%;background:var(--ui-brand);flex:0 0 auto}
+.domain-head b{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.domain-head .frac{margin-left:auto;font-size:11px;color:var(--ui-text-dim);font-variant-numeric:tabular-nums}
+.domain-head .all{margin-left:2px;border:1px solid var(--ui-border-strong);background:var(--ui-surface);color:var(--ui-text-dim);font-size:11px;padding:2px 8px;border-radius:999px;cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.domain-head .all:hover{color:var(--ui-brand);border-color:var(--ui-brand);background:color-mix(in srgb,var(--ui-brand) 7%,transparent)}
+.domain-body{padding:6px}
+
+/* 树节点（严格照「树形展开」设计实现） */
+.node{min-width:0}
+.row{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:7px;min-width:0;transition:background .15s ease}
+.row:hover{background:var(--ui-surface-2)}
+.tw{width:20px;height:20px;flex:0 0 auto;border:0;background:transparent;color:var(--ui-text-dim);cursor:pointer;display:grid;place-items:center;padding:0;border-radius:4px;transition:transform .22s ease,color .15s ease,background .15s ease}
+.tw svg{width:11px;height:11px;display:block}
+.tw:hover{color:var(--ui-text);background:color-mix(in srgb,var(--ui-text) 7%,transparent)}
+.node.open > .row .tw{transform:rotate(90deg)}
+.tw.leaf{visibility:hidden;pointer-events:none}
+.row .label{font-size:12px;color:var(--ui-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:color .18s ease,font-weight .18s ease}
+.node.open > .row .label{color:var(--ui-brand);font-weight:600}
+.children{max-height:0;overflow:hidden;padding-left:16px;transition:max-height .28s ease}
+.node.open > .children{max-height:400px}
+/* 二级：能力叶子 */
+.cap{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:7px;min-width:0;cursor:pointer;transition:background .15s ease}
+.cap:hover{background:var(--ui-surface-2)}
+.cap .box{width:15px;height:15px;flex:0 0 auto;border:1.5px solid var(--ui-border-strong);border-radius:4px;display:grid;place-items:center;color:#fff;font-size:10px;line-height:1;transition:background .16s,border-color .16s}
+.cap.checked .box{background:var(--ui-brand);border-color:var(--ui-brand)}
+.cap .tw{width:15px;height:15px}
+.cap .tw svg{width:10px;height:10px}
+.cap .name{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;color:var(--ui-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cap .cn{font-size:11px;color:var(--ui-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;margin-left:auto}
+.cap .state{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.cap .state.ok{background:var(--ok)} .cap .state.todo{background:var(--ui-border-strong)}
+.cap.checked .name{color:var(--ui-brand);font-weight:600}
+/* 只读版：隐藏勾选框 */
+.readonly .cap{cursor:default}
+.readonly .cap:hover{background:transparent}
+.readonly .box{display:none}
+.readonly .domain-head .all{display:none}
+
+/* 已选汇总条 */
+.summary{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ui-text-dim)}
+.summary .pill{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--ui-brand) 9%,var(--ui-surface));border:1px solid color-mix(in srgb,var(--ui-brand) 25%,var(--ui-border));color:var(--ui-brand);border-radius:999px;padding:3px 9px;font-family:ui-monospace,Consolas,monospace;font-size:11px}
+.summary .clear{margin-left:auto;border:1px solid var(--ui-border-strong);background:var(--ui-surface);color:var(--ui-text-dim);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
+.summary .clear:hover{color:var(--ui-brand);border-color:var(--ui-brand)}
+.runbtn{margin-top:12px;background:var(--ui-brand);color:var(--on-accent);border:0;border-radius:999px;padding:9px 20px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.35)}
+.runbtn:disabled{background:var(--ui-border-strong);box-shadow:none;cursor:not-allowed}
+
+@media(prefers-reduced-motion:reduce){.tw,.children,.row .label,.cap .box{transition:none}}
+</style></head>
+<body>
+<div class="wrap">
+  <h1>分析能力 · 二维树预览</h1>
+  <p class="lead">横向按 6 个能力域分栏，纵向为「能力域 → 具体能力」两级可折叠树。数据是 <code>/api/modules</code> 的真实清单：6 域、46 项能力，其中 36 项已实现、10 项规划中。每个域默认折叠，点击域头箭头展开/收起该域能力列表；展开时域头文字变品牌色。</p>
+  <div class="legend">
+    <span><i class="i-ok"></i>已实现（36）</span>
+    <span><i class="i-todo"></i>规划中（10）</span>
+    <span>形态 A：创建任务（可勾选 / 域全选 / 已选汇总）</span>
+    <span>形态 B：关于展示（只读，仅展开浏览）</span>
+  </div>
+
+  <!-- 形态 A：创建任务，可勾选 -->
+  <div class="section" id="sec-create">
+    <h2>形态 A · 创建任务时的「我想展示的分析能力」</h2>
+    <p class="sub">每栏可点「全选」；点击能力行勾选/取消；下方实时汇总已选，未选时「运行分析」不可用。</p>
+    <div class="grid" id="grid-create"></div>
+    <div class="summary">
+      <span>已选 <b id="sel-count">0</b> 项：</span>
+      <span id="sel-pills" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+      <button class="clear" id="clear-sel" type="button">清空</button>
+    </div>
+    <button class="runbtn" id="run-btn" type="button" disabled>运行分析</button>
+  </div>
+
+  <!-- 形态 B：关于展示，只读 -->
+  <div class="section readonly" id="sec-about">
+    <h2>形态 B · 关于里的分析能力地图（只读）</h2>
+    <p class="sub">同样的二维树，去掉勾选框与全选；叶子右侧圆点表示已实现 / 规划中，供浏览了解产品能力域。</p>
+    <div class="grid" id="grid-about"></div>
+  </div>
+</div>
+
+<script>
+/* 真实能力数据：id / 中文名 / 是否已实现（来自 /api/modules + /api/health） */
+var DOMAINS = [
+  {key:"basic", name:"基础解析", caps:[
+    ["basic.file","文件分析",1],["basic.elf","ELF 解析",1],["basic.symbols","Symbol 解析",1],
+    ["basic.dwarf","DWARF 解析",1],["basic.types","类型恢复",1],["basic.cpp","C++ 恢复",1],
+    ["basic.dynamic","动态链接",1],["basic.disasm","反汇编",1],["basic.cfg","CFG 恢复",1],
+    ["basic.callgraph","Call Graph 恢复",1],["basic.dataflow","Data Flow 分析",1],
+    ["basic.xref","交叉引用",1],["basic.jni","JNI 注册表",1]]},
+  {key:"advanced", name:"高级分析", caps:[
+    ["advanced.strings","字符串分析",1],["advanced.constants","常量分析",1],
+    ["advanced.algorithm","算法识别",1],["advanced.protocol","协议识别",1],
+    ["advanced.file-format","文件格式识别",1],["advanced.library","第三方库识别",1],
+    ["advanced.compiler","编译器识别",1],["advanced.obfuscation","混淆识别",1]]},
+  {key:"security", name:"安全分析", caps:[
+    ["security.hardening","安全保护检测",1],["security.dangerous-api","危险 API 检测",1],
+    ["security.vulnerability","漏洞模式识别",1],["security.risk","风险评估",1],
+    ["security.dynamic-loading","动态加载风险",1]]},
+  {key:"dynamic", name:"动态分析", caps:[
+    ["dynamic.trace","Runtime Trace",1],["dynamic.arguments","参数采集",1],
+    ["dynamic.memory","内存分析",1],["dynamic.syscalls","系统调用分析",1],
+    ["dynamic.coverage","覆盖率分析",1]]},
+  {key:"ai", name:"AI 分析", caps:[
+    ["ai.function-name","函数命名",0],["ai.parameter-semantics","参数语义恢复",0],
+    ["ai.struct-recovery","结构体恢复",0],["ai.module-identification","模块识别",0],
+    ["ai.algorithm-explanation","算法解释",0],["ai.protocol-explanation","协议解释",0],
+    ["ai.vulnerability-explanation","漏洞解释",0],["ai.assembly-explanation","汇编解释",0]]},
+  {key:"automation", name:"自动化", caps:[
+    ["automation.binary-diff","Binary Diff",1],["automation.fuzz-target","Fuzz Target 识别",1],
+    ["automation.harness","Harness 生成",1],["automation.seed","Seed 生成",1],
+    ["automation.crash-cluster","Crash 聚类",0],["automation.report","报告自动化",1],
+    ["automation.workflow","工作流自动化",0]]}
+];
+
+var CHEV = '<svg viewBox="0 0 12 12" fill="none" aria-hidden="true">' +
+  '<path d="M4.6 3 L7.4 6 L4.6 9" stroke="currentColor" stroke-width="1.8" ' +
+  'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var selected = new Set();
+
+function setNode(node, open){
+  node.classList.toggle('open', open);
+  var tw = node.querySelector(':scope > .row > .tw');
+  if(tw) tw.setAttribute('aria-expanded', open ? 'true' : 'false');
+  node.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function buildDomain(d, readonly){
+  // 形态 A 显示"已选/总数"（初始 0）；形态 B 显示"已实现/总数"
+  var done = readonly ? d.caps.filter(function(c){return c[2];}).length : 0;
+  var el = document.createElement('section');
+  el.className = 'domain';
+  el.setAttribute('data-domain', d.key);
+  el.innerHTML =
+    '<div class="domain-head">' +
+      '<span class="dot"></span><b>' + d.name + '</b>' +
+      '<span class="frac">' + done + '/' + d.caps.length + '</span>' +
+      (readonly ? '' : '<button type="button" class="all" data-all="'+d.key+'">全选</button>') +
+    '</div>' +
+    '<div class="domain-body">' +
+      '<div class="node" role="treeitem" aria-expanded="false">' +
+        '<div class="row">' +
+          '<button class="tw" aria-expanded="false" aria-label="展开或收起 '+d.name+'">'+CHEV+'</button>' +
+          '<span class="label">'+d.name+'</span>' +
+        '</div>' +
+        '<div class="children" role="group"></div>' +
+      '</div>' +
+    '</div>';
+
+  var kids = el.querySelector('.children');
+  d.caps.forEach(function(c){
+    var id=c[0], cn=c[1], ok=c[2];
+    var cap = document.createElement('div');
+    cap.className = 'cap' + (!readonly && selected.has(id) ? ' checked' : '');
+    cap.setAttribute('role','treeitem');
+    cap.setAttribute('data-cap', id);
+    cap.innerHTML =
+      (!readonly ? '<span class="box" aria-hidden="true">✓</span>' : '') +
+      '<span class="name">'+id+'</span>' +
+      '<span class="state '+(ok?'ok':'todo')+'" title="'+(ok?'已实现':'规划中')+'"></span>' +
+      '<span class="cn">'+cn+'</span>';
+    if(!readonly){
+      cap.addEventListener('click', function(){
+        if(selected.has(id)) selected.delete(id); else selected.add(id);
+        renderSelection();
+      });
+    }
+    kids.appendChild(cap);
+  });
+
+  // .node 在 .domain-body 内，直接取 .domain-body 下的第一个 .node
+  var node = el.querySelector('.domain-body > .node');
+  var tw = node.querySelector(':scope > .row > .tw');
+  tw.addEventListener('click', function(e){ e.stopPropagation(); setNode(node, !node.classList.contains('open')); });
+  node.querySelector(':scope > .row').addEventListener('click', function(){ setNode(node, !node.classList.contains('open')); });
+
+  var allBtn = el.querySelector('[data-all]');
+  if(allBtn){
+    allBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var allOn = d.caps.every(function(c){ return selected.has(c[0]); });
+      d.caps.forEach(function(c){ allOn ? selected.delete(c[0]) : selected.add(c[0]); });
+      syncDomainChecks(el, d);
+      renderSelection();
+    });
+  }
+  return el;
+}
+
+function syncDomainChecks(el, d){
+  d.caps.forEach(function(c){
+    var cap = el.querySelector('[data-cap="'+c[0]+'"]');
+    if(cap) cap.classList.toggle('checked', selected.has(c[0]));
+  });
+  var done = d.caps.filter(function(c){ return selected.has(c[0]); }).length;
+  el.querySelector('.frac').textContent = done + '/' + d.caps.length;
+}
+
+function renderSelection(){
+  var ids = Array.from(selected);
+  document.getElementById('sel-count').textContent = ids.length;
+  var pills = document.getElementById('sel-pills');
+  pills.innerHTML = ids.map(function(id){ return '<span class="pill">'+id+'</span>'; }).join('');
+  document.getElementById('run-btn').disabled = ids.length === 0;
+}
+
+function mount(){
+  var gc = document.getElementById('grid-create');
+  var ga = document.getElementById('grid-about');
+  DOMAINS.forEach(function(d){
+    gc.appendChild(buildDomain(d, false));
+    ga.appendChild(buildDomain(d, true));
+  });
+  renderSelection();
+  document.getElementById('clear-sel').addEventListener('click', function(){
+    selected.clear();
+    DOMAINS.forEach(function(d){ syncDomainChecks(gc.querySelector('[data-domain="'+d.key+'"]'), d); });
+    renderSelection();
+  });
+}
+mount();
+</script>
+</body></html>

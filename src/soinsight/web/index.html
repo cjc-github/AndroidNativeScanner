@@ -99,12 +99,6 @@ try { document.documentElement.dataset.style = localStorage.getItem("soinsight-c
           未连接到本地分析服务，下面只显示本地数据库里已有的记录。
           <button class="small" id="overview-retry" type="button" style="margin-left:8px">重新检测连接</button>
         </div>
-        <div class="ov-actions">
-          <button class="primary" id="overview-new-project" type="button">＋ 新建项目</button>
-          <button class="small" data-goto-view="config" type="button">项目管理</button>
-          <button class="small" data-goto-view="history" type="button">任务管理</button>
-          <a class="btn-link" href="/so-scan.html">深度分析台 →</a>
-        </div>
       </div>
 
       <div class="panel" style="margin-top:14px">
@@ -143,9 +137,6 @@ try { document.documentElement.dataset.style = localStorage.getItem("soinsight-c
               <h2>最近失败</h2>
               <div class="lh-sub">最近 5 条失败任务及原因，可点击回看当时的结果。</div>
             </div>
-            <div class="lh-actions">
-              <button class="small" data-goto-view="history" type="button">任务管理</button>
-            </div>
           </div>
           <div id="overview-failures"></div>
         </div>
@@ -157,9 +148,6 @@ try { document.documentElement.dataset.style = localStorage.getItem("soinsight-c
             <h2>项目最近扫描</h2>
             <div class="lh-sub">按最近扫描时间排序，超过 7 天未扫描的项目会标记为陈旧。</div>
           </div>
-          <div class="lh-actions">
-            <button class="small" data-goto-view="config" type="button">项目管理</button>
-          </div>
         </div>
         <div id="overview-projects"></div>
       </div>
@@ -170,66 +158,8 @@ try { document.documentElement.dataset.style = localStorage.getItem("soinsight-c
             <h2>最近任务</h2>
             <div class="lh-sub">按创建时间倒序取最近 5 条，成功后可直接回放完整结果。</div>
           </div>
-          <div class="lh-actions">
-            <button class="small" data-goto-view="history" type="button">查看全部</button>
-          </div>
         </div>
         <div id="overview-recent"></div>
-      </div>
-
-      <div class="panel" style="margin-top:14px">
-        <div class="list-head">
-          <div class="lh-main">
-            <h2>关于 SOInsight</h2>
-            <div class="lh-sub">产品能力域与两层架构说明，命令行与控制台的结果完全一致。</div>
-          </div>
-        </div>
-        <div class="about-grid">
-          <div class="about-panel">
-            <h3>跨域分析链路（依赖由规划器自动补齐）</h3>
-            <div class="chain">
-              <span class="node">basic.file</span><span class="arrow">→</span>
-              <span class="node">basic.elf</span><span class="arrow">→</span>
-              <span class="node">security.hardening</span>
-            </div>
-            <div class="chain">
-              <span class="node">basic.file</span><span class="arrow">→</span>
-              <span class="node">basic.elf</span><span class="arrow">→</span>
-              <span class="node">basic.symbols</span><span class="arrow">→</span>
-              <span class="node">security.dangerous-api</span>
-            </div>
-            <div class="chain">
-              <span class="node">basic.file</span><span class="arrow">→</span>
-              <span class="node">basic.elf</span><span class="arrow">→</span>
-              <span class="node">basic.dwarf</span>
-            </div>
-            <h3 style="margin-top:14px">已验证事实</h3>
-            <ul class="tight">
-              <li>2943 个导出函数与 pyelftools 审计比对，0 遗漏</li>
-              <li>1895 个 C++ 符号 demangle 与参考实现 0 差异</li>
-              <li>21 个真实 Android x86 库样本（<code>in/</code>，向导"样本"即来源于此）</li>
-              <li>ELF / DWARF 解析为纯 Python 实现，不依赖 readelf / nm / objdump</li>
-            </ul>
-          </div>
-
-          <div class="about-panel">
-            <h3>两层架构</h3>
-            <div class="layer">
-              <b>产品层</b> — 42 项能力目录、Analyzer / Rule / Profile / Renderer
-              <div class="tags"><span>ModuleCatalog</span><span>AnalyzerRegistry</span><span>RuleEngine</span><span>RendererRegistry</span></div>
-            </div>
-            <div class="layer">
-              <b>技术层</b> — 依赖 DAG 规划、并发调度、运行时看门狗与缓存
-              <div class="tags"><span>DependencyPlanner</span><span>Scheduler</span><span>AnalysisRuntime</span><span>ArtifactStore</span></div>
-            </div>
-            <h3 style="margin-top:14px">Web 控制台如何工作</h3>
-            <div class="run-box">
-              <pre>py -3 web/server.py        <span style="color:var(--muted)"># 启动服务并自动打开浏览器</span></pre>
-              <pre class="last">soinsight scan TARGET --enable basic.elf,basic.symbols --format json   <span style="color:var(--muted)"># 页面每次运行等价于这条 CLI</span></pre>
-            </div>
-            <p class="hint" style="margin-top:8px">页面通过 <code>/api/analyze</code> 把目标交给本地服务，服务以子进程执行上面的 CLI 并回传 JSON；服务仅绑定 127.0.0.1，上传文件只写入系统临时目录、分析后即删。命令行用法见 <code>docs/quickstart.md</code>。</p>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -528,6 +458,12 @@ try { document.documentElement.dataset.style = localStorage.getItem("soinsight-c
         <h2>运行环境</h2>
         <p class="hint" style="margin-top:0">来自本地分析服务 <code>/api/health</code>，用于确认页面连的是哪一份服务。</p>
         <div id="settings-env"></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h2>分析能力</h2>
+        <p class="hint" style="margin-top:0">SOInsight 全量分析能力地图，含已实现与规划中的能力。来自 <code>/api/modules</code>。</p>
+        <div id="settings-capability-map"></div>
       </div>
     </section>
 
