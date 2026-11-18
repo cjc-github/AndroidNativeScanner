@@ -1225,11 +1225,13 @@ details.raw pre, #panel-raw pre {
 .sev-fill { display: block; height: 100%; min-width: 2px; border-radius: 999px; background: var(--accent); }
 .sev-n { text-align: right; font-family: var(--mono); font-size: 12px; }
 .sev-total { margin-top: 12px; color: var(--muted); font-size: 12px; }
-.sev-critical { background: var(--sev-critical); }
-.sev-high { background: var(--sev-high); }
-.sev-medium { background: var(--sev-medium); }
-.sev-low { background: var(--sev-low); }
-.sev-info { background: var(--sev-info); }
+/* 只作用于总览严重度图例的点与填充条；不要用裸 .sev-* 选择器，
+   否则会命中 finding 卡片自带的 sev-* 类，把整张卡片涂成严重度色、文字不可读 */
+.sev-dot.sev-critical, .sev-fill.sev-critical { background: var(--sev-critical); }
+.sev-dot.sev-high, .sev-fill.sev-high { background: var(--sev-high); }
+.sev-dot.sev-medium, .sev-fill.sev-medium { background: var(--sev-medium); }
+.sev-dot.sev-low, .sev-fill.sev-low { background: var(--sev-low); }
+.sev-dot.sev-info, .sev-fill.sev-info { background: var(--sev-info); }
 
 .trend-legend { display: flex; gap: 14px; margin-bottom: 8px; color: var(--muted); font-size: 11.5px; }
 .trend-legend span { display: inline-flex; align-items: center; gap: 5px; }
