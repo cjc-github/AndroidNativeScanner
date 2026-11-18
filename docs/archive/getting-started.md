@@ -32,7 +32,7 @@ PYTHONPATH=src python3 -m soinsight doctor
 PYTHONPATH=src python3 -m soinsight basic elf README.md --format json
 ```
 
-当前 `basic.elf` Analyzer 已实现：对 README.md 这类非 ELF 目标会返回 `INVALID_ELF` 诊断（整体状态 `partial`）；对真实 ELF（如 `in/libfuzzgoat.so`）会输出头部解析结果。
+当前 `basic.elf` Analyzer 已实现：对 README.md 这类非 ELF 目标会返回 `INVALID_ELF` 诊断（整体状态 `partial`）；对真实 ELF（如 `in/libtest_demo.so`）会输出头部解析结果。
 
 ## 4. 安装开发版本
 

@@ -17,7 +17,7 @@
 1. **在真实样本上验证。** 合成夹具会让"测试通过但功能是死的"。
    本项目有过一次真实教训：控制流平坦化检测的单测喂的是手工构造的字典，
    而真实 CFG 的块出度最多 2，判据"出度 ≥ 4"永远不成立——测试绿了，功能从未生效。
-   现在端到端检查一律跑 `in/libfuzzgoat.so`。
+   现在端到端检查一律跑 `in/libtest_demo.so`。
 2. **声明与实现一致。** 能力清单里勾了就是实现了；文档里的数字、名称、
    能力状态必须与代码一致。这条由 §5 的守卫强制。
 3. **每个提交独立可用。** 一个提交只依赖它之前的提交，不能依赖后面的。
@@ -259,7 +259,7 @@ python -m pytest tests/unit/test_change_audit.py \
                  tests/unit/test_documentation_status.py -q
 
 # 4. 真实样本上的行为
-python -m soinsight scan in/libfuzzgoat.so \
+python -m soinsight scan in/libtest_demo.so \
     --module-available basic,advanced,security,dynamic --format json
 
 # 5. 打包后的东西仍然可用

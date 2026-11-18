@@ -5,6 +5,7 @@ check is mechanical: the numbers are compared with what the code
 actually does.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -35,7 +36,10 @@ def _counts() -> tuple[int, int]:
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=REPO,
+        env={**os.environ, "PYTHONPATH": "src"},
         check=True,
     )
     done, total = completed.stdout.split()
@@ -55,7 +59,10 @@ def _test_counts() -> tuple[int, int]:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=REPO,
+        env={**os.environ, "PYTHONPATH": "src"},
     )
     output = completed.stdout
 

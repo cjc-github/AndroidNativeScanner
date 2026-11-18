@@ -66,6 +66,28 @@ soinsight doctor
 soinsight modules list
 ```
 
+### 获取验证样本（`in/`）
+
+集成测试与下文示例都引用 `in/libtest_demo.so` 这个真实 ELF 样本。`in/` 目录被 `.gitignore` 排除（不把二进制入库），所以新克隆里它是空的，端到端用例会显示为 skip。获取方式：
+
+```bash
+# Linux / macOS
+python3 scripts/fetch_samples.py            # 下载缺失的样本
+python3 scripts/fetch_samples.py --verify   # 只校验已下载的样本
+python3 scripts/fetch_samples.py --list     # 查看样本清单
+
+# Windows（Python 3.10+，本机 py -3 指向 3.10）
+py -3 scripts/fetch_samples.py
+```
+
+脚本从 BusyBox 的公开多架构构建下载真实 ELF，逐个做 SHA-256 校验和 ELF 魔数检查后才写入 `in/`；主样本固定命名为 `libtest_demo.so`，另外几个按架构命名（`busybox-armv7l`、`busybox-i686`、`busybox-mips`、`busybox-armv8l`），用于跨架构解析验证。
+
+网络受限或想测自己的库时，把任意真实 `.so` 复制到 `in/libtest_demo.so` 即可——测试和 Web 控制台的样本下拉都会识别它。样本就绪后运行：
+
+```bash
+python3 -m pytest tests/integration/test_implemented_capabilities.py
+```
+
 ## 3. 常用命令
 
 ```bash
