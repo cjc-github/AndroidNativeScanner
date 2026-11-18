@@ -4,27 +4,20 @@
 Why this exists
 ---------------
 ``in/`` holds the real ELF libraries the integration tests and the web
-console's sample picker run against. The directory is listed in
-``.gitignore`` on purpose: the binaries are large and must not enter the
-repository. A fresh clone therefore has an empty ``in/`` and the
-end-to-end capabilities have never been exercised against a real library on
-that machine -- ``tests/integration/test_implemented_capabilities.py``
-silently skips those cases.
+console's sample picker run against. The primary sample,
+``in/libtest_demo.so``, is tracked in git (a 32-bit ARM shared library), so a
+fresh clone already has it and the end-to-end checks run out of the box.
 
-This script downloads real, permissively licensed ELF binaries into ``in/``
-so those checks can be reproduced. Every download is verified (SHA-256) and
-confirmed to be an ELF before it is kept.
+The remaining samples are large binaries and stay out of the repository via
+``.gitignore``. This script downloads that optional set into ``in/`` so the
+ELF reader can be exercised across machine types. Every download is verified
+(SHA-256) and confirmed to be an ELF before it is kept. The optional set is
+built on BusyBox's published multi-architecture static executables (roughly
+1 MB each: x86 / ARM / MIPS).
 
-The catalogue is built on BusyBox's published multi-architecture binaries:
-one static executable per architecture, roughly 1 MB each. The primary one
-is written as ``in/libtest_demo.so`` -- the sample name the integration
-tests and the documents use -- and the others keep their architecture names
-to exercise the ELF reader across machine types (x86 / x86_64 / ARM /
-ARM64-ish / MIPS).
-
-They are *not* Android libraries. For JNI-specific behaviour, drop your own
-``.so`` into ``in/`` -- the web console's sample picker will list it
-alongside these.
+The optional BusyBox samples are *not* Android libraries. For JNI-specific
+behaviour, drop your own ``.so`` into ``in/`` -- the web console's sample
+picker will list it alongside these.
 
 Usage::
 
@@ -54,10 +47,15 @@ BUSYBOX_BASE = "https://busybox.net/downloads/binaries/1.31.0-defconfig-multiarc
 
 @dataclass(frozen=True)
 class Sample:
-    """One downloadable sample and where it lands in ``in/``."""
+    """One sample and how it arrives in ``in/``.
 
-    name: str            # output file name inside in/
-    source: str          # file name at BUSYBOX_BASE, or a full URL
+    ``source`` is ``None`` for samples already tracked in git: they ship with
+    the checkout, so the script never downloads them and only verifies them.
+    Otherwise it is a file name at ``BUSYBOX_BASE`` or a full URL to fetch.
+    """
+
+    name: str            # file name inside in/
+    source: str | None   # download source, or None if tracked in git
     sha256: str          # pinned digest of the exact bytes
     arch: str = ""
     note: str = ""
@@ -70,11 +68,12 @@ class Sample:
 CATALOG: tuple[Sample, ...] = (
     Sample(
         name="libtest_demo.so",
-        # 主样本用 1.35.0 的 x86_64 构建（集成测试即在此文件上验证通过）。
-        source="https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox",
-        sha256="6e123e7f3202a8c1e9b1f94d8941580a25135382b99e8d3e34fb858bba311348",
-        arch="x86_64",
-        note="主验证样本；集成测试与文档统一引用这个名字",
+        # 主验证样本已纳入版本管理（in/libtest_demo.so，32 位 ARM .so），
+        # 新克隆即自带，脚本不下载、只校验，避免覆盖仓库里的可信副本。
+        source=None,
+        sha256="cd039a501c1d2f7b653b0d9a1471b1664dd05f6d77ae2ead890eb06d127a6f32",
+        arch="arm",
+        note="主验证样本（随仓库提供）；集成测试与文档统一引用这个名字",
     ),
     Sample(
         name="busybox-armv7l.elf",
@@ -130,6 +129,12 @@ def download(url: str, *, timeout: int = 300) -> bytes:
 
 def fetch_one(sample: Sample, *, force: bool) -> str:
     """Download one sample into ``in/``. Returns a short status line."""
+    if sample.source is None:
+        # Tracked in git: ships with the checkout, nothing to download.
+        destination = SAMPLES_DIR / sample.name
+        state = "已就位（随仓库提供）" if destination.is_file() else "缺失（仓库文件丢失，请检查克隆）"
+        return f"跳过（入库样本）: {destination.name} — {state}"
+
     destination = SAMPLES_DIR / sample.name
     if destination.exists() and not force:
         return f"跳过（已存在）: {destination.name}"
@@ -192,8 +197,14 @@ def verify(*, quiet: bool = False) -> int:
 
 
 def refresh_digests() -> int:
-    """Re-download each sample and print its digest, for pinning updates."""
+    """Re-download each fetchable sample and print its digest, for pinning."""
     for sample in CATALOG:
+        if sample.source is None:
+            # Tracked sample: read from disk, never re-download.
+            path = SAMPLES_DIR / sample.name
+            if path.is_file():
+                print(f'{sample.name}（入库，读本地）: "{sha256_of_bytes(path.read_bytes())}",')
+            continue
         url = sample.source if sample.source.startswith("http") else f"{BUSYBOX_BASE}/{sample.source}"
         try:
             payload = download(url)
@@ -222,9 +233,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list:
         for sample in CATALOG:
-            url = sample.source if sample.source.startswith("http") else f"{BUSYBOX_BASE}/{sample.source}"
+            if sample.source is None:
+                origin = "随仓库提供（已入库，无需下载）"
+            elif sample.source.startswith("http"):
+                origin = sample.source
+            else:
+                origin = f"{BUSYBOX_BASE}/{sample.source}"
             print(f"{sample.name}  [{sample.arch}]")
-            print(f"    来源: {url}")
+            print(f"    来源: {origin}")
             print(f"    说明: {sample.note}")
         return 0
 

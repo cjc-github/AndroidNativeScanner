@@ -348,7 +348,7 @@ PYTHONPATH=src python3 -m soinsight scan libfoo.so --module-available basic,secu
 
 ### 本轮实现的核实结论（2026-11-09）
 
-清单不是按代码写的，而是逐项在**真实样本**（`in/libtest_demo.so`）上跑出来的。`in/` 被 `.gitignore` 排除，新克隆里样本缺失；运行 `python3 scripts/fetch_samples.py`（Windows 用 `py -3 scripts/fetch_samples.py`）下载并校验，或自行放一个真实 `.so` 到该路径。详见 [快速使用 · 获取验证样本](docs/quickstart.md)：
+清单不是按代码写的，而是逐项在**真实样本**（`in/libtest_demo.so`，随仓库提供）上跑出来的。需要更多跨架构样本时，运行 `python3 scripts/fetch_samples.py`（Windows 用 `py -3 scripts/fetch_samples.py`）下载并校验，或自行放一个真实 `.so` 到 `in/`。详见 [快速使用 · 获取验证样本](docs/quickstart.md)：
 
 | 核实项 | 方式 | 结论 |
 |---|---|---|
