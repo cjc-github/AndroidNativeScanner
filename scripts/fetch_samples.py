@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -78,32 +77,32 @@ CATALOG: tuple[Sample, ...] = (
         note="主验证样本；集成测试与文档统一引用这个名字",
     ),
     Sample(
-        name="busybox-armv7l",
+        name="busybox-armv7l.elf",
         source="busybox-armv7l",
         sha256="cd04052b8b6885f75f50b2a280bfcbf849d8710c8e61d369c533acf307eda064",
         arch="armv7l",
         note="32 位 ARM（对应 Android armeabi-v7a）",
     ),
     Sample(
-        name="busybox-i686",
+        name="busybox-i686.elf",
         source="busybox-i686",
         sha256="6c63a8623659aff24843d9b0720fa4aa216d44a5d60f29979a4073f3f80ce69c",
         arch="i686",
         note="32 位 x86（对应 Android x86）",
     ),
     Sample(
-        name="busybox-mips",
+        name="busybox-mips.elf",
         source="busybox-mips",
         sha256="c3fed048a70d5529f95820c5abb77553efc276a89a8608414ca03e53d6bedd1d",
         arch="mips",
         note="32 位 MIPS 大端",
     ),
     Sample(
-        name="busybox-armv8l",
+        name="busybox-armv8l.elf",
         source="busybox-armv8l",
         sha256="141adb1b625a6f44c4b114f76b4387b4ea4f7ab802b88eb40e0d2f6adcccb1c3",
         arch="armv8l",
-        note="64 位 ARM（对应 Android arm64-v8a）",
+        note="32 位 ARM 小端（ELF32，BusyBox 命名如此）",
     ),
 )
 

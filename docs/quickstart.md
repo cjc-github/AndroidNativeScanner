@@ -80,7 +80,7 @@ python3 scripts/fetch_samples.py --list     # 查看样本清单
 py -3 scripts/fetch_samples.py
 ```
 
-脚本从 BusyBox 的公开多架构构建下载真实 ELF，逐个做 SHA-256 校验和 ELF 魔数检查后才写入 `in/`；主样本固定命名为 `libtest_demo.so`，另外几个按架构命名（`busybox-armv7l`、`busybox-i686`、`busybox-mips`、`busybox-armv8l`），用于跨架构解析验证。
+脚本从 BusyBox 的公开多架构构建下载真实 ELF，逐个做 SHA-256 校验和 ELF 魔数检查后才写入 `in/`；主样本固定命名为 `libtest_demo.so`，另外几个按架构命名（`busybox-armv7l.elf`、`busybox-i686.elf`、`busybox-mips.elf`、`busybox-armv8l.elf`），用于跨架构解析验证。
 
 网络受限或想测自己的库时，把任意真实 `.so` 复制到 `in/libtest_demo.so` 即可——测试和 Web 控制台的样本下拉都会识别它。样本就绪后运行：
 
