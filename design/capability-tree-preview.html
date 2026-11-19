@@ -38,7 +38,14 @@ h1{font-size:20px;margin:0 0 4px}
 .tree .domain > .name{color:var(--accent);font-weight:600;cursor:pointer}
 .tree .domain:hover > .name{background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:3px}
 .tree .domain > .meta{color:var(--muted);font-size:11px;margin-left:6px}
-.tree .domain > .arrow{color:var(--tree);margin-left:6px;font-size:11px}
+/* 展开箭头：折叠时 >，展开时 ∨（CSS 绘制，旋转切换） */
+.tree .domain > .arrow{
+  display:inline-block;width:6px;height:6px;margin-left:8px;
+  border-right:1.5px solid var(--tree);border-bottom:1.5px solid var(--tree);
+  transform:rotate(45deg);transform-origin:center;
+  transition:transform .14s ease;vertical-align:1px;
+}
+.tree .group.collapsed > .domain > .arrow{transform:rotate(-45deg)}
 .tree .domain > .all{color:var(--muted);font-size:11px;margin-left:8px;cursor:pointer}
 .tree .domain > .all:hover{color:var(--accent)}
 .tree .domain > .all.off{color:var(--accent)}
@@ -107,7 +114,7 @@ h1{font-size:20px;margin:0 0 4px}
     <h2>形态 A · 创建任务时的「我想展示的分析能力」</h2>
     <p class="sub">
       <strong>域名行复选框</strong>＝该大类整选：未选 → 半选（左半填充）→ 全选（<code>✓</code>）三态循环；<br>
-      <strong>点击域名文字</strong>＝展开 / 收起该大类，进入里面逐项勾选；右侧「全选 / 取消全选」等价于勾选框。<br>
+      <strong>点击域名文字或箭头</strong>＝展开 / 收起该大类（默认折叠），进入里面逐项勾选；右侧「全选 / 取消全选」等价于勾选框。<br>
       下方实时汇总已选，未选任何能力时「运行分析」不可用。
     </p>
     <div class="toolbar">
@@ -126,7 +133,7 @@ h1{font-size:20px;margin:0 0 4px}
   <!-- 形态 B：关于展示，只读 -->
   <div class="section readonly" id="sec-about">
     <h2>形态 B · 关于里的分析能力地图（只读）</h2>
-    <p class="sub">同样的二维树，去掉勾选框与全选；点击域名可折叠 / 展开，叶子右侧圆点表示已实现 / 规划中，供浏览了解产品能力域。</p>
+    <p class="sub">同样的二维树，去掉勾选框与全选；默认折叠，点击域名或箭头展开，叶子右侧圆点表示已实现 / 规划中，供浏览了解产品能力域。</p>
     <div class="tree" id="tree-about"></div>
   </div>
 </div>
@@ -166,10 +173,10 @@ var DOMAINS = [
 ];
 
 var selected = new Set();
-/* 每个树各自的展开状态（形态 A / 形态 B 互不影响），默认全部展开 */
+/* 每个树各自的展开状态（形态 A / 形态 B 互不影响），默认全部折叠 */
 function initialExpanded(){
   var m = {};
-  DOMAINS.forEach(function(d){ m[d.key] = true; });
+  DOMAINS.forEach(function(d){ m[d.key] = false; });
   return m;
 }
 var stateCreate = {expanded:initialExpanded()};
@@ -256,7 +263,7 @@ function buildTree(container, readonly, state){
 
     var arrow = document.createElement('span');
     arrow.className = 'arrow';
-    arrow.textContent = state.expanded[d.key] ? '▾' : '▸';
+    arrow.title = '展开 / 收起该大类';
     dline.appendChild(arrow);
 
     // 整选快捷文字（仅形态 A）
@@ -269,11 +276,10 @@ function buildTree(container, readonly, state){
       dline.appendChild(all);
     }
 
-    // 展开 / 收起
+    // 展开 / 收起（箭头方向由 CSS 依据 collapsed 类自动切换）
     function toggleExpand(){
       state.expanded[d.key] = !state.expanded[d.key];
       group.classList.toggle('collapsed', !state.expanded[d.key]);
-      arrow.textContent = state.expanded[d.key] ? '▾' : '▸';
     }
     dname.addEventListener('click', toggleExpand);
     arrow.addEventListener('click', toggleExpand);
