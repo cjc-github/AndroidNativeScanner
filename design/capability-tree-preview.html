@@ -15,13 +15,17 @@ body{margin:0;font-family:"Segoe UI",system-ui,"Microsoft YaHei",sans-serif;colo
 .wrap{max-width:1100px;margin:0 auto}
 h1{font-size:20px;margin:0 0 4px}
 .lead{color:var(--muted);font-size:13px;margin:0 0 22px;line-height:1.6}
+.lead code{background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:0 0 22px}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .i-ok{background:var(--ok)} .i-todo{background:var(--border-strong)}
 
 .section{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px 20px;margin-bottom:24px;box-shadow:0 1px 2px rgba(15,30,61,.05),0 10px 30px rgba(15,30,61,.06)}
 .section > h2{font-size:15px;margin:0 0 2px}
-.section > .sub{font-size:12px;color:var(--muted);margin:0 0 16px}
+.section > .sub{font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.7}
+.toolbar{display:flex;gap:8px;margin:0 0 12px}
+.tbtn{border:1px solid var(--border-strong);background:var(--surface);color:var(--muted);border-radius:999px;padding:3px 12px;font-size:11px;cursor:pointer}
+.tbtn:hover{color:var(--accent);border-color:var(--accent)}
 
 /* ASCII 树（tree 命令风格） */
 .tree{
@@ -30,39 +34,56 @@ h1{font-size:20px;margin:0 0 4px}
   white-space:pre;overflow-x:auto;padding:4px 0;
 }
 .tree .root{color:var(--accent);font-weight:600}
-.tree .branch{color:var(--tree)}
-.tree .pipe{color:var(--tree)}
 .tree .domain > .prefix{color:var(--tree)}
 .tree .domain > .name{color:var(--accent);font-weight:600;cursor:pointer}
-.tree .domain.open > .name{color:var(--accent-strong);text-decoration:underline;text-underline-offset:3px}
+.tree .domain:hover > .name{background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:3px}
 .tree .domain > .meta{color:var(--muted);font-size:11px;margin-left:6px}
+.tree .domain > .arrow{color:var(--tree);margin-left:6px;font-size:11px}
+.tree .domain > .all{color:var(--muted);font-size:11px;margin-left:8px;cursor:pointer}
+.tree .domain > .all:hover{color:var(--accent)}
+.tree .domain > .all.off{color:var(--accent)}
 .tree .cap{cursor:pointer}
-.tree .cap .prefix{color:var(--tree)}
-.tree .cap .id{color:var(--text)}
-.tree .cap .cn{color:var(--muted);font-size:12px;margin-left:8px}
-.tree .cap .box{
-  display:inline-block;width:13px;height:13px;margin-right:6px;vertical-align:-2px;
+.tree .cap > .prefix{color:var(--tree)}
+.tree .cap > .id{color:var(--text)}
+.tree .cap > .cn{color:var(--muted);font-size:12px;margin-left:8px}
+.tree .cap:hover > .id{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:3px}
+.tree .cap.checked > .id{color:var(--accent);font-weight:600}
+
+/* 复选框（能力项 / 域名整选） */
+.tree .box{
+  display:inline-block;width:13px;height:13px;margin-right:7px;vertical-align:-2px;
   border:1.5px solid var(--border-strong);border-radius:3px;
   position:relative;top:1px;
 }
+.tree .cap .box{cursor:pointer}
 .tree .cap.checked .box{background:var(--accent);border-color:var(--accent)}
 .tree .cap.checked .box::after{
-  content:"✓";color:#fff;font-size:10px;line-height:13px;text-align:center;display:block;
+  content:"✓";color:var(--on-accent);font-size:10px;line-height:12px;text-align:center;display:block;
 }
-.tree .cap.checked .id{color:var(--accent);font-weight:600}
+.tree .dbox{cursor:pointer}
+.tree .dbox.checked{background:var(--accent);border-color:var(--accent)}
+.tree .dbox.checked::after{
+  content:"✓";color:var(--on-accent);font-size:10px;line-height:12px;text-align:center;display:block;
+}
+.tree .dbox.half{background:var(--accent);border-color:var(--accent)}
+.tree .dbox.half::after{
+  content:"";position:absolute;left:2px;right:2px;top:4.5px;height:2px;
+  background:var(--on-accent);border-radius:1px;
+}
 .tree .cap .state{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:6px;vertical-align:1px}
 .tree .cap .state.ok{background:var(--ok)}
 .tree .cap .state.todo{background:var(--border-strong)}
-.tree .cap:hover > .id,.tree .cap:hover > .name{background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:3px}
-.tree .domain:hover > .name{background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:3px}
-.tree.collapsed .cap,.tree.collapsed .collapse{display:none}
+
+/* 折叠：整组隐藏能力行，域名行保留 */
+.tree .group.collapsed > .cap{display:none}
 
 /* 只读版：隐藏勾选框 */
 .readonly .tree .cap{cursor:default}
 .readonly .tree .box{display:none}
 
 .summary{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
-.summary .pill{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--accent) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 25%,var(--border));color:var(--accent);border-radius:999px;padding:3px 9px;font-family:ui-monospace,Consolas,monospace;font-size:11px}
+.summary .pill{display:inline-flex;align-items:center;gap:5px;background:color-mix(in srgb,var(--accent) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 25%,var(--border));color:var(--accent);border-radius:999px;padding:3px 9px;font-size:11px}
+.summary .empty{font-size:12px;color:var(--muted)}
 .summary .clear{margin-left:auto;border:1px solid var(--border-strong);background:var(--surface);color:var(--muted);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
 .summary .clear:hover{color:var(--accent);border-color:var(--accent)}
 .runbtn{margin-top:12px;background:var(--accent);color:var(--on-accent);border:0;border-radius:999px;padding:9px 20px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.35)}
@@ -73,18 +94,26 @@ h1{font-size:20px;margin:0 0 4px}
 <body>
 <div class="wrap">
   <h1>分析能力 · 二维树预览</h1>
-  <p class="lead">单一纵向 ASCII 树（<code>tree</code> 命令风格），按「能力域 → 具体能力」层级递进展开。点击域名可折叠/展开该域；数据来自 <code>/api/modules</code>：6 域、46 项能力，36 项已实现、10 项规划中。</p>
+  <p class="lead">单一纵向 ASCII 树（<code>tree</code> 命令风格），按「能力域 → 具体能力」层级递进展开。域名行既是<strong>大类开关</strong>也是<strong>入口</strong>：点勾选框整域全选 / 半选，点域名展开逐项勾选。数据来自 <code>/api/modules</code>：6 域、46 项能力，36 项已实现、10 项规划中。</p>
   <div class="legend">
     <span><i class="i-ok"></i>已实现（36）</span>
     <span><i class="i-todo"></i>规划中（10）</span>
-    <span>形态 A：创建任务（可勾选 / 域全选 / 已选汇总）</span>
+    <span>形态 A：创建任务（整域全选 / 逐项勾选 / 已选汇总）</span>
     <span>形态 B：关于展示（只读，仅展开浏览）</span>
   </div>
 
   <!-- 形态 A：创建任务，可勾选 -->
   <div class="section" id="sec-create">
     <h2>形态 A · 创建任务时的「我想展示的分析能力」</h2>
-    <p class="sub">点击域名展开/收起；点击能力行勾选/取消；域名右侧「全选」可一键切换整域。下方实时汇总已选，未选时「运行分析」不可用。</p>
+    <p class="sub">
+      <strong>域名行复选框</strong>＝该大类整选：未选 → 半选（<code>—</code>）→ 全选（<code>✓</code>）三态循环；<br>
+      <strong>点击域名文字</strong>＝展开 / 收起该大类，进入里面逐项勾选；右侧「全选 / 取消全选」等价于勾选框。<br>
+      下方实时汇总已选，未选任何能力时「运行分析」不可用。
+    </p>
+    <div class="toolbar">
+      <button class="tbtn" id="expand-all" type="button">展开全部</button>
+      <button class="tbtn" id="collapse-all" type="button">收起全部</button>
+    </div>
     <div class="tree" id="tree-create"></div>
     <div class="summary">
       <span>已选 <b id="sel-count">0</b> 项：</span>
@@ -97,7 +126,7 @@ h1{font-size:20px;margin:0 0 4px}
   <!-- 形态 B：关于展示，只读 -->
   <div class="section readonly" id="sec-about">
     <h2>形态 B · 关于里的分析能力地图（只读）</h2>
-    <p class="sub">同样的二维树，去掉勾选框与全选；叶子右侧圆点表示已实现 / 规划中，供浏览了解产品能力域。</p>
+    <p class="sub">同样的二维树，去掉勾选框与全选；点击域名可折叠 / 展开，叶子右侧圆点表示已实现 / 规划中，供浏览了解产品能力域。</p>
     <div class="tree" id="tree-about"></div>
   </div>
 </div>
@@ -137,13 +166,48 @@ var DOMAINS = [
 ];
 
 var selected = new Set();
+/* 每个树各自的展开状态（形态 A / 形态 B 互不影响），默认全部展开 */
+function initialExpanded(){
+  var m = {};
+  DOMAINS.forEach(function(d){ m[d.key] = true; });
+  return m;
+}
+var stateCreate = {expanded:initialExpanded()};
+var stateAbout = {expanded:initialExpanded()};
 
-function buildTree(container, readonly){
+function domainOf(key){
+  for(var i=0;i<DOMAINS.length;i++){ if(DOMAINS[i].key===key) return DOMAINS[i]; }
+  return null;
+}
+/* 该域已选数量 */
+function domainSel(d){
+  var n=0;
+  for(var i=0;i<d.caps.length;i++){ if(selected.has(d.caps[i][0])) n++; }
+  return n;
+}
+/* 域名三态：0 未选 / 1 半选 / 2 全选 */
+function domainState(d){
+  var n=domainSel(d);
+  if(n===0) return 0;
+  if(n===d.caps.length) return 2;
+  return 1;
+}
+/* 点击域名复选框：全选 <-> 取消全选（半选时补齐为全选） */
+function toggleDomain(key){
+  var d=domainOf(key);
+  if(!d) return;
+  if(domainState(d)===2){
+    for(var i=0;i<d.caps.length;i++) selected.delete(d.caps[i][0]);
+  }else{
+    for(var i=0;i<d.caps.length;i++) selected.add(d.caps[i][0]);
+  }
+  render();
+}
+
+function buildTree(container, readonly, state){
   container.textContent = '';
-  var totalDone = DOMAINS.reduce(function(s,d){ return s + d.caps.filter(function(c){return c[2];}).length; }, 0);
   var totalAll = DOMAINS.reduce(function(s,d){ return s + d.caps.length; }, 0);
 
-  // 顶层 root
   var root = document.createElement('div');
   root.className = 'root';
   root.textContent = 'SOInsight 分析能力 (' + totalAll + ')';
@@ -154,45 +218,70 @@ function buildTree(container, readonly){
     var domainPrefix = isLastDomain ? '└── ' : '├── ';
     var childPipe = isLastDomain ? '    ' : '│   ';
 
-    // 域名行
+    // 每个大类一个 group，折叠时只隐藏能力行
+    var group = document.createElement('div');
+    group.className = 'group' + (state.expanded[d.key] ? '' : ' collapsed');
+    group.setAttribute('data-group', d.key);
+
+    /* ---------- 域名行 ---------- */
     var dline = document.createElement('div');
-    dline.className = 'domain' + (readonly ? ' open' : '');
-    dline.setAttribute('data-domain', d.key);
-    var done = readonly ? d.caps.filter(function(c){return c[2];}).length : 0;
+    dline.className = 'domain';
+    dline.setAttribute('data-drow', d.key);
+
     var dprefix = document.createElement('span');
     dprefix.className = 'prefix';
     dprefix.textContent = domainPrefix;
+    dline.appendChild(dprefix);
+
+    // 域名复选框（整类全选），仅形态 A
+    if(!readonly){
+      var dbox = document.createElement('span');
+      dbox.className = 'box dbox';
+      dbox.setAttribute('data-dbox', d.key);
+      dbox.setAttribute('role','checkbox');
+      dbox.title = '整类全选 / 取消全选';
+      dline.appendChild(dbox);
+    }
+
     var dname = document.createElement('span');
     dname.className = 'name';
     dname.textContent = d.name;
+    dname.title = '点击展开 / 收起该大类';
+    dline.appendChild(dname);
+
     var dmeta = document.createElement('span');
     dmeta.className = 'meta';
-    dmeta.textContent = '(' + done + '/' + d.caps.length + ')';
-    dline.appendChild(dprefix); dline.appendChild(dname); dline.appendChild(dmeta);
+    dmeta.textContent = '(' + (readonly ? d.caps.filter(function(c){return c[2];}).length : 0) + '/' + d.caps.length + ')';
+    dline.appendChild(dmeta);
 
-    // 全选按钮（仅形态 A）
+    var arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = state.expanded[d.key] ? '▾' : '▸';
+    dline.appendChild(arrow);
+
+    // 整选快捷文字（仅形态 A）
     if(!readonly){
       var all = document.createElement('span');
       all.className = 'all';
       all.setAttribute('data-all', d.key);
-      all.textContent = '[全选]';
-      all.style.cssText = 'margin-left:6px;font-size:11px;color:var(--muted);cursor:pointer';
-      all.addEventListener('mouseenter', function(){ all.style.color='var(--accent)'; });
-      all.addEventListener('mouseleave', function(){ all.style.color='var(--muted)'; });
+      all.textContent = '全选';
+      all.title = '切换该大类全部能力';
       dline.appendChild(all);
     }
 
-    // 折叠行为
-    dname.addEventListener('click', function(){
-      dline.classList.toggle('open');
-    });
-    if(!readonly){
-      dmeta.style.cursor = 'pointer';
-      dmeta.addEventListener('click', function(){ dline.classList.toggle('open'); });
+    // 展开 / 收起
+    function toggleExpand(){
+      state.expanded[d.key] = !state.expanded[d.key];
+      group.classList.toggle('collapsed', !state.expanded[d.key]);
+      arrow.textContent = state.expanded[d.key] ? '▾' : '▸';
     }
-    container.appendChild(dline);
+    dname.addEventListener('click', toggleExpand);
+    arrow.addEventListener('click', toggleExpand);
+    dmeta.addEventListener('click', toggleExpand);
 
-    // 能力行
+    group.appendChild(dline);
+
+    /* ---------- 能力行 ---------- */
     d.caps.forEach(function(c, j){
       var isLastCap = (j === d.caps.length - 1);
       var capPrefix = childPipe + (isLastCap ? '└── ' : '├── ');
@@ -201,7 +290,7 @@ function buildTree(container, readonly){
       var cline = document.createElement('div');
       cline.className = 'cap' + (!readonly && selected.has(id) ? ' checked' : '');
       cline.setAttribute('data-cap', id);
-      cline.setAttribute('data-domain', d.key);
+      cline.setAttribute('data-parent', d.key);
 
       var cp = document.createElement('span');
       cp.className = 'prefix';
@@ -236,45 +325,87 @@ function buildTree(container, readonly){
           render();
         });
       }
-      container.appendChild(cline);
+      group.appendChild(cline);
     });
+
+    container.appendChild(group);
   });
 }
 
-function syncDomainChecks(container, d){
-  container.querySelectorAll('[data-cap]').forEach(function(el){
-    if(el.getAttribute('data-domain') === d.key){
-      el.classList.toggle('checked', selected.has(el.getAttribute('data-cap')));
-    }
+/* 形态 A 的 DOM 事件（域名复选框 / 全选文字）用委托绑定一次 */
+function bindCreateEvents(tree){
+  tree.addEventListener('click', function(e){
+    var box = e.target.closest('[data-dbox]');
+    if(box){ toggleDomain(box.getAttribute('data-dbox')); return; }
+    var all = e.target.closest('[data-all]');
+    if(all){ toggleDomain(all.getAttribute('data-all')); return; }
   });
-  var done = d.caps.filter(function(c){ return selected.has(c[0]); }).length;
-  var dl = container.querySelector('[data-domain="'+d.key+'"] .meta');
-  if(dl) dl.textContent = '(' + done + '/' + d.caps.length + ')';
 }
 
 function renderSelection(){
   var ids = Array.from(selected);
   document.getElementById('sel-count').textContent = ids.length;
-  var pills = document.getElementById('sel-pills');
-  pills.innerHTML = ids.map(function(id){ return '<span class="pill">'+id+'</span>'; }).join('');
+
+  var pills = [];
+  DOMAINS.forEach(function(d){
+    var n = domainSel(d);
+    if(n>0) pills.push('<span class="pill">' + d.name + ' ×' + n + '</span>');
+  });
+  var box = document.getElementById('sel-pills');
+  box.innerHTML = pills.length ? pills.join('') : '<span class="empty">尚未选择任何能力</span>';
+
   document.getElementById('run-btn').disabled = ids.length === 0;
 }
 
+/* 增量刷新：勾选状态、域名计数、三态、整选文字 */
 function render(){
   renderSelection();
+  var tree = document.getElementById('tree-create');
   DOMAINS.forEach(function(d){
-    syncDomainChecks(document.getElementById('tree-create'), d);
+    // 能力项
+    tree.querySelectorAll('[data-parent="'+d.key+'"][data-cap]').forEach(function(el){
+      el.classList.toggle('checked', selected.has(el.getAttribute('data-cap')));
+    });
+    var drow = tree.querySelector('[data-drow="'+d.key+'"]');
+    if(!drow) return;
+    var st = domainState(d);
+    var dbox = drow.querySelector('.dbox');
+    if(dbox){
+      dbox.classList.toggle('checked', st===2);
+      dbox.classList.toggle('half', st===1);
+      dbox.setAttribute('aria-checked', st===2 ? 'true' : 'false');
+    }
+    drow.querySelector('.meta').textContent = '(' + domainSel(d) + '/' + d.caps.length + ')';
+    var all = drow.querySelector('.all');
+    if(all){
+      all.textContent = st===2 ? '取消全选' : '全选';
+      all.classList.toggle('off', st===2);
+    }
   });
 }
 
 function mount(){
   var tc = document.getElementById('tree-create');
   var ta = document.getElementById('tree-about');
-  buildTree(tc, false);
-  buildTree(ta, true);
+
+  buildTree(tc, false, stateCreate);
+  buildTree(ta, true, stateAbout);
+  bindCreateEvents(tc);
   renderSelection();
+
   document.getElementById('clear-sel').addEventListener('click', function(){
     selected.clear();
+    render();
+  });
+
+  document.getElementById('expand-all').addEventListener('click', function(){
+    DOMAINS.forEach(function(d){ stateCreate.expanded[d.key] = true; });
+    buildTree(tc, false, stateCreate);
+    render();
+  });
+  document.getElementById('collapse-all').addEventListener('click', function(){
+    DOMAINS.forEach(function(d){ stateCreate.expanded[d.key] = false; });
+    buildTree(tc, false, stateCreate);
     render();
   });
 }
