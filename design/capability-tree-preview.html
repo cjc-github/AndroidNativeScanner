@@ -65,10 +65,10 @@ h1{font-size:20px;margin:0 0 4px}
 .tree .dbox.checked::after{
   content:"✓";color:var(--on-accent);font-size:10px;line-height:12px;text-align:center;display:block;
 }
-.tree .dbox.half{background:var(--accent);border-color:var(--accent)}
-.tree .dbox.half::after{
-  content:"";position:absolute;left:2px;right:2px;top:4.5px;height:2px;
-  background:var(--on-accent);border-radius:1px;
+/* 半选：左半填充，不画横杠 */
+.tree .dbox.half{
+  background:linear-gradient(to right,var(--accent) 0 50%,transparent 50% 100%);
+  border-color:var(--accent);
 }
 .tree .cap .state{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:6px;vertical-align:1px}
 .tree .cap .state.ok{background:var(--ok)}
@@ -106,7 +106,7 @@ h1{font-size:20px;margin:0 0 4px}
   <div class="section" id="sec-create">
     <h2>形态 A · 创建任务时的「我想展示的分析能力」</h2>
     <p class="sub">
-      <strong>域名行复选框</strong>＝该大类整选：未选 → 半选（<code>—</code>）→ 全选（<code>✓</code>）三态循环；<br>
+      <strong>域名行复选框</strong>＝该大类整选：未选 → 半选（左半填充）→ 全选（<code>✓</code>）三态循环；<br>
       <strong>点击域名文字</strong>＝展开 / 收起该大类，进入里面逐项勾选；右侧「全选 / 取消全选」等价于勾选框。<br>
       下方实时汇总已选，未选任何能力时「运行分析」不可用。
     </p>
